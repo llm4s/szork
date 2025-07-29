@@ -1,6 +1,3 @@
-# szork
-Voice-controlled Zork-style adventure demo using LLM4S: speech, image, tools, and agentic gameplay.
-
 # Szork 🧙‍♂️🎙️
 
 **Szork** is a voice-controlled, Zork-style text adventure game demo built using [LLM4S](https://github.com/llm4s/llm4s) — a Scala toolkit for integrating large language models with real-world tools.

@@ -10,7 +10,8 @@ It showcases an LLM agent acting as a **Dungeon Master**, allowing players to ex
 
 ## 🎮 Preview
 
-![Szork gameplay preview](./A_screenshot_or_animation_of_Szork,_an_interactive.png)
+![Szork gameplay preview](assets/szork-demo-preview.png)
+
 
 
 ## 📢 About

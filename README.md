@@ -72,6 +72,22 @@ A voice-controlled Zork-style adventure game is an excellent demo to showcase LL
 git clone git@github.com:llm4s/szork.git
 cd szork
 sbt run
+```
 
+### Maintainers
+
+Want to connect with maintainers? The Szork project is maintained by:
+
+- **Rory Graves** - [https://www.linkedin.com/in/roryjgraves/](https://www.linkedin.com/in/roryjgraves/) | Email: [rory.graves@fieldmark.co.uk](mailto:rory.graves@fieldmark.co.uk) | Discord: `rorybot1`
+- **Kannupriya Kalra** - [https://www.linkedin.com/in/kannupriyakalra/](https://www.linkedin.com/in/kannupriyakalra/) | Email: [kannupriyakalra@gmail.com](mailto:kannupriyakalra@gmail.com) | Discord: `kannupriyakalra_46520`
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+----------------
+[llm4s]: https://github.com/llm4s/llm4s  
+[Scala 3]: https://dotty.epfl.ch/  
+[Scala 2]: https://www.scala-lang.org/
 
 

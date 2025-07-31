@@ -4,7 +4,6 @@ lazy val root = (project in file("."))
   .settings(
     name := "szork",
     libraryDependencies ++= Seq(
-      "com.softwaremill.llm4s" %% "llm4s" % "0.1.0"
+      "org.llm4s" % "llm4s_2.13" % "0.1.6"
     )
   )
-

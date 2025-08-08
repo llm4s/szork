@@ -63,17 +63,17 @@ cd szork/frontend
 npm install
 npm run dev
 ```
-✅ **Frontend running**: http://localhost:3000
+✅ **Frontend running**: http://localhost:3090
 
 ### Step 3: Start Backend (Terminal 2)  
 ```bash
 # From llm4s root directory
-sbt "szork/runMain org.llm4s.szork.SzorkSimpleServer"
+sbt "szork/runMain org.llm4s.szork.SzorkServer"
 ```
-✅ **Backend running**: http://localhost:8080
+✅ **Backend running**: http://0.0.0.0:8090
 
 ### Step 4: Play the Demo
-Open your browser and go to: **http://localhost:3000**
+Open your browser and go to: **http://localhost:3090**
 
 ## ⚡ Troubleshooting
 
@@ -91,9 +91,9 @@ git pull origin szork  # Get latest "Fix running from sbt" commit
 
 ### Test Backend is Running
 ```bash
-curl http://localhost:8080              # Basic connectivity
-curl http://localhost:8080/api/health   # Health check
-curl -X POST http://localhost:8080/api/game/start  # Game endpoint
+curl http://0.0.0.0:8090              # Basic connectivity
+curl http://0.0.0.0:8090/api/health   # Health check
+curl -X POST http://0.0.0.0:8090/api/game/start  # Game endpoint
 ```
 
 ### Node.js Warnings
@@ -102,8 +102,8 @@ If you see Node version warnings, the demo will still work, but consider updatin
 ## 🔧 Technical Details
 
 ### Architecture
-- **Frontend**: React + TypeScript + Vite (port 3000)
-- **Backend**: Scala + Cask web framework (port 8080)  
+- **Frontend**: React + TypeScript + Vite (port 3090)
+- **Backend**: Scala + Cask web framework (port 8090)  
 - **Development**: Modular setup within LLM4S for co-development
 
 ### API Endpoints

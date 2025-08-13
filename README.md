@@ -26,9 +26,9 @@ A voice-controlled Zork-style adventure game is an excellent demo to showcase LL
 - **LLM as DM**: Narrative generation & game state tracking  
 - **Speech-to-Text**: Voice commands  
 - **Text-to-Speech**: Spoken responses  
-- **Image Generation**: Scene illustrations  
+- **Image Generation**: Dynamic scene illustrations  
 - **Tool Calling**: Inventory, combat, puzzles  
-- **Agentic Workflows**: DM manages flow and reasoning  
+- **Agentic Workflows**: DM manages state and game flow   
 
 ### Suggested Flow
 1. Title screen with narration via TTS  

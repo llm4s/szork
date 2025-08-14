@@ -1,4 +1,5 @@
 /.bsp/
 target/
 .env
-.idea
+.idea.DS_Store
+build.sbt.save

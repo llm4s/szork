@@ -1,5 +1,40 @@
-/.bsp/
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Build artifacts
 target/
+project/target/
+project/project/
+
+# SBT
+.bsp/
+.bloop/
+.metals/
+
+# Environment
 .env
-.idea.DS_Store
+*.env.local
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Cache and saves
+szork-cache/
+szork-saves/
+
+# Temporary files
+*.tmp
+*~
+.#*
 build.sbt.save

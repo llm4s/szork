@@ -1,0 +1,21 @@
+{
+  "generated": "2025-08-09T03:10:37.261909Z",
+  "styles": [
+    {
+      "id": "pixel",
+      "image": "/style-samples/pixel-sample.png"
+    },
+    {
+      "id": "illustration",
+      "image": "/style-samples/illustration-sample.png"
+    },
+    {
+      "id": "painting",
+      "image": "/style-samples/painting-sample.png"
+    },
+    {
+      "id": "comic",
+      "image": "/style-samples/comic-sample.png"
+    }
+  ]
+}

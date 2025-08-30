@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SZork Frontend Test</title>
+</head>
+<body>
+    <h1>SZork Frontend Test</h1>
+    <p>The frontend is now running with the fixes applied.</p>
+    <p>To test:</p>
+    <ol>
+        <li>Open the browser developer console (F12)</li>
+        <li>Navigate to: <a href="http://localhost:3091/" target="_blank">http://localhost:3091/</a></li>
+        <li>Start a new adventure</li>
+        <li>Check if:
+            <ul>
+                <li>Images are displayed after generation</li>
+                <li>Background music plays after generation</li>
+            </ul>
+        </li>
+    </ol>
+    <h2>What was fixed:</h2>
+    <ul>
+        <li><strong>Image issue:</strong> The composable was setting <code>message.image</code> but GameView.vue was looking for <code>msg.imageUrl</code>. Fixed by checking for <code>msg.image</code> first.</li>
+        <li><strong>Music issue:</strong> The composable was calling its own stub <code>playBackgroundMusic</code> function instead of the real one in GameView.vue. Fixed by:
+            <ul>
+                <li>Adding callback support in the composable</li>
+                <li>Setting the callbacks in GameView.vue's onMounted</li>
+            </ul>
+        </li>
+    </ul>
+</body>
+</html>

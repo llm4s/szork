@@ -5,6 +5,7 @@ import org.llm4s.agent.Agent
 import org.llm4s.llmconnect.LLM
 import org.llm4s.llmconnect.model.UserMessage
 import org.llm4s.toolapi.ToolRegistry
+import org.llm4s.config.EnvLoader
 
 import scala.io.StdIn.readLine
 
@@ -12,7 +13,7 @@ object SzorkMain {
 
   def main(args: Array[String]): Unit = {
 
-    val client = LLM.client()
+    val client = LLM.client(EnvLoader)
     val toolRegistry = new ToolRegistry(Nil)
 
     // Create an agent

@@ -1,0 +1,11 @@
+{
+  "slide_number": 1,
+  "title": "Output: Structured analysis",
+  "content": "```scala\nval analysis = client.analyzeImage(\nimageFile = \"screenshot.png\",\nprompt = \"Describe this UI and suggest improvements\"\n)\n// Returns detailed component analysis\n```\nUse Cases:\n• 📱 UI/UX analysis\n• 🔍 Document processing\n• ♿ Accessibility checking\n• 🛡️ Content moderation\n**Speaker Notes:**\nNot just generation - understanding too. Upload any image and get structured analysis. Perfect for automated testing, documentation, or accessibility compliance.\n---\n<!-- Slide 10: Agent Architecture -->",
+  "slide_type": "chart",
+  "layout": "chart",
+  "layout_hint": null,
+  "visual_requirements": "Create appropriate chart visualization from the data",
+  "theme": "professional",
+  "notes": null
+}

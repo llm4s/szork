@@ -1,0 +1,62 @@
+{
+  "speakers": [
+    {
+      "id": "founder1",
+      "name": "Rory Graves",
+      "title": "Co-founder & CTO",
+      "photo": "assets/photos/founder1.jpg",
+      "bio": [
+        "30+ years building tools from embedded to internet-scale",
+        "Scala compiler contributor and performance optimizer",
+        "Hybrid AI/ML research and developer mentorship"
+      ],
+      "background": {
+        "experience": "30+ years in computing",
+        "previous": "From two-person startups to multinational corporations",
+        "education": "Self-taught from BASIC games onwards",
+        "expertise": ["Scala", "Performance Optimization", "Distributed Systems", "AI/ML"]
+      },
+      "contact": {
+        "email": "rory@llm4s.io",
+        "twitter": "@a_dev_musing",
+        "linkedin": "linkedin.com/in/roryjgraves",
+        "github": "github.com/rorygraves"
+      },
+      "speaking_notes": "Handles demo driving and audience interaction"
+    },
+    {
+      "id": "founder2",
+      "name": "Kannupriya Kalra",
+      "title": "Co-founder & CEO",
+      "photo": "assets/photos/founder2.jpg",
+      "bio": [
+        "Google Summer of Code admin for Scala Center 2024-2025",
+        "10+ years functional programming at Sky London",
+        "International speaker across 4 countries"
+      ],
+      "background": {
+        "experience": "10+ years in functional programming",
+        "previous": "Sky London - Backend development with functional Scala",
+        "education": "Data engineering specialist",
+        "expertise": ["Scala", "Akka", "Big Data", "Open Source"]
+      },
+      "contact": {
+        "email": "kannupriya@llm4s.io",
+        "twitter": "@KannupriyaKalra",
+        "linkedin": "linkedin.com/in/kannupriyakalra",
+        "github": "github.com/kannupriyakalra"
+      },
+      "speaking_notes": "Handles technical explanations and architecture"
+    }
+  ],
+  "presentation_roles": {
+    "primary_demo": "founder1",
+    "technical_expert": "founder2",
+    "handoff_points": [
+      {"time": "10:00", "from": "founder1", "to": "founder2", "topic": "Technical explanation"},
+      {"time": "19:00", "from": "founder2", "to": "founder1", "topic": "Image understanding demo"},
+      {"time": "33:00", "from": "founder1", "to": "founder2", "topic": "Production features"},
+      {"time": "42:00", "from": "both", "to": "both", "topic": "Q&A"}
+    ]
+  }
+}

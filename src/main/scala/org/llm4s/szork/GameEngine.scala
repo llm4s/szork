@@ -1,0 +1,947 @@
+package org.llm4s.szork
+
+import org.llm4s.agent.{Agent, AgentState, AgentStatus}
+import org.llm4s.llmconnect.LLM
+import org.llm4s.llmconnect.model.{Message, UserMessage, AssistantMessage, SystemMessage, ToolMessage, ToolCall}
+import org.llm4s.error.LLMError
+import org.llm4s.config.EnvLoader
+import org.llm4s.toolapi.ToolRegistry
+import org.slf4j.LoggerFactory
+import ujson._
+
+class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle: Option[String] = None, adventureOutline: Option[AdventureOutline] = None) {
+  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  
+  private val themeDescription = theme.getOrElse("classic fantasy dungeon adventure")
+  private val artStyleDescription = artStyle match {
+    case Some("pixel") => "pixel art style, 16-bit retro video game aesthetic, blocky pixels, limited color palette, nostalgic 8-bit/16-bit graphics"
+    case Some("illustration") => "professional pencil drawing style, detailed graphite art, realistic shading, fine pencil strokes, sketch-like illustration"
+    case Some("painting") => "oil painting style, fully rendered painting with realistic lighting and textures, painterly brushstrokes, fine art aesthetic"
+    case Some("comic") => "comic book art style with bold lines, cel-shaded coloring, graphic novel aesthetic, dynamic comic book illustration"
+    case _ => "fantasy art style, detailed digital illustration"
+  }
+  
+  private val adventureOutlinePrompt = adventureOutline match {
+    case Some(outline) => AdventureGenerator.outlineToSystemPrompt(outline)
+    case None => ""
+  }
+  
+  private val gamePrompt =
+    s"""You are a Dungeon Master guiding a text adventure game in the classic Infocom tradition.
+      |
+      |Adventure Theme: $themeDescription
+      |Art Style: $artStyleDescription
+      |
+      |$adventureOutlinePrompt
+      |
+      |GAME INITIALIZATION:
+      |When you receive the message "Start adventure", generate the opening scene of the adventure.
+      |This should be the player's starting location, introducing them to the world and setting.
+      |Create a fullScene JSON response with terse, classic text adventure descriptions.
+      |
+      |TEXT ADVENTURE WRITING CONVENTIONS:
+      |
+      |ROOM DESCRIPTIONS:
+      |- Follow the verbose/brief convention: First visit shows terse description (1-2 sentences), subsequent visits even briefer
+      |- Be economical with words: "Dark cellar. Stone stairs lead up." not "You find yourself in a musty, dimly-lit cellar with ancient stone walls."
+      |- Structure: Location type → key features → exits
+      |- Avoid excessive adjectives: "brass lantern" not "ancient, tarnished brass lantern with mysterious engravings"
+      |- Essential information only: Save atmospheric details for EXAMINE commands
+      |
+      |OBJECT PRESENTATION:
+      |- Use Infocom house style: "There is a brass lantern here" or "A battery-powered lantern is on the trophy case"
+      |- Include state information naturally: "(closed)", "(providing light)", "(locked)"
+      |- Avoid special capitalization - trust players to explore mentioned items
+      |- Follow noun prominence: Important objects appear explicitly, not buried in prose
+      |- Three-tier importance: Essential objects mentioned 3 times, useful twice, atmospheric once
+      |
+      |NARRATIVE STYLE:
+      |- Second-person present tense: "You are in a forest clearing"
+      |- Prioritize clarity over atmosphere - be direct and concise
+      |- Minimal adjectives: Use only when functionally necessary
+      |- Classic terseness: "Forest clearing. Paths lead north and south." is preferred
+      |- Fair play principle: All puzzle information discoverable within game world logic
+      |
+      |EXIT PRESENTATION:
+      |- Integrate naturally into prose: "A path leads north into the forest" rather than "Exits: north"
+      |- Distinguish between open and blocked paths: "an open door leads north" vs "a closed door blocks the northern exit"
+      |- Use standard directions: cardinal (north/south/east/west), vertical (up/down), relative (in/out)
+      |
+      |GAME MECHANICS & OBSTACLES:
+      |- CRITICAL: Respect physical barriers and navigation- sealed, locked, blocked, or closed passages CANNOT be traversed without first being opened in some way.
+      |- obey the map in the adventure outline.
+      |- "sealed hatch" = impassable until unsealed (e.g. might requires tool/action)
+      |- "locked door" = impassable until unlocked (e.g. requires key, or button press)
+      |- "blocked passage" = impassable until cleared (requires action or may never be passable
+      |- "closed door" = can be opened with simple "open door" command
+      |- When player attempts to pass through obstacle, respond with: "The [obstacle] is [sealed/locked/blocked]. You cannot pass."
+      |- Track obstacle states: once opened/unlocked/cleared, they remain so unless explicitly re-sealed
+      |- Puzzle integrity: NEVER allow bypassing puzzle elements - player must solve them properly
+      |
+      |HINTING TECHNIQUES:
+      |- Rule of three: First exposure introduces, second establishes pattern, third reveals significance
+      |- Position important objects prominently with distinctive adjectives
+      |- Environmental inconsistencies guide discovery: dust patterns, temperature variations, sounds
+      |- Examination reveals deeper layers - reward thorough investigation
+      |
+      |STATE CHANGES & DYNAMICS:
+      |- Reflect player actions through dynamic descriptions, chagnges in state.
+      |- Clear state transparency: "The lever clicks into place"
+      |- Persistent consequences: A smashed vase permanently alters room descriptions
+      |- Conditional text based on player knowledge: "strange markings" become "ancient Elvish runes" after finding translation
+      |- a hidden passage or exit should not be revealed until the player has discovered it through exploration or puzzle solving)
+      |
+      |INVENTORY MANAGEMENT:
+      |You have access to three inventory management tools that you MUST use to manage the users inventory:
+      |- list_inventory: Use this to check what items the player currently has
+      |- add_inventory_item: Use this when the player picks up or receives an item
+      |- remove_inventory_item: Use this when the player uses, drops, or gives away an item
+      |
+      |IMPORTANT INVENTORY RULES:
+      |- When a player picks up an item, ALWAYS use add_inventory_item tool
+      |- When a player uses/drops an item, ALWAYS use remove_inventory_item tool
+      |- Check inventory with list_inventory before using items
+      |- Track items consistently - if an item is picked up in one location, it should be in inventory
+      |- Items in the "items" field of a location are available to pick up, not already owned
+      |
+      |Response Format:
+      |
+      |IMPORTANT: Output format for streaming support:
+      |1. First output the narration text on its own line
+      |2. Then output "<<<JSON>>>" on a new line
+      |3. Then output the JSON response (WITHOUT narrationText field - we'll add it programmatically)
+      |
+      |Example:
+      |You enter the dark cavern. Water drips from stalactites overhead.
+      |<<<JSON>>>
+      |{"responseType": "fullScene", "locationId": "cavern_entrance", ...rest of JSON WITHOUT narrationText...}
+      |
+      |Choose the appropriate response type based on the action:
+      |
+      |TYPE 1 - FULL SCENE (for movement, look, or scene changes):
+      |{
+      |  "responseType": "fullScene",
+      |  "locationId": "unique_location_id",  // e.g., "dungeon_entrance", "forest_path_1"
+      |  "locationName": "Human Readable Name",  // e.g., "Dungeon Entrance", "Forest Path"
+      |  "imageDescription": "Detailed 2-3 sentence visual description for image generation in $artStyleDescription. Include colors, lighting, atmosphere, architectural details, and visual elements appropriate for the art style.",
+      |  "musicDescription": "Detailed atmospheric description for music generation. Include mood, tempo, instruments, and emotional tone.",
+      |  "musicMood": "One of: entrance, exploration, combat, victory, dungeon, forest, town, mystery, castle, underwater, temple, boss, stealth, treasure, danger, peaceful",
+      |  "exits": [
+      |    {"direction": "north", "locationId": "forest_clearing", "description": "A winding path disappears into the dark forest"},
+      |    {"direction": "south", "locationId": "village_square", "description": "The cobblestone road leads back to the village"}
+      |  ],
+      |  "items": ["brass_lantern", "mysterious_key"],  // Items available in this location to pick up
+      |  "npcs": ["old_wizard", "guard"]  // NPCs present in this location
+      |}
+      |
+      |TYPE 2 - SIMPLE RESPONSE (for examine, help, inventory, interactions without scene change):
+      |{
+      |  "responseType": "simple",
+      |  "locationId": "current_location_id",  // Keep the same location ID as before
+      |  "actionTaken": "examine/help/inventory/talk/use/etc"  // What action was performed
+      |}
+      |
+      |Rules:
+      |- Follow classic text adventure writing conventions throughout
+      |- Use "fullScene" response ONLY for: movement to new location, "look" command, or major scene changes
+      |- Use "simple" response for: examine, help, inventory, talk, use item (without movement), take/drop items
+      |- The narration text (output BEFORE <<<JSON>>>) should be 1-2 sentences maximum for first visits, single phrase for return visits
+      |- Do NOT include narrationText field in the JSON - only output it before the <<<JSON>>> marker
+      |- Prioritize functional clarity over atmospheric prose - be terse and direct
+      |- ImageDescription should be rich and detailed (50-100 words) focusing on visual elements in the $artStyleDescription
+      |- IMPORTANT: Always describe scenes specifically for the art style: $artStyleDescription
+      |- MusicDescription should evoke the atmosphere and mood (30-50 words)
+      |- Always provide consistent locationIds for navigation
+      |- Track player location, inventory, and game state
+      |- STRICTLY enforce movement restrictions - NEVER allow passage through sealed/locked/blocked obstacles
+      |- When movement is blocked, use "simple" response explaining why: "The hatch is sealed. You cannot pass."
+      |- Use consistent locationIds when revisiting locations
+      |- Use inventory tools for ALL item management
+      |- Maintain puzzle integrity - solutions must be earned through gameplay, not bypassed
+      |
+      |Special commands and their response types:
+      |- "help" - SIMPLE response: List basic commands
+      |- "hint" - SIMPLE response: Provide contextual hint
+      |- "inventory" or "i" - SIMPLE response: Use list_inventory tool, respond with "You are carrying: ..."
+      |- "look" or "l" - FULL SCENE response: Complete room description
+      |- "examine [object]" or "x [object]" - SIMPLE response: Detailed object examination
+      |- "take [item]" or "get [item]" - SIMPLE response: Use add_inventory_item tool, confirm action
+      |- "drop [item]" - SIMPLE response: Use remove_inventory_item tool, confirm action
+      |- "use [item]" - SIMPLE response unless it causes movement
+      |- "talk to [npc]" - SIMPLE response: NPC dialogue
+      |- Movement commands - Check obstacles first:
+      |  * If path is clear: FULL SCENE response with new location
+      |  * If blocked by obstacle: SIMPLE response "The [obstacle] is [sealed/locked/blocked]. You cannot pass."
+      |  * NEVER move player through sealed hatches, locked doors, or blocked passages
+      |""".stripMargin
+
+  private val client = LLM.client(EnvLoader)
+  private val toolRegistry = new ToolRegistry(GameTools.allTools)
+  private val agent = new Agent(client)
+  
+  private var currentState: AgentState = _
+  private var currentScene: Option[GameScene] = None
+  private var visitedLocations: Set[String] = Set.empty
+  private var conversationHistory: List[ConversationEntry] = List.empty
+  private val createdAt: Long = System.currentTimeMillis()
+  private var sessionStartTime: Long = System.currentTimeMillis()
+  private var totalPlayTime: Long = 0L  // Accumulated play time from previous sessions
+  private var adventureTitle: Option[String] = adventureOutline.map(_.title)
+  
+  // Enhanced state tracking
+  private var mediaCache: Map[String, MediaCacheEntry] = Map.empty
+  private val completeSystemPrompt: String = gamePrompt  // Store the complete system prompt
+  
+  def initialize(): Either[String, String] = {
+    logger.info(s"[$sessionId] Initializing game with theme: $themeDescription")
+    
+    // Clear inventory for new game
+    GameTools.clearInventory()
+    
+    // Use "Start adventure" as the trigger message (not shown to user)
+    val initPrompt = "Start adventure"
+    
+    // Initialize the agent with the complete system prompt including adventure outline
+    currentState = agent.initialize(
+      initPrompt,
+      toolRegistry,
+      systemPromptAddition = Some(completeSystemPrompt)
+    )
+    
+    // Track the initialization message (but don't show to user)
+    // This ensures the agent knows to generate the opening scene
+    
+    // Automatically run the initial scene generation
+    agent.run(currentState) match {
+      case Right(newState) =>
+        currentState = newState
+        // Extract the last textual response from the agent
+        val responseContent = extractLastAssistantResponse(newState.conversation.messages)
+        
+        // Try to parse as JSON scene
+        parseSceneFromResponse(responseContent) match {
+          case Some(scene) =>
+            currentScene = Some(scene)
+            visitedLocations += scene.locationId
+            logger.info(s"[$sessionId] Game initialized with scene: ${scene.locationId} - ${scene.locationName}")
+            // Track initial conversation
+            trackConversation("assistant", scene.narrationText)
+            Right(scene.narrationText)
+          case None =>
+            logger.warn(s"[$sessionId] Failed to parse structured response, using raw text")
+            Right(responseContent.take(200)) // Fallback to raw text if parsing fails
+        }
+        
+      case Left(error) =>
+        logger.error(s"[$sessionId] Failed to initialize game: $error")
+        Left(s"Failed to initialize game: ${error.message}")
+    }
+  }
+  
+  case class GameResponse(
+    text: String, 
+    audioBase64: Option[String] = None, 
+    imageBase64: Option[String] = None,
+    backgroundMusicBase64: Option[String] = None,
+    musicMood: Option[String] = None,
+    scene: Option[GameScene] = None
+  )
+  
+  def processCommand(command: String, generateAudio: Boolean = true): Either[LLMError, GameResponse] = {
+    logger.debug(s"[$sessionId] Processing command: $command")
+    
+    // Track user command in conversation history
+    trackConversation("user", command)
+    
+    // Track message count before adding user message
+    val previousMessageCount = currentState.conversation.messages.length
+    
+    // Add user message to conversation
+    currentState = currentState
+      .addMessage(UserMessage(content = command))
+      .withStatus(AgentStatus.InProgress)
+    
+    // Run the agent
+    val textStartTime = System.currentTimeMillis()
+    logger.info(s"[$sessionId] Starting text generation for command: $command")
+    
+    agent.run(currentState) match {
+      case Right(newState) =>
+        // Get only the new messages added by the agent
+        val newMessages = newState.conversation.messages.drop(previousMessageCount + 1) // +1 to skip the user message we just added
+        val response = extractAssistantResponses(newMessages)
+        
+        // TEMPORARY: Log complete LLM response to console for debugging
+        logger.info(s"[DEBUG] Complete LLM Response for user command: $command")
+        newMessages.foreach {
+          case AssistantMessage(content, toolCalls) =>
+            logger.info(s"[DEBUG] Assistant Message Content: $content")
+            logger.info(s"[DEBUG] Assistant Tool Calls: $toolCalls")
+          case ToolMessage(toolCallId, content) =>
+            logger.info(s"[DEBUG] Tool Message (ID: $toolCallId): $content")
+          case msg =>
+            logger.info(s"[DEBUG] Other Message Type: ${msg.getClass.getSimpleName}")
+        }
+        logger.info(s"[DEBUG] Extracted response text: $response")
+        
+        val assistantMessageCount = newMessages.count(_.isInstanceOf[AssistantMessage])
+        logger.debug(s"Agent added ${newMessages.length} messages, $assistantMessageCount are assistant messages")
+        
+        currentState = newState
+        
+        val textGenerationTime = System.currentTimeMillis() - textStartTime
+        logger.info(s"[$sessionId] Text generation completed in ${textGenerationTime}ms (${response.length} chars)")
+        
+        // Try to parse the response as structured JSON
+        val (responseText, sceneOpt) = parseResponseData(response) match {
+          case Some(scene: GameScene) =>
+            // Full scene response - update current scene
+            currentScene = Some(scene)
+            visitedLocations += scene.locationId
+            logger.info(s"[$sessionId] Full scene response: ${scene.locationId} - ${scene.locationName}")
+            (scene.narrationText, Some(scene))
+            
+          case Some(simple: SimpleResponse) =>
+            // Simple response - keep current scene, just return the text
+            logger.info(s"[$sessionId] Simple response for action: ${simple.actionTaken}")
+            (simple.narrationText, currentScene) // Keep the current scene
+            
+          case None =>
+            // Fallback: try to extract just the narrationText from the JSON
+            logger.warn(s"[$sessionId] Could not parse structured response, attempting to extract narrationText")
+            val narrationText = extractNarrationTextFromJson(response).getOrElse {
+              // If that also fails and it looks like JSON, return an error message
+              if (response.trim.startsWith("{")) {
+                logger.error(s"[$sessionId] Failed to parse JSON response, showing error to user")
+                "I apologize, but there was an error processing the game response. Please try your command again."
+              } else {
+                // If it's not JSON, use the raw text
+                response
+              }
+            }
+            (narrationText, currentScene)
+        }
+        
+        // Generate audio if requested
+        val audioBase64 = if (generateAudio && responseText.nonEmpty) {
+          val audioStartTime = System.currentTimeMillis()
+          logger.info(s"[$sessionId] Starting audio generation (${responseText.length} chars)")
+          val tts = TextToSpeech()
+          tts.synthesizeToBase64(responseText, TextToSpeech.VOICE_NOVA) match {
+            case Right(audio) => 
+              val audioTime = System.currentTimeMillis() - audioStartTime
+              logger.info(s"[$sessionId] Audio generation completed in ${audioTime}ms (${audio.length} bytes base64)")
+              Some(audio)
+            case Left(error) => 
+              logger.error(s"[$sessionId] Failed to generate audio: $error")
+              None
+          }
+        } else {
+          logger.info(s"[$sessionId] Skipping audio (generateAudio=$generateAudio, empty=${responseText.isEmpty})")
+          None
+        }
+        
+        // Track assistant response in conversation history
+        trackConversation("assistant", responseText)
+        
+        // Image generation is now handled asynchronously in the server
+        // Background music generation is also handled asynchronously
+        
+        Right(GameResponse(responseText, audioBase64, None, None, None, sceneOpt))
+        
+      case Left(error) =>
+        logger.error(s"[$sessionId] Error processing command: $error")
+        Left(error)
+    }
+  }
+  
+  def processCommandStreaming(
+    command: String,
+    onTextChunk: String => Unit,
+    generateAudio: Boolean = true
+  ): Either[LLMError, GameResponse] = {
+    logger.debug(s"[$sessionId] Processing command with streaming: $command")
+    
+    // Track user command in conversation history
+    trackConversation("user", command)
+    
+    // Create streaming agent and text parser
+    val streamingAgent = new StreamingAgent(client)
+    val accumulatedText = new StringBuilder()
+    val textParser = new StreamingTextParser()
+    
+    // Add user message to conversation
+    currentState = currentState
+      .addMessage(UserMessage(content = command))
+      .withStatus(AgentStatus.InProgress)
+    
+    // Run the agent with streaming
+    val textStartTime = System.currentTimeMillis()
+    logger.info(s"[$sessionId] Starting streaming text generation for command: '$command'")
+    
+    var chunkCount = 0
+    var narrativeChunkCount = 0
+    streamingAgent.runStreaming(currentState, chunk => {
+      // Process the JSON chunk to extract narration text
+      chunkCount += 1
+      accumulatedText.append(chunk)
+      logger.debug(s"[$sessionId] Received chunk #$chunkCount: ${chunk.take(50)}...")
+      
+      // Try to extract narration text
+      textParser.processChunk(chunk) match {
+        case Some(narrationText) =>
+          // We extracted some narration text - stream it to the user
+          narrativeChunkCount += 1
+          logger.debug(s"[$sessionId] Streaming narrative chunk #$narrativeChunkCount: ${narrationText.take(50)}...")
+          onTextChunk(narrationText)
+        case None =>
+          // No narration text extracted yet
+          logger.debug(s"[$sessionId] No narration text in chunk #$chunkCount")
+      }
+    }) match {
+      case Right(newState) =>
+        currentState = newState
+        val responseText = accumulatedText.toString
+        
+        // TEMPORARY: Log complete LLM response to console for debugging
+        logger.info(s"[DEBUG] Complete Streaming LLM Response for user command: $command")
+        logger.info(s"[DEBUG] Full response text: $responseText")
+        
+        val textGenerationTime = System.currentTimeMillis() - textStartTime
+        logger.info(s"[$sessionId] Streaming completed: $chunkCount chunks, $narrativeChunkCount narrative chunks, ${responseText.length} chars in ${textGenerationTime}ms")
+        
+        // Extract the JSON portion from the response
+        val jsonResponse = textParser.getJson().getOrElse {
+          // Fallback: try to find JSON in the full response
+          val jsonMarker = "<<<JSON>>>"
+          val markerIndex = responseText.indexOf(jsonMarker)
+          if (markerIndex >= 0) {
+            responseText.substring(markerIndex + jsonMarker.length).trim
+          } else {
+            responseText // Use full response as fallback
+          }
+        }
+        
+        // Try to parse the JSON response
+        val (finalText, sceneOpt) = parseResponseData(jsonResponse) match {
+          case Some(scene: GameScene) =>
+            // Full scene response - update current scene
+            currentScene = Some(scene)
+            visitedLocations += scene.locationId
+            logger.info(s"[$sessionId] Full scene response: ${scene.locationId} - ${scene.locationName}")
+            (scene.narrationText, Some(scene))
+            
+          case Some(simple: SimpleResponse) =>
+            // Simple response - keep current scene, just return the text
+            logger.info(s"[$sessionId] Simple response for action: ${simple.actionTaken}")
+            (simple.narrationText, currentScene)
+            
+          case None =>
+            // Fallback: try to extract just the narrationText from the JSON
+            logger.warn(s"[$sessionId] Could not parse structured response in streaming, attempting to extract narrationText")
+            val narrationText = extractNarrationTextFromJson(responseText).getOrElse {
+              // If that also fails and it looks like JSON, return an error message
+              if (responseText.trim.startsWith("{")) {
+                logger.error(s"[$sessionId] Failed to parse JSON response in streaming, showing error to user")
+                "I apologize, but there was an error processing the game response. Please try your command again."
+              } else {
+                // If it's not JSON, use the raw text
+                responseText
+              }
+            }
+            (narrationText, currentScene)
+        }
+        
+        // Track assistant response in conversation history
+        trackConversation("assistant", finalText)
+        
+        // Generate audio if requested (not streamed, generated after text is complete)
+        val audioBase64 = if (generateAudio && finalText.nonEmpty) {
+          val audioStartTime = System.currentTimeMillis()
+          logger.info(s"[$sessionId] Starting audio generation (${finalText.length} chars)")
+          val tts = TextToSpeech()
+          tts.synthesizeToBase64(finalText, TextToSpeech.VOICE_NOVA) match {
+            case Right(audio) => 
+              val audioTime = System.currentTimeMillis() - audioStartTime
+              logger.info(s"[$sessionId] Audio generation completed in ${audioTime}ms")
+              Some(audio)
+            case Left(error) => 
+              logger.error(s"[$sessionId] Failed to generate audio: $error")
+              None
+          }
+        } else {
+          None
+        }
+        
+        // Return the complete response
+        Right(GameResponse(finalText, audioBase64, None, None, None, sceneOpt))
+        
+      case Left(error) =>
+        logger.error(s"[$sessionId] Error in streaming command: $error")
+        Left(error)
+    }
+  }
+  
+  def getMessageCount: Int = currentState.conversation.messages.length
+  
+  def getState: AgentState = currentState
+  
+  private def parseResponseData(response: String): Option[GameResponseData] = {
+    if (response.isEmpty) return None
+    
+    try {
+      // Check if response has the JSON marker format
+      val jsonMarkerIndex = response.indexOf("<<<JSON>>>")
+      val jsonWithNarration = if (jsonMarkerIndex >= 0) {
+        // Extract narration text and JSON separately
+        val narrationText = response.substring(0, jsonMarkerIndex).trim
+        val jsonStart = jsonMarkerIndex + "<<<JSON>>>".length
+        val jsonStr = response.substring(jsonStart).trim
+        
+        // Parse JSON and add narrationText field
+        try {
+          val json = ujson.read(jsonStr)
+          json("narrationText") = narrationText
+          json.toString()
+        } catch {
+          case _: Exception =>
+            // If JSON parsing fails, try to construct a valid response
+            jsonStr
+        }
+      } else {
+        // Fallback: try to extract JSON from the response
+        val jsonStart = response.indexOf('{')
+        val jsonEnd = response.lastIndexOf('}')
+        
+        if (jsonStart >= 0 && jsonEnd > jsonStart) {
+          response.substring(jsonStart, jsonEnd + 1)
+        } else {
+          return None
+        }
+      }
+      
+      GameResponseData.fromJson(jsonWithNarration) match {
+        case Right(data) => Some(data)
+        case Left(error) =>
+          logger.warn(s"[$sessionId] Failed to parse response JSON: $error")
+          None
+      }
+    } catch {
+      case e: Exception =>
+        logger.error(s"[$sessionId] Error parsing response", e)
+        None
+    }
+  }
+  
+  private def parseSceneFromResponse(response: String): Option[GameScene] = {
+    parseResponseData(response) match {
+      case Some(scene: GameScene) => Some(scene)
+      case _ => None
+    }
+  }
+  
+  // Helper to extract just narrationText from JSON when full parsing fails
+  private def extractNarrationTextFromJson(response: String): Option[String] = {
+    try {
+      if (response.trim.startsWith("{") && response.contains("narrationText")) {
+        // Try to parse with ujson
+        val json = ujson.read(response)
+        json.obj.get("narrationText").map(_.str)
+      } else {
+        None
+      }
+    } catch {
+      case _: Exception =>
+        // If ujson parsing fails, try a simple regex extraction
+        val pattern = """"narrationText"\s*:\s*"([^"]+(?:\\.[^"]+)*)"""".r
+        pattern.findFirstMatchIn(response).map(_.group(1).replace("\\\"", "\"").replace("\\n", "\n"))
+    }
+  }
+  
+  def shouldGenerateSceneImage(responseText: String): Boolean = {
+    // Check if we have a current scene or if it's a new scene based on text
+    currentScene.isDefined || isNewScene(responseText)
+  }
+  
+  def generateSceneImage(responseText: String, gameId: Option[String] = None): Option[String] = {
+    // Use detailed description from current scene if available
+    val (imagePrompt, locationId) = currentScene match {
+      case Some(scene) =>
+        logger.info(s"[$sessionId] Using structured image description for ${scene.locationId}")
+        (scene.imageDescription, Some(scene.locationId))
+      case None if isNewScene(responseText) =>
+        logger.info(s"[$sessionId] No structured scene, extracting from text")
+        (extractSceneDescription(responseText), None)
+      case _ =>
+        return None
+    }
+    
+    // Include art style prominently in the image prompt with detailed direction
+    val styledPrompt = artStyle match {
+      case Some("pixel") => 
+        s"Classic retro pixel art game scene: $imagePrompt. Create in detailed 16-bit pixel art style like SNES-era adventure games, with blocky pixels, dithering patterns, limited color palette, tile-based environments, and nostalgic retro gaming aesthetic. Show clear pixelated details and structured grid-based composition."
+      
+      case Some("illustration") => 
+        s"Professional pencil sketch: $imagePrompt. Create as a detailed graphite pencil drawing with realistic shading, cross-hatching techniques, varied line weights, textured surfaces, and fine detail work. Like an artist's sketchbook illustration with visible pencil strokes, subtle gradients, and hand-drawn quality."
+      
+      case Some("painting") => 
+        s"Fantasy concept art painting: $imagePrompt. Create as a fully rendered atmospheric scene with realistic lighting, rich textures, environmental depth, dramatic composition, and painterly details. Like a fantasy book cover or game concept art with visible brushwork, color depth, and artistic atmosphere."
+      
+      case Some("comic") => 
+        s"Dynamic comic book panel: $imagePrompt. Create in comic book art style with bold black outlines, cel shading, dramatic angles, expressive details, and vibrant colors. Like a graphic novel illustration with clear line art, dynamic composition, and stylized comic book aesthetic."
+      
+      case _ => 
+        s"$imagePrompt, rendered in $artStyleDescription"
+    }
+    logger.info(s"[$sessionId] Generating scene image with prompt: ${styledPrompt.take(100)}...")
+    val imageGen = ImageGeneration()
+    
+    // Use cached version if available - pass art style for cache matching
+    val artStyleForCache = artStyle.getOrElse("fantasy")
+    imageGen.generateSceneWithCache(styledPrompt, artStyleForCache, gameId, locationId) match {
+      case Right(image) =>
+        logger.info(s"[$sessionId] Scene image generated/retrieved, base64: ${image.length}")
+        Some(image)
+      case Left(error) =>
+        logger.error(s"[$sessionId] Failed to generate image: $error")
+        None
+    }
+  }
+  
+  private def isNewScene(response: String): Boolean = {
+    // Detect if this is a new scene based on keywords
+    val sceneIndicators = List(
+      "you enter", "you arrive", "you find yourself",
+      "you see", "before you", "you are in",
+      "you stand", "exits:", "you reach"
+    )
+    val lowerResponse = response.toLowerCase
+    sceneIndicators.exists(lowerResponse.contains)
+  }
+  
+  private def extractSceneDescription(response: String): String = {
+    // Extract the main scene description, focusing on visual elements
+    val sentences = response.split("[.!?]").filter(_.trim.nonEmpty)
+    val visualSentences = sentences.filter { s =>
+      val lower = s.toLowerCase
+      lower.contains("see") || lower.contains("before") || 
+      lower.contains("stand") || lower.contains("enter") ||
+      lower.contains("room") || lower.contains("cave") ||
+      lower.contains("forest") || lower.contains("dungeon") ||
+      lower.contains("hall") || lower.contains("chamber")
+    }
+    
+    val description = if (visualSentences.nonEmpty) {
+      visualSentences.mkString(". ")
+    } else {
+      sentences.headOption.getOrElse(response.take(100))
+    }
+    
+    // Clean up and enhance for image generation
+    description.replaceAll("You ", "A fantasy adventurer ")
+      .replaceAll("you ", "the adventurer ")
+  }
+  
+  def shouldGenerateBackgroundMusic(responseText: String): Boolean = {
+    // Generate music if we have a scene or detect scene change
+    currentScene.isDefined || {
+      val lowerText = responseText.toLowerCase
+      isNewScene(responseText) || 
+      lowerText.contains("battle") || 
+      lowerText.contains("victory") ||
+      lowerText.contains("defeated") ||
+      lowerText.contains("enter") ||
+      lowerText.contains("arrive")
+    }
+  }
+  
+  def generateBackgroundMusic(responseText: String, gameId: Option[String] = None): Option[(String, String)] = {
+    if (shouldGenerateBackgroundMusic(responseText)) {
+      logger.info(s"[$sessionId] Checking if background music should be generated")
+      try {
+        val musicGen = MusicGeneration()
+        
+        // Check if music generation is available
+        if (!musicGen.isAvailable) {
+          logger.info(s"[$sessionId] Music generation disabled - no API key configured")
+          return None
+        }
+        
+        // Use structured mood and description if available
+        val (mood, contextText, locationId) = currentScene match {
+          case Some(scene) =>
+            // Map the scene's mood string to a MusicMood object
+            val moodObj = getMusicMoodFromString(musicGen, scene.musicMood)
+            logger.info(s"[$sessionId] Using structured music for ${scene.locationId}: mood=${scene.musicMood}")
+            (moodObj, scene.musicDescription, Some(scene.locationId))
+          case None =>
+            val detectedMood = musicGen.detectMoodFromText(responseText)
+            logger.info(s"[$sessionId] Detected mood: ${detectedMood.name} from text")
+            (detectedMood, responseText, None)
+        }
+        
+        logger.info(s"[$sessionId] Generating background music with mood: ${mood.name}")
+        musicGen.generateMusicWithCache(mood, contextText, gameId, locationId) match {
+          case Right(musicBase64) =>
+            logger.info(s"[$sessionId] Background music generated/retrieved for mood: ${mood.name}, base64: ${musicBase64.length}")
+            Some((musicBase64, mood.name))
+          case Left(error) =>
+            logger.warn(s"[$sessionId] Music generation not available: $error")
+            None
+        }
+      } catch {
+        case e: Exception =>
+          logger.warn(s"[$sessionId] Music generation disabled due to error: ${e.getMessage}")
+          None
+      }
+    } else {
+      None
+    }
+  }
+  
+  private def getMusicMoodFromString(musicGen: MusicGeneration, moodStr: String): musicGen.MusicMood = {
+    import musicGen.MusicMoods._
+    moodStr.toLowerCase match {
+      case "entrance" => ENTRANCE
+      case "exploration" => EXPLORATION
+      case "combat" => COMBAT
+      case "victory" => VICTORY
+      case "dungeon" => DUNGEON
+      case "forest" => FOREST
+      case "town" => TOWN
+      case "mystery" => MYSTERY
+      case "castle" => CASTLE
+      case "underwater" => UNDERWATER
+      case "temple" => TEMPLE
+      case "boss" => BOSS
+      case "stealth" => STEALTH
+      case "treasure" => TREASURE
+      case "danger" => DANGER
+      case "peaceful" => PEACEFUL
+      case _ => EXPLORATION // Default fallback
+    }
+  }
+  
+  def getCurrentScene: Option[GameScene] = currentScene
+  
+  // Track media generation in cache
+  def addMediaCacheEntry(locationId: String, entry: MediaCacheEntry): Unit = {
+    mediaCache = mediaCache + (locationId -> entry)
+    logger.debug(s"Added media cache entry for location: $locationId")
+  }
+  
+  def updateMediaCacheImage(locationId: String, imagePrompt: String, imageCacheId: String): Unit = {
+    val existing = mediaCache.get(locationId).getOrElse(
+      MediaCacheEntry(locationId, None, None, None, None, System.currentTimeMillis())
+    )
+    val updated = existing.copy(
+      imagePrompt = Some(imagePrompt),
+      imageCacheId = Some(imageCacheId),
+      generatedAt = System.currentTimeMillis()
+    )
+    mediaCache = mediaCache + (locationId -> updated)
+    logger.debug(s"Updated image cache for location: $locationId")
+  }
+  
+  def updateMediaCacheMusic(locationId: String, musicPrompt: String, musicCacheId: String): Unit = {
+    val existing = mediaCache.get(locationId).getOrElse(
+      MediaCacheEntry(locationId, None, None, None, None, System.currentTimeMillis())
+    )
+    val updated = existing.copy(
+      musicPrompt = Some(musicPrompt),
+      musicCacheId = Some(musicCacheId),
+      generatedAt = System.currentTimeMillis()
+    )
+    mediaCache = mediaCache + (locationId -> updated)
+    logger.debug(s"Updated music cache for location: $locationId")
+  }
+  
+  // Helper to convert Message to JSON for persistence
+  private def messageToJson(message: Message): ujson.Value = {
+    message match {
+      case UserMessage(content) => ujson.Obj(
+        "type" -> "user",
+        "content" -> content
+      )
+      case AssistantMessage(contentOpt, toolCalls) => ujson.Obj(
+        "type" -> "assistant",
+        "content" -> contentOpt.map(ujson.Str(_)).getOrElse(ujson.Null),
+        "toolCalls" -> toolCalls.map(tc => ujson.Obj(
+          "id" -> tc.id,
+          "name" -> tc.name,
+          "arguments" -> tc.arguments
+        ))
+      )
+      case SystemMessage(content) => ujson.Obj(
+        "type" -> "system",
+        "content" -> content
+      )
+      case ToolMessage(toolCallId, content) => ujson.Obj(
+        "type" -> "tool",
+        "toolCallId" -> toolCallId,
+        "content" -> content
+      )
+    }
+  }
+  
+  // State extraction for persistence
+  def getGameState(gameId: String, gameTheme: Option[GameTheme], gameArtStyle: Option[ArtStyle]): GameState = {
+    val currentSessionTime = System.currentTimeMillis() - sessionStartTime
+    
+    // Convert all agent messages to JSON for complete state persistence
+    val agentMessagesJson = if (currentState != null) {
+      currentState.conversation.messages.map(messageToJson).toList
+    } else {
+      List.empty
+    }
+    
+    GameState(
+      gameId = gameId,
+      theme = gameTheme,
+      artStyle = gameArtStyle,
+      adventureOutline = adventureOutline,  // Include the full adventure outline
+      currentScene = currentScene,
+      visitedLocations = visitedLocations,
+      conversationHistory = conversationHistory,
+      inventory = GameTools.getInventory,
+      createdAt = createdAt,
+      lastSaved = System.currentTimeMillis(),
+      lastPlayed = System.currentTimeMillis(),
+      totalPlayTime = totalPlayTime + currentSessionTime,
+      adventureTitle = adventureTitle,
+      agentMessages = agentMessagesJson,  // Complete agent state
+      mediaCache = mediaCache,  // Media cache entries
+      systemPrompt = Some(completeSystemPrompt)  // Complete system prompt
+    )
+  }
+  
+  // Helper to convert JSON back to Message for restoration
+  private def jsonToMessage(json: ujson.Value): Message = {
+    json("type").str match {
+      case "user" => UserMessage(content = json("content").str)
+      case "assistant" => 
+        val content = json("content") match {
+          case ujson.Null => None
+          case s => Some(s.str)
+        }
+        val toolCalls = json("toolCalls").arr.map(tc => ToolCall(
+          id = tc("id").str,
+          name = tc("name").str,
+          arguments = tc("arguments")  // Already a ujson.Value, not a string
+        )).toSeq
+        AssistantMessage(contentOpt = content, toolCalls = toolCalls)
+      case "system" => SystemMessage(content = json("content").str)
+      case "tool" => ToolMessage(
+        toolCallId = json("toolCallId").str,
+        content = json("content").str
+      )
+    }
+  }
+  
+  // Restore game from saved state
+  def restoreGameState(state: GameState): Unit = {
+    // Restore simple state
+    currentScene = state.currentScene
+    visitedLocations = state.visitedLocations
+    conversationHistory = state.conversationHistory
+    GameTools.setInventory(state.inventory)
+    totalPlayTime = state.totalPlayTime
+    sessionStartTime = System.currentTimeMillis()  // Reset session timer when restoring
+    adventureTitle = state.adventureTitle
+    mediaCache = state.mediaCache  // Restore media cache
+    
+    // Restore complete agent state if available
+    if (state.agentMessages.nonEmpty) {
+      // Convert JSON messages back to Message objects
+      val messages = state.agentMessages.map(jsonToMessage)
+      
+      // Use the stored system prompt or fall back to current one
+      val systemPrompt = state.systemPrompt.getOrElse(completeSystemPrompt)
+      
+      // Initialize the agent with the first message (should be "Start adventure")
+      val firstMessage = messages.headOption match {
+        case Some(UserMessage(content)) => content
+        case _ => "Start adventure"  // Fallback
+      }
+      
+      currentState = agent.initialize(
+        firstMessage,
+        toolRegistry,
+        systemPromptAddition = Some(systemPrompt)
+      )
+      
+      // Add all the remaining messages to fully restore the conversation
+      messages.tail.foreach { msg =>
+        currentState = currentState.addMessage(msg)
+      }
+      
+      logger.info(s"[$sessionId] Game state restored with ${messages.size} agent messages")
+    } else if (state.conversationHistory.nonEmpty) {
+      // Fallback to old restoration method for backwards compatibility
+      val messages = state.conversationHistory.flatMap { entry =>
+        entry.role match {
+          case "user" => Some(UserMessage(content = entry.content))
+          case "assistant" => Some(AssistantMessage(contentOpt = Some(entry.content)))
+          case _ => None
+        }
+      }
+      
+      if (messages.nonEmpty) {
+        currentState = agent.initialize(
+          messages.head.content,
+          toolRegistry,
+          systemPromptAddition = Some(gamePrompt)
+        )
+        
+        messages.tail.foreach { msg =>
+          currentState = currentState.addMessage(msg)
+        }
+      }
+      
+      logger.info(s"[$sessionId] Game state restored (legacy) with ${conversationHistory.size} conversation entries")
+    } else {
+      // No history to restore, initialize normally
+      initialize()
+    }
+  }
+  
+  // Add conversation tracking to processCommand
+  private def trackConversation(role: String, content: String): Unit = {
+    conversationHistory = conversationHistory :+ ConversationEntry(
+      role = role,
+      content = content,
+      timestamp = System.currentTimeMillis()
+    )
+  }
+  
+  def getAdventureTitle: Option[String] = adventureTitle
+  
+  def setAdventureTitle(title: String): Unit = {
+    adventureTitle = Some(title)
+  }
+  
+  /**
+   * Extract textual content from assistant messages, properly handling optional content.
+   * Returns the last non-empty assistant response, or empty string if none found.
+   */
+  private def extractLastAssistantResponse(messages: Seq[Message]): String = {
+    messages.reverse.collectFirst {
+      case AssistantMessage(Some(content), _) if content.nonEmpty => content
+    }.getOrElse("")
+  }
+  
+  /**
+   * Extract and combine all textual responses from a sequence of messages.
+   * Only includes assistant messages that have actual text content.
+   */
+  private def extractAssistantResponses(messages: Seq[Message]): String = {
+    messages.collect {
+      case AssistantMessage(Some(content), _) if content.nonEmpty => content
+    }.mkString("\n\n")
+  }
+}
+
+object GameEngine {
+  def create(sessionId: String = "", theme: Option[String] = None, artStyle: Option[String] = None, adventureOutline: Option[AdventureOutline] = None): GameEngine = 
+    new GameEngine(sessionId, theme, artStyle, adventureOutline)
+}

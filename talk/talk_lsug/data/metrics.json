@@ -1,0 +1,42 @@
+{
+  "github_stars": "98",
+  "contributors": "15+",
+  "production_deployments": "10+",
+  "monthly_active_users": "500+",
+  "performance": {
+    "api_response_time": "45ms",
+    "throughput": "10K req/s",
+    "uptime": "99.99%",
+    "accuracy": "99.5%",
+    "latency_p99": "120ms",
+    "concurrent_requests": "1000"
+  },
+  "growth": {
+    "monthly_rate": "15%",
+    "yoy": "380%",
+    "new_contributors_monthly": "5",
+    "downloads_monthly": "10K+"
+  },
+  "code_metrics": {
+    "lines_of_code": "25K+",
+    "test_coverage": "85%",
+    "languages_supported": 2,
+    "scala_versions": ["2.13", "3.x"]
+  },
+  "model_support": {
+    "providers": ["OpenAI", "Anthropic", "Cohere", "Ollama"],
+    "models": ["GPT-4", "Claude", "Command", "Llama"],
+    "total_integrations": 15
+  },
+  "github_metrics": {
+    "forks": 25,
+    "open_issues": 28,
+    "pull_requests": 6
+  },
+  "community": {
+    "discord_members": "500+",
+    "gsoc_students": 5,
+    "corporate_sponsors": 3,
+    "academic_partners": 2
+  }
+}

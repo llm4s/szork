@@ -1,0 +1,11 @@
+{
+  "slide_number": 1,
+  "title": "Prepared Topics:",
+  "content": "• How does performance compare to Python?\n• Can it work with local models?\n• What about streaming responses?\n• Rate limiting strategies?\n• RAG implementation details?\n• Production deployment tips?\n• Contributing to LLM4S?\n**Speaker Notes:**\n[Prepared backup questions if needed]\n• \"How does RAG performance compare to vector DBs?\" - We support multiple backends...\n• \"Can it work with Llama?\" - Yes, through Ollama integration...\n• \"Performance vs Python?\" - JVM advantages at scale...",
+  "slide_type": "comparison",
+  "layout": "comparison",
+  "layout_hint": null,
+  "visual_requirements": "Create comparison layout",
+  "theme": "professional",
+  "notes": null
+}

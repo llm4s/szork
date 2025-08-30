@@ -1,130 +1,196 @@
-# Szork 🧙‍♂️🎙️
-**Szork** is a voice-controlled, Zork-style text adventure game demo built using [LLM4S](https://github.com/llm4s/llm4s) — a Scala toolkit for integrating large language models with real-world tools.
-It showcases an LLM agent acting as a **Dungeon Master**, allowing players to explore a fantasy world using natural language input.
+# Szork 🧙‍♂️🎮 - AI-Powered Text Adventure Game
 
-## 🎮 Preview
-![Szork gameplay preview](assets/szork-demo-preview.png)
+**Szork** is an innovative voice-controlled, AI-powered text adventure game that reimagines the classic Zork experience for the modern era. Built with [LLM4S](https://github.com/llm4s/llm4s), it demonstrates the power of combining Large Language Models with real-world tools to create immersive, dynamic gaming experiences.
 
-## 📢 About
-This project was created as part of the **"Scala Meets GenAI: Build the Cool Stuff with LLM4S"** talk:
-- 🗓 **August 21, 2025**  
-- 🎤 **Scala Days 2025**  
-- 📍 **SwissTech Convention Center**, EPFL campus, Lausanne, Switzerland 🇨🇭  
-- 🔗 [Talk Details](https://scaladays.org/editions/2025/talks/scala-meets-genai-build-the)  
-- 🔗 [LinkedIn Post](https://www.linkedin.com/feed/update/urn:li:activity:7348123421945262080/)
+## 🌟 Features
 
-## 🚀 Features
-- 🧠 LLM-driven gameplay logic (agent as Dungeon Master)
-- 💬 Natural language input
-- 🖼 Scene-by-scene narration + AI-generated visuals
-- 🧰 Tool calling for inventory, puzzles, and logic
+### Core Gameplay
+- 🧠 **AI Dungeon Master**: An LLM agent acts as your DM, creating dynamic narratives and managing game state
+- 🎙️ **Voice Control**: Speak your commands naturally (Speech-to-Text integration)
+- 🗣️ **Narrated Adventures**: Responses are spoken aloud (Text-to-Speech)
+- 🎨 **AI-Generated Scenes**: Each location is illustrated with AI-generated artwork
+- 💬 **Natural Language**: No need to remember specific commands - just speak naturally
+- 💾 **Auto-Save**: Game state is automatically saved and can be resumed anytime
 
-## 🧠 Demo Use Case
-A voice-controlled Zork-style adventure game is an excellent demo to showcase LLM4S:
+### Technical Features
+- 🔄 **Hot Reload Development**: Changes to code automatically restart the server
+- 🌐 **Web-Based Interface**: Modern Vue.js frontend with WebSocket real-time communication
+- 🎭 **Multiple Themes**: Choose from various adventure themes and art styles
+- 🏺 **Persistent State**: Game state, inventory, and progress are maintained
+- 🎵 **Dynamic Music**: AI-generated background music that adapts to the scene mood
+- 🖼️ **Smart Caching**: Images and audio are cached for improved performance
 
-### Perfect Feature Alignment
-- **LLM as DM**: Narrative generation & game state tracking  
-- **Speech-to-Text**: Voice commands  
-- **Text-to-Speech**: Spoken responses  
-- **Image Generation**: Dynamic scene illustrations  
-- **Tool Calling**: Inventory, combat, puzzles  
-- **Agentic Workflows**: DM manages state and game flow   
+## 🎮 How It Works
 
-### Suggested Flow
-1. Title screen with narration via TTS  
-2. Scene image is generated  
-3. Player speaks a command (e.g. "go north")  
-4. Agent processes → updates state → describes outcome  
-5. New image + TTS narration  
+1. **Start Your Adventure**: Launch the game and choose your theme
+2. **Explore Naturally**: Speak or type commands like "look around", "go north", or "pick up the sword"
+3. **Experience the Story**: The AI DM describes scenes, manages inventory, and responds to your actions
+4. **See Your World**: AI generates images for each new location you discover
+5. **Hear Your Tale**: Text-to-speech narrates the adventure as it unfolds
 
-### Advanced Features
-- RAG referencing game lore  
-- Complex puzzles using reasoning  
-- Dice rolls, state memory, multi-turn logic  
-
-## 🚀 Quick Start - Run the Demo
+## 🚀 Quick Start
 
 ### Prerequisites
-- **Java 17+** (tested with Java 20)
-- **Node.js & npm** (Node.js ^20.19.0 || >=22.12.0 recommended)  
-- **sbt 1.7+** (Scala build tool)
+- Java 17+
+- Scala 2.13
+- sbt 1.8+
+- Node.js 18+ (for frontend)
+- API Keys for:
+  - OpenAI (GPT-4 for DM, DALL-E for images, Whisper for speech)
+  - OR Anthropic (Claude for DM)
 
-### Step 1: Get the Code
+### Environment Setup
+
+Create a `.env` file in the project root:
+
 ```bash
-git clone https://github.com/llm4s/llm4s.git
-cd llm4s
-git fetch origin
-git checkout szork
+# LLM Provider (choose one)
+OPENAI_API_KEY=sk-...
+# or
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Optional: Configure specific models
+SZORK_LLM_PROVIDER=openai  # or anthropic, llama
+SZORK_LLM_MODEL=gpt-4o     # or claude-3-sonnet, etc.
+
+# Optional: Image generation
+SZORK_IMAGE_PROVIDER=dalle3  # or huggingface, stability
+SZORK_IMAGE_ENABLED=true
+
+# Optional: Audio features
+SZORK_TTS_ENABLED=true
+SZORK_STT_ENABLED=true
 ```
 
-### Step 2: Start Frontend (Terminal 1)
+### Running the Game
+
+#### Backend Server
 ```bash
-cd szork/frontend
+# Clone the repository
+git clone https://github.com/llm4s/szork.git
+cd szork
+
+# Start the server (default port 8090)
+sbt szorkStart
+
+# Or with hot reload for development
+sbt "~szorkStart"
+```
+
+#### Frontend (Optional - for web interface)
+```bash
+# In a new terminal
+cd frontend
 npm install
 npm run dev
 ```
-✅ **Frontend running**: http://localhost:3090
 
-### Step 3: Start Backend (Terminal 2)  
+Open your browser to http://localhost:3090
+
+### Using the API
+
+The game also exposes REST and WebSocket APIs:
+
 ```bash
-# From llm4s root directory
-sbt "szork/runMain org.llm4s.szork.SzorkServer"
-```
-✅ **Backend running**: http://0.0.0.0:8090
+# Start a new game
+curl -X POST http://localhost:8090/api/game/start \
+  -H "Content-Type: application/json" \
+  -d '{"theme": "fantasy", "artStyle": "painting"}'
 
-### Step 4: Play the Demo
-Open your browser and go to: **http://localhost:3090**
-
-## ⚡ Troubleshooting
-
-### Backend Won't Start
-**Missing dependencies error?**
-```bash
-git pull origin szork  # Get latest fixes
-sbt reload             # Reload build configuration
+# Send a command
+curl -X POST http://localhost:8090/api/game/{gameId}/command \
+  -H "Content-Type: application/json" \
+  -d '{"command": "look around"}'
 ```
 
-**Server starts but exits immediately?**
-```bash
-git pull origin szork  # Get latest "Fix running from sbt" commit
+WebSocket endpoint: `ws://localhost:9002` for real-time streaming responses.
+
+## 🏗️ Architecture
+
+### Technology Stack
+- **Backend**: Scala 2.13 with Cask web framework
+- **AI Integration**: LLM4S library for LLM orchestration
+- **Frontend**: Vue 3 + Vuetify 3 + TypeScript
+- **Real-time**: WebSockets for streaming responses
+- **Build Tool**: sbt with hot reload support
+
+### Key Components
+
+```
+szork/
+├── src/main/scala/org/llm4s/szork/
+│   ├── SzorkServer.scala         # Main server with all endpoints
+│   ├── GameEngine.scala          # Core game logic and LLM integration
+│   ├── StreamingAgent.scala      # Streaming LLM responses
+│   ├── GameTools.scala           # Tool definitions for the AI agent
+│   ├── ImageGeneration.scala     # AI image generation
+│   ├── TextToSpeech.scala        # TTS integration
+│   ├── MusicGeneration.scala     # Dynamic music generation
+│   └── GamePersistence.scala     # Save/load game state
+├── frontend/                      # Vue.js web interface
+└── talk/                         # Presentation materials
 ```
 
-### Test Backend is Running
+## 🛠️ Development
+
+### Hot Reload Development
 ```bash
-curl http://0.0.0.0:8090              # Basic connectivity
-curl http://0.0.0.0:8090/api/health   # Health check
-curl -X POST http://0.0.0.0:8090/api/game/start  # Game endpoint
+# Start with file watching - automatically restarts on code changes
+sbt "~szorkStart"
 ```
 
-### Node.js Warnings
-If you see Node version warnings, the demo will still work, but consider updating Node.js for the best experience.
+### Available Commands
+- `sbt szorkStart` - Start the server
+- `sbt szorkStop` - Stop the server
+- `sbt szorkRestart` - Restart the server
+- `sbt szorkStatus` - Check server status
+- `sbt compile` - Compile the project
+- `sbt test` - Run tests
 
-## 🔧 Technical Details
+### Configuration Options
 
-### Architecture
-- **Frontend**: React + TypeScript + Vite (port 3090)
-- **Backend**: Scala + Cask web framework (port 8090)  
-- **Development**: Modular setup within LLM4S for co-development
+The game supports extensive configuration through environment variables:
 
-### API Endpoints
-- `POST /api/game/start` - Start new game session
-- `POST /api/game/command` - Send player command  
-- `GET /api/health` - Server health check
+- `SZORK_PORT` - Server port (default: 8090)
+- `SZORK_AUTO_SAVE` - Enable auto-save (default: true)
+- `SZORK_CACHE_ENABLED` - Enable caching (default: true)
+- `SZORK_IMAGE_ENABLED` - Enable image generation (default: true)
+- `SZORK_TTS_VOICE` - TTS voice selection
+- `SZORK_MUSIC_ENABLED` - Enable background music
 
-### Development Notes
-- Current demo: Simplified version for testing (without full LLM integration)
-- Hot reloading: Both frontend and backend support live updates
-- Co-development: Changes to LLM4S and Szork developed together
+## 📚 Documentation
 
-### Maintainers
-Want to connect with maintainers? The Szork project is maintained by:
-- **Rory Graves** - [https://www.linkedin.com/in/roryjgraves/](https://www.linkedin.com/in/roryjgraves/) | Email: [rory.graves@fieldmark.co.uk](mailto:rory.graves@fieldmark.co.uk) | Discord: `rorybot1`
-- **Kannupriya Kalra** - [https://www.linkedin.com/in/kannupriyakalra/](https://www.linkedin.com/in/kannupriyakalra/) | Email: [kannupriyakalra@gmail.com](mailto:kannupriyakalra@gmail.com) | Discord: `kannupriyakalra_46520`
+- [Development Guide](README_DEVELOPMENT.md) - Detailed development setup
+- [SBT Revolver Guide](README_SBT_REVOLVER.md) - Hot reload configuration
+- [Frontend README](frontend/README.md) - Frontend development
+- [API Documentation](docs/API.md) - REST and WebSocket API reference
 
-## License
+## 🎤 About
+
+This project was created as a demonstration for the talk **"Scala Meets GenAI: Build the Cool Stuff with LLM4S"**:
+
+- 📅 **Scala Days 2025** - August 21, 2025
+- 📍 SwissTech Convention Center, EPFL, Lausanne 🇨🇭
+- 🔗 [Talk Details](https://scaladays.org/editions/2025/talks/scala-meets-genai-build-the)
+
+## 👥 Contributors
+
+- **Rory Graves** - [LinkedIn](https://www.linkedin.com/in/roryjgraves/) | [GitHub](https://github.com/rorygraves)
+- **Kannupriya Kalra** - [LinkedIn](https://www.linkedin.com/in/kannupriyakalra/) | [GitHub](https://github.com/kannupriyakalra)
+
+## 📄 License
+
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-----------------
-[llm4s]: https://github.com/llm4s/llm4s  
-[Scala 3]: https://dotty.epfl.ch/  
-[Scala 2]: https://www.scala-lang.org/
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
+
+## 🔗 Related Projects
+
+- [LLM4S](https://github.com/llm4s/llm4s) - The Scala toolkit powering Szork's AI capabilities
+- [Original Zork](https://github.com/MITDDC/zork) - The classic text adventure that inspired this project
+
+---
+
+*Experience the magic of text adventures reimagined with the power of AI!* 🚀

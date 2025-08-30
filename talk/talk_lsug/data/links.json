@@ -1,0 +1,42 @@
+{
+  "github": "https://github.com/llm4s/llm4s",
+  "documentation": "https://docs.llm4s.io",
+  "discord": "https://discord.gg/llm4s",
+  "demo": "https://demo.llm4s.io/szork",
+  "website": "https://llm4s.io",
+  "conference": {
+    "name": "London Scala User Group",
+    "date": "August 13th, 2024",
+    "location": "London, UK",
+    "venue": "The Trade Desk",
+    "website": "https://www.meetup.com/london-scala/"
+  },
+  "resources": {
+    "samples": "https://github.com/llm4s/llm4s/tree/main/samples",
+    "szork_source": "https://github.com/llm4s/llm4s/tree/main/szork",
+    "getting_started": "https://docs.llm4s.io/getting-started",
+    "api_docs": "https://docs.llm4s.io/api",
+    "tutorials": "https://docs.llm4s.io/tutorials"
+  },
+  "social": {
+    "twitter": "https://twitter.com/llm4s",
+    "linkedin": "https://linkedin.com/company/llm4s",
+    "youtube": "https://youtube.com/@llm4s"
+  },
+  "related_projects": {
+    "langfuse": "https://langfuse.com",
+    "mcp": "https://modelcontextprotocol.org",
+    "gsoc": "https://summerofcode.withgoogle.com",
+    "scala": "https://www.scala-lang.org"
+  },
+  "providers": {
+    "openai": "https://openai.com",
+    "anthropic": "https://anthropic.com",
+    "cohere": "https://cohere.com",
+    "ollama": "https://ollama.ai"
+  },
+  "slides": {
+    "presentation": "https://slides.llm4s.io/lsug-2024",
+    "recording": "[Will be updated after event]"
+  }
+}

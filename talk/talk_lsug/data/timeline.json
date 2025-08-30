@@ -1,0 +1,109 @@
+{
+  "milestones": [
+    {
+      "date": "2021-01",
+      "title": "Project Inception",
+      "description": "Started as internal tool for production AI integration",
+      "category": "inception",
+      "icon": "🚀"
+    },
+    {
+      "date": "2021-06",
+      "title": "First Working Prototype",
+      "description": "Basic LLM calling functionality in pure Scala",
+      "category": "development",
+      "icon": "🔨"
+    },
+    {
+      "date": "2022-03",
+      "title": "Open Source Release",
+      "description": "First public version released on GitHub",
+      "category": "release",
+      "icon": "🌟"
+    },
+    {
+      "date": "2022-09",
+      "title": "Multi-Provider Support",
+      "description": "Added support for Anthropic, Cohere, and local models",
+      "category": "feature",
+      "icon": "🔌"
+    },
+    {
+      "date": "2023-01",
+      "title": "Agent Framework",
+      "description": "Introduced stateful agents with tool calling",
+      "category": "feature",
+      "icon": "🤖"
+    },
+    {
+      "date": "2023-06",
+      "title": "Google Summer of Code",
+      "description": "5 students contributed major features",
+      "category": "community",
+      "icon": "🎓"
+    },
+    {
+      "date": "2023-08",
+      "title": "Embedding Support",
+      "description": "GSoC contribution: vector embeddings and RAG",
+      "category": "feature",
+      "icon": "📊"
+    },
+    {
+      "date": "2023-10",
+      "title": "MCP Integration",
+      "description": "Model Context Protocol support added",
+      "category": "feature",
+      "icon": "🔗"
+    },
+    {
+      "date": "2023-12",
+      "title": "SZork Demo Released",
+      "description": "Showcase application demonstrating full capabilities",
+      "category": "demo",
+      "icon": "🎮"
+    },
+    {
+      "date": "2024-01",
+      "title": "Enterprise Version",
+      "description": "Production-ready with observability and monitoring",
+      "category": "release",
+      "icon": "🏢"
+    },
+    {
+      "date": "2024-03",
+      "title": "Langfuse Integration",
+      "description": "Added distributed tracing and cost tracking",
+      "category": "feature",
+      "icon": "📈"
+    },
+    {
+      "date": "2024-06",
+      "title": "Cross-Compilation",
+      "description": "Full support for Scala 2.13 and Scala 3",
+      "category": "feature",
+      "icon": "🔄"
+    },
+    {
+      "date": "2024-09",
+      "title": "LSUG Presentation",
+      "description": "Presenting at London Scala User Group",
+      "category": "community",
+      "icon": "🎤"
+    }
+  ],
+  "categories": {
+    "inception": {"color": "#FF6B6B", "label": "Beginning"},
+    "development": {"color": "#4ECDC4", "label": "Development"},
+    "release": {"color": "#45B7D1", "label": "Release"},
+    "feature": {"color": "#96CEB4", "label": "Feature"},
+    "community": {"color": "#FFEAA7", "label": "Community"},
+    "demo": {"color": "#DDA0DD", "label": "Demo"}
+  },
+  "statistics": {
+    "total_milestones": 13,
+    "years_active": 3.5,
+    "major_releases": 3,
+    "community_events": 2
+  }
+}

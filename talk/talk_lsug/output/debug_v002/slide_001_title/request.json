@@ -1,0 +1,11 @@
+{
+  "slide_number": 1,
+  "title": "Q&A",
+  "content": "**Page Layout:** full-screen\n**Visual Specification:**\n• Background: Gradient with LLM4S logo\n• Large \"Q&A\" text\n• Prepared questions listed\n**Content:**",
+  "slide_type": "title",
+  "layout": "title",
+  "layout_hint": null,
+  "visual_requirements": null,
+  "theme": "professional",
+  "notes": null
+}

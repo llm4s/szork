@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "generated": "2025-08-11T09:36:13.307802",
+  "slide_count": 41,
+  "source_files": {
+    "slides": "slides.md",
+    "metrics": true,
+    "speakers": true,
+    "timeline": true,
+    "links": true
+  }
+}

@@ -1,5 +1,7 @@
 package org.llm4s.szork
 
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 import ujson._
 import java.nio.file.{Files, Path, Paths}
 import java.nio.charset.StandardCharsets
@@ -27,7 +29,7 @@ case class CachedAsset(
 )
 
 object MediaCache {
-  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   private val CACHE_DIR = "szork-cache"
   private val DEFAULT_TTL_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
   private val DEFAULT_MAX_BYTES = 500L * 1024 * 1024 // 500MB
@@ -193,7 +195,7 @@ object MediaCache {
     }
 
   // Cache Management
-  def clearGameCache(gameId: String): Either[String, Unit] =
+  def clearGameCache(gameId: String): SzorkResult[Unit] =
     try {
       val gameDir = Paths.get(CACHE_DIR, gameId)
       if (Files.exists(gameDir)) {
@@ -201,12 +203,12 @@ object MediaCache {
         logger.info(s"Cleared cache for game: $gameId")
         Right(())
       } else {
-        Left(s"No cache found for game: $gameId")
+        Left(NotFoundError(s"No cache found for game: $gameId"))
       }
     } catch {
       case e: Exception =>
         logger.error(s"Failed to clear cache for game: $gameId", e)
-        Left(s"Failed to clear cache: ${e.getMessage}")
+        Left(CacheError(s"Failed to clear cache: ${e.getMessage}", Some(e)))
     }
 
   def getCacheStats(gameId: String): Map[String, Any] =

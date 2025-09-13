@@ -1,4 +1,6 @@
 package org.llm4s.szork
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 
 import org.slf4j.LoggerFactory
 import requests._
@@ -9,7 +11,7 @@ import java.io.ByteArrayOutputStream
 import java.net.URI
 
 class MusicGeneration {
-  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   private val replicateApiKey =
     EnvLoader.get("REPLICATE_API_KEY").filter(key => key.nonEmpty && !key.contains("YOUR_REPLICATE_API_KEY"))
 
@@ -159,17 +161,17 @@ class MusicGeneration {
       temperature = 1.0)
   }
 
-  def generateMusic(mood: MusicMood, context: String = ""): Either[String, String] =
+  def generateMusic(mood: MusicMood, context: String = ""): SzorkResult[ String] =
     generateMusicWithCache(mood, context, None, None)
 
   def generateMusicWithCache(
     mood: MusicMood,
     context: String = "",
     gameId: Option[String] = None,
-    locationId: Option[String] = None): Either[String, String] = {
+    locationId: Option[String] = None): SzorkResult[ String] = {
     if (!isAvailable) {
       logger.warn("Music generation disabled - REPLICATE_API_KEY not configured")
-      return Left("Music generation not available")
+      return Left(ConfigurationError("Music generation not available - REPLICATE_API_KEY not configured"))
     }
 
     val prompt = mood.generatePrompt(context)
@@ -215,9 +217,9 @@ class MusicGeneration {
       )
 
       if (createResponse.statusCode != 201) {
-        val error = s"Failed to create prediction: ${createResponse.statusCode} - ${createResponse.text()}"
-        logger.error(error)
-        return Left(error)
+        val errorMsg = s"Failed to create prediction: ${createResponse.statusCode} - ${createResponse.text()}"
+        logger.error(errorMsg)
+        return Left(NetworkError(errorMsg, "replicate", retryable = createResponse.statusCode >= 500))
       }
 
       val predictionId = read(createResponse.text())("id").str
@@ -245,7 +247,7 @@ class MusicGeneration {
             case Left(error) =>
               val musicGenerationTime = System.currentTimeMillis() - musicStartTime
               logger.error(s"Music download/encoding failed after ${musicGenerationTime}ms: $error")
-              Left(error)
+              Left(MusicGenerationError(s"Audio download failed: $error", retryable = true))
           }
         case Left(error) =>
           val musicGenerationTime = System.currentTimeMillis() - musicStartTime
@@ -257,13 +259,13 @@ class MusicGeneration {
       case e: Exception =>
         val musicGenerationTime = System.currentTimeMillis() - musicStartTime
         logger.error(s"Error during music generation after ${musicGenerationTime}ms", e)
-        Left(s"Music generation error: ${e.getMessage}")
+        Left(MusicGenerationError(s"Music generation error: ${e.getMessage}", Some(e), retryable = true))
     }
   }
 
-  private def pollPrediction(predictionId: String, maxAttempts: Int = 30): Either[String, String] = {
+  private def pollPrediction(predictionId: String, maxAttempts: Int = 30): SzorkResult[ String] = {
     if (!isAvailable) {
-      return Left("Music generation not available")
+      return Left(ConfigurationError("Music generation not available - REPLICATE_API_KEY not configured"))
     }
 
     var attempts = 0
@@ -291,24 +293,24 @@ class MusicGeneration {
           case "failed" =>
             val error = json.obj.get("error").map(_.str).getOrElse("Unknown error")
             logger.error(s"Music generation failed: $error")
-            return Left(s"Generation failed: $error")
+            return Left(MusicGenerationError(s"Generation failed: $error", retryable = false))
 
           case "processing" | "starting" =>
             Thread.sleep(1000) // Wait 1 second before polling again
             attempts += 1
 
           case _ =>
-            return Left(s"Unknown status: $status")
+            return Left(MusicGenerationError(s"Unknown prediction status: $status", retryable = false))
         }
       } else {
-        return Left(s"Failed to get prediction status: ${response.statusCode}")
+        return Left(NetworkError(s"Failed to get prediction status: ${response.statusCode}", "replicate", retryable = response.statusCode >= 500))
       }
     }
 
-    Left("Timeout waiting for music generation")
+    Left(MusicGenerationError("Timeout waiting for music generation", retryable = true))
   }
 
-  private def downloadAndEncodeAudio(audioUrl: String): Either[String, String] =
+  private def downloadAndEncodeAudio(audioUrl: String): SzorkResult[ String] =
     try {
       logger.info(s"Downloading audio from: $audioUrl")
 
@@ -340,7 +342,7 @@ class MusicGeneration {
     } catch {
       case e: Exception =>
         logger.error("Error downloading audio", e)
-        Left(s"Failed to download audio: ${e.getMessage}")
+        Left(NetworkError(s"Failed to download audio: ${e.getMessage}", "audio-download", retryable = true))
     }
 
   def detectMoodFromText(text: String): MusicMood = {

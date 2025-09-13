@@ -1,5 +1,7 @@
 package org.llm4s.szork
 
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.llmconnect.model._
 
 object ResponseInterpreter {
@@ -17,7 +19,11 @@ object ResponseInterpreter {
     }
 
   def parseAndValidate(response: String): Either[List[String], GameResponseData] =
-    GameResponseParser.parseAndValidate(response)
+    GameResponseParser.parseAndValidate(response) match {
+      case Right(data) => Right(data)
+      case Left(error: ValidationError) => Left(error.issues)
+      case Left(error) => Left(List(error.message))
+    }
 
   def parseToOption(response: String): (Option[GameResponseData], Option[List[String]]) = {
     if (response == null || response.isEmpty) return (None, None)

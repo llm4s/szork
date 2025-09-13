@@ -1,5 +1,8 @@
 package org.llm4s.szork
 
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
+
 object GameResponseParser {
   private val JsonMarker = "<<<JSON>>>"
 
@@ -28,16 +31,12 @@ object GameResponseParser {
     }
   }
 
-  def parse(response: String): Either[String, GameResponseData] =
+  def parse(response: String): SzorkResult[GameResponseData] =
     extractJsonWithNarration(response) match {
       case Some(json) => GameResponseData.fromJson(json)
-      case None => Left("No JSON found in response")
+      case None => Left(ParseError("No JSON found in response"))
     }
 
-  def parseAndValidate(response: String): Either[List[String], GameResponseData] =
-    parse(response) match {
-      case Right(data) =>
-        GameResponseValidator.validate(data)
-      case Left(err) => Left(List(err))
-    }
+  def parseAndValidate(response: String): SzorkResult[GameResponseData] =
+    parse(response).flatMap(data => GameResponseValidator.validate(data))
 }

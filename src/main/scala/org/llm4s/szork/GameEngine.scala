@@ -3,11 +3,12 @@ package org.llm4s.szork
 import org.llm4s.agent.{Agent, AgentState, AgentStatus}
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{Message, UserMessage, AssistantMessage, SystemMessage, ToolMessage, ToolCall}
-import org.llm4s.error.LLMError
 import org.llm4s.toolapi.ToolRegistry
 import org.slf4j.LoggerFactory
 import org.llm4s.szork.core.{CoreEngine, CoreState}
 import org.llm4s.szork.spi.{Clock, SystemClock, TTSClient, ImageClient, MusicClient}
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 
 class GameEngine(
   sessionId: String = "",
@@ -19,7 +20,7 @@ class GameEngine(
   imageClient: Option[ImageClient] = None,
   musicClient: Option[MusicClient] = None
 )(implicit llmClient: LLMClient) {
-  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   private val themeDescription = PromptBuilder.themeDescription(theme)
   private val artStyleDescription = PromptBuilder.artStyleDescription(artStyle)
@@ -41,7 +42,7 @@ class GameEngine(
   // Enhanced state tracking
   private var mediaCache: Map[String, MediaCacheEntry] = Map.empty
 
-  def initialize(): Either[String, String] = {
+  def initialize(): SzorkResult[String] = {
     logger.info(s"[$sessionId] Initializing game with theme: $themeDescription")
 
     // Clear inventory for new game
@@ -84,8 +85,9 @@ class GameEngine(
         }
 
       case Left(error) =>
-        logger.error(s"[$sessionId] Failed to initialize game: $error")
-        Left(s"Failed to initialize game: ${error.message}")
+        val szorkError = AIError(s"Failed to initialize game: ${error.message}", llmError = Some(error))
+        Logging.logError(s"[$sessionId] Initialize game")(Left(szorkError))
+        Left(szorkError)
     }
   }
 
@@ -98,7 +100,7 @@ class GameEngine(
     scene: Option[GameScene] = None
   )
 
-  def processCommand(command: String, generateAudio: Boolean = true): Either[LLMError, GameResponse] = {
+  def processCommand(command: String, generateAudio: Boolean = true): SzorkResult[GameResponse] = {
     logger.debug(s"[$sessionId] Processing command: $command")
 
     // Track user command in conversation history (pure core state)
@@ -199,8 +201,9 @@ class GameEngine(
         Right(GameResponse(responseText, audioBase64, None, None, None, sceneOpt))
 
       case Left(error) =>
-        logger.error(s"[$sessionId] Error processing command: $error")
-        Left(error)
+        val szorkError = AIError(s"Error processing command: ${error.message}", llmError = Some(error))
+        Logging.logError(s"[$sessionId] Process command")(Left(szorkError))
+        Left(szorkError)
     }
   }
 
@@ -208,7 +211,7 @@ class GameEngine(
     command: String,
     onTextChunk: String => Unit,
     generateAudio: Boolean = true
-  ): Either[LLMError, GameResponse] = {
+  ): SzorkResult[GameResponse] = {
     logger.debug(s"[$sessionId] Processing command with streaming: $command")
 
     // Track user command in conversation history
@@ -324,8 +327,9 @@ class GameEngine(
         Right(GameResponse(finalText, audioBase64, None, None, None, sceneOpt))
 
       case Left(error) =>
-        logger.error(s"[$sessionId] Error in streaming command: $error")
-        Left(error)
+        val szorkError = AIError(s"Error in streaming command: ${error.message}", llmError = Some(error))
+        Logging.logError(s"[$sessionId] Streaming command")(Left(szorkError))
+        Left(szorkError)
     }
   }
 

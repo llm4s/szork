@@ -4,9 +4,11 @@ import org.slf4j.LoggerFactory
 import org.llm4s.config.EnvLoader
 import org.llm4s.imagegeneration
 import org.llm4s.imagegeneration._
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 
 class ImageGeneration {
-  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   private val config = SzorkConfig.instance
 
   // Configure image generation provider based on configuration
@@ -71,14 +73,14 @@ class ImageGeneration {
       }
     }
 
-  def generateScene(prompt: String, style: String = ""): Either[String, String] =
+  def generateScene(prompt: String, style: String = ""): SzorkResult[String] =
     generateSceneWithCache(prompt, style, None, None)
 
   def generateSceneWithCache(
     prompt: String,
     style: String = "",
     gameId: Option[String] = None,
-    locationId: Option[String] = None): Either[String, String] =
+    locationId: Option[String] = None): SzorkResult[String] =
     // Check if image generation is enabled
     imageClientOpt match {
       case None =>
@@ -137,7 +139,8 @@ class ImageGeneration {
             val imageGenerationTime = System.currentTimeMillis() - imageStartTime
             val errorMessage = s"Image generation error: ${error.message}"
             logger.error(s"$errorMessage (failed after ${imageGenerationTime}ms)")
-            Left(errorMessage)
+            val szorkError = ImageGenerationError(errorMessage, retryable = true)
+            Left(szorkError)
         }
     }
 

@@ -1,6 +1,8 @@
 package org.llm4s.szork.spi
 
 import org.llm4s.szork.GameScene
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 
 trait Clock {
   def now(): Long
@@ -13,11 +15,11 @@ trait Rng {
 object JavaRng extends Rng { def uuid(): String = java.util.UUID.randomUUID().toString }
 
 trait TTSClient {
-  def synthesizeToBase64(text: String, voice: String): Either[String, String]
+  def synthesizeToBase64(text: String, voice: String): SzorkResult[String]
 }
 
 trait STTClient {
-  def transcribeBytes(audioBytes: Array[Byte], filename: String = "audio.webm"): Either[String, String]
+  def transcribeBytes(audioBytes: Array[Byte], filename: String = "audio.webm"): SzorkResult[String]
 }
 
 trait ImageClient {
@@ -25,7 +27,7 @@ trait ImageClient {
     prompt: String,
     style: String,
     gameId: Option[String],
-    locationId: Option[String]): Either[String, String]
+    locationId: Option[String]): SzorkResult[String]
 }
 
 trait MusicClient {
@@ -34,10 +36,10 @@ trait MusicClient {
     mood: String,
     context: String,
     gameId: Option[String],
-    locationId: Option[String]): Either[String, String]
+    locationId: Option[String]): SzorkResult[String]
 }
 
 trait GameStore {
-  def save(state: Any): Either[String, Unit]
-  def load(id: String): Either[String, Any]
+  def save(state: Any): SzorkResult[Unit]
+  def load(id: String): SzorkResult[Any]
 }

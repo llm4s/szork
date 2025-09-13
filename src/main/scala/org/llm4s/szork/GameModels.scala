@@ -1,5 +1,7 @@
 package org.llm4s.szork
 
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 import ujson._
 
 case class Exit(
@@ -35,7 +37,7 @@ case class SimpleResponse(
 ) extends GameResponseData
 
 object GameResponseData {
-  def fromJson(json: String): Either[String, GameResponseData] =
+  def fromJson(json: String): SzorkResult[GameResponseData] =
     try {
       val parsed = read(json)
 
@@ -56,16 +58,38 @@ object GameResponseData {
           // Parse as full scene (default behavior)
           val exits = parsed.obj
             .get("exits")
-            .map(
-              _.arr
-                .map { exitJson =>
-                  Exit(
-                    direction = exitJson("direction").str,
-                    locationId = exitJson("locationId").str,
-                    description = exitJson.obj.get("description").map(_.str)
-                  )
-                }
-                .toList)
+            .map { exitsValue =>
+              try {
+                exitsValue.arr
+                  .map { exitJson =>
+                    try {
+                      // Check if it's a string (malformed response)
+                      exitJson match {
+                        case ujson.Str(direction) =>
+                          // Log warning and return error
+                          throw new Exception(
+                            s"Exit malformed: got string '$direction' instead of object. " +
+                            "Exits must be objects with 'direction' and 'locationId' fields."
+                          )
+                        case obj =>
+                          // Parse as proper exit object
+                          Exit(
+                            direction = obj("direction").str,
+                            locationId = obj("locationId").str,
+                            description = obj.obj.get("description").map(_.str)
+                          )
+                      }
+                    } catch {
+                      case e: Exception =>
+                        throw new Exception(s"Failed to parse exit: ${exitJson}. Error: ${e.getMessage}")
+                    }
+                  }
+                  .toList
+              } catch {
+                case e: Exception =>
+                  throw new Exception(s"Failed to parse exits array. ${e.getMessage}")
+              }
+            }
             .getOrElse(Nil)
 
           val scene = GameScene(
@@ -84,17 +108,17 @@ object GameResponseData {
       }
     } catch {
       case e: Exception =>
-        Left(s"Failed to parse GameResponseData JSON: ${e.getMessage}")
+        Left(ParseError(s"Failed to parse GameResponseData JSON: ${e.getMessage}", Some(e)))
     }
 }
 
 object GameScene {
   // Keep the old method for backward compatibility
-  def fromJson(json: String): Either[String, GameScene] =
+  def fromJson(json: String): SzorkResult[GameScene] =
     GameResponseData.fromJson(json) match {
       case Right(scene: GameScene) => Right(scene)
-      case Right(_: SimpleResponse) => Left("Expected GameScene but got SimpleResponse")
-      case Left(error) => Left(error)
+      case Right(_: SimpleResponse) => Left(ParseError("Expected GameScene but got SimpleResponse"))
+      case Left(error) => Left(error) // Already a SzorkError
     }
 
   def toJson(scene: GameScene): String =

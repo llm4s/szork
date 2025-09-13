@@ -202,7 +202,10 @@ export default defineComponent({
     };
     
     const formatDate = (timestamp: number) => {
-      return new Date(timestamp).toLocaleDateString('en-US', {
+      if (!timestamp || Number.isNaN(timestamp)) return 'Unknown';
+      const d = new Date(timestamp);
+      if (isNaN(d.getTime())) return 'Unknown';
+      return d.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric'

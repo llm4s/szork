@@ -33,7 +33,9 @@ object PromptBuilder {
       |GAME INITIALIZATION:
       |When you receive the message "Start adventure", generate the opening scene of the adventure.
       |This should be the player's starting location, introducing them to the world and setting.
-      |Create a fullScene JSON response with terse, classic text adventure descriptions.
+      |For the initial response ONLY, output JUST the JSON (no narration text prefix, no <<<JSON>>> marker).
+      |Create a fullScene JSON response WITH narrationText field included.
+      |Keep descriptions terse in classic text adventure style (2-3 sentences max).
       |
       |TEXT ADVENTURE WRITING CONVENTIONS:
       |
@@ -74,27 +76,52 @@ object PromptBuilder {
       |
       |Response Format:
       |
-      |IMPORTANT: Output format for streaming support:
+      |FOR INITIALIZATION ("Start adventure"):
+      |Output ONLY the complete JSON response with narrationText field included.
+      |
+      |FOR ALL OTHER COMMANDS (after initialization):
       |1. First output the narration text on its own line
       |2. Then output "<<<JSON>>>" on a new line
       |3. Then output the JSON response (WITHOUT narrationText field - we'll add it programmatically)
       |
+      |CRITICAL EXIT FORMAT:
+      |The "exits" array MUST contain objects with this exact structure:
+      |{
+      |  "direction": "north|south|east|west|up|down|in|out",
+      |  "locationId": "target_location_id",
+      |  "description": "Optional description of what's in that direction"
+      |}
+      |NEVER output exits as simple strings like ["north", "south"]
+      |
       |TYPE 1 - FULL SCENE (for movement, look, or scene changes):
       |{
       |  "responseType": "fullScene",
+      |  "narrationText": "Brief room description. Exits visible. Items present.",
       |  "locationId": "unique_location_id",
       |  "locationName": "Human Readable Name",
       |  "imageDescription": "Detailed 2-3 sentence visual description for image generation in $artStyleDesc.",
       |  "musicDescription": "Detailed atmospheric description for music generation.",
       |  "musicMood": "One of: entrance, exploration, combat, victory, dungeon, forest, town, mystery, castle, underwater, temple, boss, stealth, treasure, danger, peaceful",
-      |  "exits": [ ],
-      |  "items": [ ],
-      |  "npcs": [ ]
+      |  "exits": [
+      |    {
+      |      "direction": "north",
+      |      "locationId": "forest_path",
+      |      "description": "A winding path leads into the dark forest"
+      |    },
+      |    {
+      |      "direction": "east",
+      |      "locationId": "river_bank",
+      |      "description": "The sound of rushing water comes from the east"
+      |    }
+      |  ],
+      |  "items": ["brass lantern", "mysterious key"],
+      |  "npcs": ["old hermit", "friendly merchant"]
       |}
       |
       |TYPE 2 - SIMPLE RESPONSE (for examine, help, inventory, interactions without scene change):
       |{
       |  "responseType": "simple",
+      |  "narrationText": "Action result or description text.",
       |  "locationId": "current_location_id",
       |  "actionTaken": "examine/help/inventory/talk/use/etc"
       |}

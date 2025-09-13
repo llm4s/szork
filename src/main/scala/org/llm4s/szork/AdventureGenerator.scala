@@ -1,5 +1,7 @@
 package org.llm4s.szork
 
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model._
 import org.slf4j.LoggerFactory
@@ -37,10 +39,10 @@ case class CharacterOutline(
 )
 
 object AdventureGenerator {
-  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   def generateAdventureOutline(theme: String, artStyle: String)(implicit
-    client: LLMClient): Either[String, AdventureOutline] = {
+    client: LLMClient): SzorkResult[AdventureOutline] = {
     val _ = artStyle // Acknowledge parameter (could be used for style-specific adventure elements)
     logger.info(s"Generating adventure outline for theme: $theme")
 
@@ -148,12 +150,12 @@ object AdventureGenerator {
         parseAdventureOutline(completion.message.content)
       case Left(error) =>
         logger.error(s"Failed to generate adventure outline: $error")
-        Left(s"Failed to generate adventure outline: $error")
+        Left(LLMError(s"Failed to generate adventure outline: $error", retryable = true))
     }
   }
 
-  private def parseAdventureOutline(response: String): Either[String, AdventureOutline] = {
-    if (response == null || response.isEmpty) return Left("Received empty response from LLM")
+  private def parseAdventureOutline(response: String): SzorkResult[AdventureOutline] = {
+    if (response == null || response.isEmpty) return Left(LLMError("Received empty response from LLM", retryable = true))
     logger.info(s"Parsing adventure outline from response (length: ${response.length} chars)")
     logger.debug(s"Response preview: ${response.take(200)}")
     val parsed = AdventureOutlineParser.parse(response)

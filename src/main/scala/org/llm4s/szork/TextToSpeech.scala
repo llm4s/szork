@@ -4,16 +4,18 @@ import org.slf4j.LoggerFactory
 import requests._
 import org.llm4s.config.EnvLoader
 import java.util.Base64
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 
 class TextToSpeech {
-  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   private val apiKey = EnvLoader
     .get("OPENAI_API_KEY")
     .getOrElse(
       throw new IllegalStateException("OPENAI_API_KEY not found in environment")
     )
 
-  def synthesize(text: String, voice: String = "nova"): Either[String, Array[Byte]] = {
+  def synthesize(text: String, voice: String = "nova"): SzorkResult[Array[Byte]] = {
     logger.info(s"Synthesizing speech for text (${text.length} chars): ${text.take(50)}...")
     logger.debug(s"Using voice: $voice")
 
@@ -40,18 +42,18 @@ class TextToSpeech {
         logger.info(s"Speech synthesis successful, size: ${response.bytes.length} bytes")
         Right(response.bytes)
       } else {
-        val error = s"TTS failed with status ${response.statusCode}: ${response.text()}"
-        logger.error(error)
-        Left(error)
+        val errorMsg = s"TTS failed with status ${response.statusCode}: ${response.text()}"
+        logger.error(errorMsg)
+        Left(AudioGenerationError(errorMsg, retryable = response.statusCode >= 500))
       }
     } catch {
       case e: Exception =>
         logger.error("Error during text-to-speech", e)
-        Left(s"TTS error: ${e.getMessage}")
+        Left(AudioGenerationError(s"TTS error: ${e.getMessage}", Some(e), retryable = true))
     }
   }
 
-  def synthesizeToBase64(text: String, voice: String = "nova"): Either[String, String] =
+  def synthesizeToBase64(text: String, voice: String = "nova"): SzorkResult[String] =
     synthesize(text, voice).map(bytes => Base64.getEncoder.encodeToString(bytes))
 }
 

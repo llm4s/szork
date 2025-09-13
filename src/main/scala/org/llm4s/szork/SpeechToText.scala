@@ -1,4 +1,6 @@
 package org.llm4s.szork
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 
 import org.slf4j.LoggerFactory
 import requests._
@@ -7,14 +9,14 @@ import java.io.File
 import java.nio.file.Files
 
 class SpeechToText {
-  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   private val apiKey = EnvLoader
     .get("OPENAI_API_KEY")
     .getOrElse(
       throw new IllegalStateException("OPENAI_API_KEY not found in environment")
     )
 
-  def transcribe(audioFile: File): Either[String, String] = {
+  def transcribe(audioFile: File): SzorkResult[String] = {
     logger.info(s"Transcribing audio file: ${audioFile.getName}")
 
     try {
@@ -42,20 +44,20 @@ class SpeechToText {
         logger.error(error)
         logger.error(
           s"File info - name: ${audioFile.getName}, size: ${audioFile.length()} bytes, exists: ${audioFile.exists()}")
-        Left(error)
+        Left(NetworkError(error, "openai", retryable = response.statusCode >= 500))
       }
     } catch {
       case e: Exception =>
         logger.error("Error during transcription", e)
-        Left(s"Transcription error: ${e.getMessage}")
+        Left(AudioGenerationError(s"Transcription error: ${e.getMessage}", Some(e), retryable = true))
     }
   }
 
-  def transcribeBytes(audioBytes: Array[Byte], filename: String = "audio.webm"): Either[String, String] = {
+  def transcribeBytes(audioBytes: Array[Byte], filename: String = "audio.webm"): SzorkResult[String] = {
     // Check if audio is empty
     if (audioBytes.isEmpty) {
       logger.warn("Received empty audio data")
-      return Left("No audio data received. Please hold the record button to record audio.")
+      return Left(ValidationError(List("No audio data received. Please hold the record button to record audio.")))
     }
 
     // Create temp file with proper extension

@@ -1,5 +1,7 @@
 package org.llm4s.szork
 
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 import ujson._
 import java.nio.file.{Files, Path, Paths}
 import java.nio.charset.StandardCharsets
@@ -56,7 +58,7 @@ case class GameMetadata(
 )
 
 object GamePersistence {
-  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   private val SAVE_DIR = "szork-saves"
 
   // Ensure save directory exists
@@ -69,7 +71,7 @@ object GamePersistence {
     dir
   }
 
-  def saveGame(state: GameState): Either[String, Unit] =
+  def saveGame(state: GameState): SzorkResult[Unit] =
     try {
       val saveDir = ensureSaveDir()
       val filePath = saveDir.resolve(s"${state.gameId}.json")
@@ -86,17 +88,17 @@ object GamePersistence {
     } catch {
       case e: Exception =>
         logger.error(s"Failed to save game ${state.gameId}", e)
-        Left(s"Failed to save game: ${e.getMessage}")
+        Left(PersistenceError(s"Failed to save game: ${e.getMessage}", Some(e), retryable = false))
     }
 
-  def loadGame(gameId: String): Either[String, GameState] =
+  def loadGame(gameId: String): SzorkResult[GameState] =
     try {
       val saveDir = ensureSaveDir()
       val filePath = saveDir.resolve(s"$gameId.json")
 
       if (!Files.exists(filePath)) {
         logger.warn(s"Game save not found: $gameId")
-        return Left(s"Game not found: $gameId")
+        return Left(NotFoundError(s"Game not found: $gameId"))
       }
 
       // Read JSON from file
@@ -118,7 +120,7 @@ object GamePersistence {
     } catch {
       case e: Exception =>
         logger.error(s"Failed to load game $gameId", e)
-        Left(s"Failed to load game: ${e.getMessage}")
+        Left(PersistenceError(s"Failed to load game: ${e.getMessage}", Some(e), retryable = false))
     }
 
   // Helper function to parse AdventureOutline from JSON
@@ -209,7 +211,7 @@ object GamePersistence {
         List.empty
     }
 
-  def deleteGame(gameId: String): Either[String, Unit] =
+  def deleteGame(gameId: String): SzorkResult[Unit] =
     try {
       val saveDir = ensureSaveDir()
       val filePath = saveDir.resolve(s"$gameId.json")
@@ -219,11 +221,11 @@ object GamePersistence {
         logger.info(s"Deleted game save: $gameId")
         Right(())
       } else {
-        Left(s"Game not found: $gameId")
+        Left(NotFoundError(s"Game not found: $gameId"))
       }
     } catch {
       case e: Exception =>
         logger.error(s"Failed to delete game $gameId", e)
-        Left(s"Failed to delete game: ${e.getMessage}")
+        Left(PersistenceError(s"Failed to delete game: ${e.getMessage}", Some(e), retryable = false))
     }
 }

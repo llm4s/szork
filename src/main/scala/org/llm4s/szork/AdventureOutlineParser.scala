@@ -1,15 +1,17 @@
 package org.llm4s.szork
 
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 import ujson._
 
 object AdventureOutlineParser {
-  def parse(response: String): Either[String, AdventureOutline] = {
-    if (response == null || response.trim.isEmpty) return Left("Empty response")
+  def parse(response: String): SzorkResult[AdventureOutline] = {
+    if (response == null || response.trim.isEmpty) return Left(ParseError("Empty response"))
 
     val trimmed = response.trim
     val start = trimmed.indexOf('{')
     val end = trimmed.lastIndexOf('}')
-    if (start < 0 || end <= start) return Left("No valid JSON found in response")
+    if (start < 0 || end <= start) return Left(ParseError("No valid JSON found in response"))
 
     val jsonStr = trimmed.substring(start, end + 1)
     try {
@@ -52,7 +54,7 @@ object AdventureOutlineParser {
       )
       Right(outline)
     } catch {
-      case e: Throwable => Left(s"Failed to parse adventure outline: ${e.getMessage}")
+      case e: Throwable => Left(ParseError(s"Failed to parse adventure outline: ${e.getMessage}", Some(e)))
     }
   }
 }

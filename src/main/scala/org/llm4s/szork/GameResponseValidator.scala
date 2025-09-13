@@ -1,5 +1,8 @@
 package org.llm4s.szork
 
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
+
 object GameResponseValidator {
   private val allowedMoods: Set[String] = Set(
     "entrance",
@@ -34,12 +37,12 @@ object GameResponseValidator {
     "back"
   )
   private val idPattern = "^[a-z0-9_-]+$".r
-  private val maxNarrationLenFull = 400
-  private val maxNarrationLenSimple = 250
+  private val maxNarrationLenFull = 600  // Increased from 400 to allow for initial scene descriptions
+  private val maxNarrationLenSimple = 400  // Increased from 250 for more detailed responses
   private val maxImageDescLen = 600
   private val maxMusicDescLen = 400
 
-  def validate(data: GameResponseData): Either[List[String], GameResponseData] = {
+  def validate(data: GameResponseData): SzorkResult[GameResponseData] = {
     val errors = scala.collection.mutable.ListBuffer[String]()
 
     data match {
@@ -74,6 +77,6 @@ object GameResponseValidator {
         if (s.actionTaken.trim.isEmpty) errors += "actionTaken must be non-empty"
     }
 
-    if (errors.isEmpty) Right(data) else Left(errors.toList)
+    if (errors.isEmpty) Right(data) else Left(ValidationError(errors.toList))
   }
 }

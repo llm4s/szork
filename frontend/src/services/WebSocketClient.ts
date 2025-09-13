@@ -35,6 +35,8 @@ export class WebSocketClient {
   private serverInstanceId: string | null = null;
   private serverAvailable = false;
   
+  private debug = (import.meta as any)?.env?.MODE !== 'production';
+
   constructor(url: string = 'ws://localhost:9002') {
     this.url = url;
   }
@@ -44,7 +46,7 @@ export class WebSocketClient {
    */
   async connect(): Promise<void> {
     if (this.isConnected || this.isConnecting) {
-      console.log('[WebSocketClient] Already connected or connecting');
+      if (this.debug) console.log('[WebSocketClient] Already connected or connecting');
       return;
     }
     
@@ -52,11 +54,11 @@ export class WebSocketClient {
     
     return new Promise((resolve, reject) => {
       try {
-        console.log(`[WebSocketClient] Connecting to ${this.url}`);
+        if (this.debug) console.log(`[WebSocketClient] Connecting to ${this.url}`);
         this.ws = new WebSocket(this.url);
         
         this.ws.onopen = () => {
-          console.log('[WebSocketClient] Connected');
+          if (this.debug) console.log('[WebSocketClient] Connected');
           this.isConnecting = false;
           this.isConnected = true;
           this.reconnectAttempts = 0;
@@ -86,7 +88,7 @@ export class WebSocketClient {
         };
         
         this.ws.onclose = () => {
-          console.log('[WebSocketClient] Connection closed');
+          if (this.debug) console.log('[WebSocketClient] Connection closed');
           this.isConnecting = false;
           this.isConnected = false;
           this.stopPingInterval();
@@ -94,7 +96,7 @@ export class WebSocketClient {
           // Attempt to reconnect
           if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
-            console.log(`[WebSocketClient] Reconnecting... (attempt ${this.reconnectAttempts})`);
+            if (this.debug) console.log(`[WebSocketClient] Reconnecting... (attempt ${this.reconnectAttempts})`);
             setTimeout(() => {
               this.connect();
             }, this.reconnectDelay * this.reconnectAttempts);
@@ -126,7 +128,7 @@ export class WebSocketClient {
    */
   send(message: ClientMessage): void {
     if (!this.isConnected || !this.ws) {
-      console.log('[WS-QUEUE] Message queued:', message.type);
+      if (this.debug) console.log('[WS-QUEUE] Message queued:', message.type);
       this.messageQueue.push(message);
       return;
     }
@@ -161,10 +163,12 @@ export class WebSocketClient {
     }
     
     // Use different log level for ping messages
-    if (message.type === 'ping') {
-      console.debug(logMessage);
-    } else {
-      console.log(logMessage);
+    if (this.debug) {
+      if (message.type === 'ping') {
+        console.debug(logMessage);
+      } else {
+        console.log(logMessage);
+      }
     }
     
     const json = JSON.stringify(message);
@@ -248,12 +252,16 @@ export class WebSocketClient {
       }
       
       // Use different log levels based on message type
-      if (message.type === 'pong') {
-        console.debug(logMessage);
+      if (this.debug) {
+        if (message.type === 'pong') {
+          console.debug(logMessage);
+        } else if (message.type === 'error') {
+          console.error(logMessage);
+        } else {
+          console.log(logMessage);
+        }
       } else if (message.type === 'error') {
         console.error(logMessage);
-      } else {
-        console.log(logMessage);
       }
       
       // Call registered handlers for this message type
@@ -367,13 +375,17 @@ export class WebSocketClient {
   /**
    * Start a new game
    */
-  newGame(theme?: string, artStyle?: string, imageGeneration = true, adventureOutline?: any): void {
+  newGame(theme?: string, artStyle?: string, imageGeneration = true, adventureOutline?: any, opts?: { tts?: boolean; stt?: boolean; music?: boolean; image?: boolean }): void {
     this.send({
       type: 'newGame',
       theme,
       artStyle,
-      imageGeneration
-      // adventureOutline is not part of the protocol yet, will be added later
+      imageGeneration,
+      adventureOutline,
+      tts: opts?.tts,
+      stt: opts?.stt,
+      music: opts?.music,
+      image: opts?.image
     } as NewGameRequest);
   }
   

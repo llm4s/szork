@@ -1,7 +1,6 @@
 package org.llm4s.szork
 
 import org.slf4j.LoggerFactory
-import ujson._
 
 /**
  * Parses streaming response that has narration text followed by JSON.

@@ -35,7 +35,9 @@ lazy val root = (project in file("."))
       "-Wunused:locals",
       "-Wunused:patvars",
       "-Wunused:params",
-      "-Wunused:linted"
+      "-Wunused:linted",
+      // Suppress exhaustiveness warnings that are false positives with cask annotations
+      "-Wconf:msg=match may not be exhaustive:s"
     ),
     
     // Dependencies
@@ -50,6 +52,7 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "cats-core"       % "2.13.0",
       "com.lihaoyi"   %% "upickle"         % "4.2.1",
       "ch.qos.logback" % "logback-classic" % "1.5.18",
+      "io.github.cdimascio"           %  "dotenv-java"     % "3.0.0",
       "org.slf4j"      % "log4j-over-slf4j" % "2.0.16",
       
       // LLM provider dependencies
@@ -68,9 +71,7 @@ lazy val root = (project in file("."))
       "org.apache.tika" % "tika-core" % "3.2.1",
       "org.apache.poi" % "poi-ooxml" % "5.4.1",
       "org.jsoup" % "jsoup" % "1.21.1",
-      
-      // Environment configuration
-      "io.github.cdimascio" % "dotenv-java" % "3.0.0",
+      // Environment configuration (already added above)
       
       // Testing
       "org.scalatest" %% "scalatest" % "3.2.19" % Test

@@ -10,6 +10,9 @@ import scala.concurrent.ExecutionContext
 import scala.collection.concurrent.TrieMap
 import upickle.default._
 import org.llm4s.szork.protocol._
+import org.llm4s.szork.adapters._
+import org.llm4s.szork.spi.SystemClock
+import org.llm4s.config.EnvLoader
 
 /**
  * Type-safe WebSocket server using case classes for all communication.
@@ -20,6 +23,9 @@ class TypedWebSocketServer(
 )(implicit ec: ExecutionContext) extends WebSocketServer(new InetSocketAddress(port)) {
   
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private val config = SzorkConfig.instance
+  private val openAIKeyPresent = org.llm4s.config.EnvLoader.get("OPENAI_API_KEY").exists(_.nonEmpty)
+  private val replicateKeyPresent = org.llm4s.config.EnvLoader.get("REPLICATE_API_KEY").exists(_.nonEmpty)
   
   // Generate a unique server instance ID on server start
   private val serverInstanceId = java.util.UUID.randomUUID().toString
@@ -40,7 +46,16 @@ class TypedWebSocketServer(
   
   override def onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean): Unit = {
     logger.info(s"WebSocket connection closed: $reason")
-    connectionSessions.remove(conn)
+    connectionSessions.remove(conn).foreach { sid =>
+      // Clean up associated session state
+      sessionManager.getSession(sid).foreach { s =>
+        try {
+          s.pendingImages.clear()
+          s.pendingMusic.clear()
+        } catch { case _: Throwable => () }
+      }
+      sessionManager.removeSession(sid)
+    }
   }
   
   override def onMessage(conn: WebSocket, message: String): Unit = {
@@ -222,20 +237,41 @@ class TypedWebSocketServer(
     }
     
     // Create GameEngine with proper parameters
+    def imageCredsAvailable: Boolean = config.imageProvider match {
+      case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
+        EnvLoader.get("HUGGINGFACE_API_KEY").orElse(EnvLoader.get("HF_API_KEY")).orElse(EnvLoader.get("HUGGINGFACE_TOKEN")).exists(_.nonEmpty)
+      case ImageProvider.OpenAIDalle2 | ImageProvider.OpenAIDalle3 => openAIKeyPresent
+      case ImageProvider.LocalStableDiffusion => true
+      case ImageProvider.None => false
+    }
+
+    val llmClient = org.llm4s.llmconnect.LLM.client(EnvLoader)
     val engine = new GameEngine(
       sessionId = sessionId,
       theme = request.theme,
       artStyle = request.artStyle,
-      adventureOutline = adventureOutline
-    )
+      adventureOutline = adventureOutline,
+      clock = SystemClock,
+      ttsClient = if (config.ttsEnabled && openAIKeyPresent) Some(new DefaultTTSClient()) else None,
+      imageClient = if ((request.imageGeneration && config.imageGenerationEnabled) && config.imageProvider != ImageProvider.None && imageCredsAvailable) Some(new DefaultImageClient()) else None,
+      musicClient = if (config.musicEnabled && replicateKeyPresent) Some(new DefaultMusicClient()) else None
+    )(llmClient)
     
+    val sessionTts = request.tts.getOrElse(config.ttsEnabled)
+    val sessionStt = request.stt.getOrElse(config.sttEnabled)
+    val sessionMusic = request.music.getOrElse(config.musicEnabled)
+    val sessionImageEnabled = request.image.getOrElse(request.imageGeneration) && config.imageGenerationEnabled
+
     val session = GameSession(
       id = sessionId,
       gameId = gameId,
       engine = engine,
       theme = themeObj,
       artStyle = artStyleObj,
-      imageGenerationEnabled = request.imageGeneration
+      imageGenerationEnabled = sessionImageEnabled,
+      ttsEnabled = sessionTts,
+      sttEnabled = sessionStt,
+      musicEnabled = sessionMusic
     )
     
     sessionManager.createSession(session)
@@ -250,11 +286,10 @@ class TypedWebSocketServer(
         val sceneData = engine.getCurrentScene.map(convertScene)
         
         // Generate audio for the initial game text
-        val audioBase64 = if (initialMessage.nonEmpty) {
+        val audioBase64 = if (initialMessage.nonEmpty && session.ttsEnabled && openAIKeyPresent) {
           val audioStartTime = System.currentTimeMillis()
           logger.info(s"Generating audio for initial game text (${initialMessage.length} chars)")
-          val tts = TextToSpeech()
-          tts.synthesizeToBase64(initialMessage, TextToSpeech.VOICE_NOVA) match {
+          new DefaultTTSClient().synthesizeToBase64(initialMessage, "nova") match {
             case Right(audio) => 
               val audioTime = System.currentTimeMillis() - audioStartTime
               logger.info(s"Audio generation completed in ${audioTime}ms (${audio.length} bytes base64)")
@@ -274,12 +309,24 @@ class TypedWebSocketServer(
           messageIndex = engine.getMessageCount,
           scene = sceneData,
           audio = audioBase64,  // Include the generated audio
-          hasImage = request.imageGeneration && engine.shouldGenerateSceneImage(initialMessage),
-          hasMusic = engine.shouldGenerateBackgroundMusic(initialMessage)
+          hasImage = session.imageGenerationEnabled && engine.shouldGenerateSceneImage(initialMessage),
+          hasMusic = session.musicEnabled && engine.shouldGenerateBackgroundMusic(initialMessage),
+          ttsEnabled = session.ttsEnabled,
+          sttEnabled = session.sttEnabled,
+          imageEnabled = session.imageGenerationEnabled,
+          musicEnabled = session.musicEnabled
         )
         
         logger.info(s"Sending GameStartedMessage - hasAudio: ${message.audio.isDefined}, hasImage: ${message.hasImage}, hasMusic: ${message.hasMusic}")
         sendMessage(conn, message)
+        // Propagate validation issues if present
+        engine.popValidationIssues().foreach { issues =>
+          logger.warn(s"Validation issues in initial scene: ${issues.mkString(", ")}")
+          sendMessage(conn, ErrorMessage(
+            error = "Response validation failed",
+            details = Some(issues.mkString("; "))
+          ))
+        }
         
         // Generate image/music if needed
         if (message.hasImage) {
@@ -302,7 +349,24 @@ class TypedWebSocketServer(
     GamePersistence.loadGame(request.gameId) match {
       case Right(gameState) =>
         val sessionId = IdGenerator.sessionId()
-        val engine = new GameEngine(request.gameId)
+        val llmClient = org.llm4s.llmconnect.LLM.client(EnvLoader)
+        def imageCredsAvailable: Boolean = config.imageProvider match {
+          case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
+            EnvLoader.get("HUGGINGFACE_API_KEY").orElse(EnvLoader.get("HF_API_KEY")).orElse(EnvLoader.get("HUGGINGFACE_TOKEN")).exists(_.nonEmpty)
+          case ImageProvider.OpenAIDalle2 | ImageProvider.OpenAIDalle3 => openAIKeyPresent
+          case ImageProvider.LocalStableDiffusion => true
+          case ImageProvider.None => false
+        }
+        val engine = new GameEngine(
+          sessionId = sessionId,
+          theme = gameState.theme.map(_.prompt),
+          artStyle = gameState.artStyle.map(_.id),
+          adventureOutline = None,
+          clock = SystemClock,
+          ttsClient = if (config.ttsEnabled && openAIKeyPresent) Some(new DefaultTTSClient()) else None,
+          imageClient = if (config.imageGenerationEnabled && config.imageProvider != ImageProvider.None && imageCredsAvailable) Some(new DefaultImageClient()) else None,
+          musicClient = if (config.musicEnabled && replicateKeyPresent) Some(new DefaultMusicClient()) else None
+        )(llmClient)
         
         // Restore game state
         engine.restoreGameState(gameState)
@@ -344,7 +408,7 @@ class TypedWebSocketServer(
           case Some(session) =>
             logger.info(s"Processing command for session $sid: '${request.command}'")
             
-            val response = session.engine.processCommand(request.command)
+            val response = session.engine.processCommand(request.command, generateAudio = (session.ttsEnabled && openAIKeyPresent))
             response match {
               case Right(gameResponse) =>
                 val message = CommandResponseMessage(
@@ -354,10 +418,18 @@ class TypedWebSocketServer(
                   scene = gameResponse.scene.map(convertScene),
                   audio = gameResponse.audioBase64,
                   hasImage = session.imageGenerationEnabled && session.engine.shouldGenerateSceneImage(gameResponse.text),
-                  hasMusic = session.engine.shouldGenerateBackgroundMusic(gameResponse.text)
+                  hasMusic = session.musicEnabled && session.engine.shouldGenerateBackgroundMusic(gameResponse.text)
                 )
                 
                 sendMessage(conn, message)
+                // Propagate validation issues if present
+                session.engine.popValidationIssues().foreach { issues =>
+                  logger.warn(s"Validation issues in command response: ${issues.mkString(", ")}")
+                  sendMessage(conn, ErrorMessage(
+                    error = "Response validation failed",
+                    details = Some(issues.mkString("; "))
+                  ))
+                }
                 
                 // Generate image/music if needed
                 if (message.hasImage) {
@@ -391,7 +463,7 @@ class TypedWebSocketServer(
       case Some(sid) =>
         sessionManager.getSession(sid) match {
           case Some(session) =>
-            val imageGeneration = request.imageGeneration.getOrElse(session.imageGenerationEnabled)
+            val imageGeneration = request.imageGeneration.getOrElse(session.imageGenerationEnabled) && session.imageGenerationEnabled
             
             logger.info(s"Processing streaming command for session $sid: '${request.command}'")
             
@@ -419,10 +491,18 @@ class TypedWebSocketServer(
                     scene = response.scene.map(convertScene),
                     audio = response.audioBase64,
                     hasImage = imageGeneration && session.engine.shouldGenerateSceneImage(response.text),
-                    hasMusic = session.engine.shouldGenerateBackgroundMusic(response.text)
+                    hasMusic = session.musicEnabled && session.engine.shouldGenerateBackgroundMusic(response.text)
                   )
                   
                   sendMessage(conn, message)
+                  // Propagate validation issues if present
+                  session.engine.popValidationIssues().foreach { issues =>
+                    logger.warn(s"Validation issues in stream response: ${issues.mkString(", ")}")
+                    sendMessage(conn, ErrorMessage(
+                      error = "Response validation failed",
+                      details = Some(issues.mkString("; "))
+                    ))
+                  }
                   
                   logger.info(s"Streaming completed: $chunkCount chunks in ${duration}ms")
                   
@@ -461,15 +541,24 @@ class TypedWebSocketServer(
           case Some(session) =>
             logger.info(s"Processing audio command for session $sid")
             
-            // Decode base64 audio and transcribe
+            // Check STT enabled and credentials
+            if (!session.sttEnabled) {
+              sendMessage(conn, ErrorMessage("Speech-to-Text is disabled by server configuration"))
+              return
+            }
+            if (!openAIKeyPresent) {
+              sendMessage(conn, ErrorMessage("Speech-to-Text unavailable: OPENAI_API_KEY not set"))
+              return
+            }
+            // Decode base64 audio and transcribe via SPI client
             val audioBytes = java.util.Base64.getDecoder.decode(request.audio)
-            val speechToText = SpeechToText()
-            speechToText.transcribeBytes(audioBytes) match {
+            val sttClient = new DefaultSTTClient()
+            sttClient.transcribeBytes(audioBytes) match {
               case Right(transcription) =>
                 sendMessage(conn, TranscriptionMessage(transcription))
                 
                 // Process the transcribed command
-                val response = session.engine.processCommand(transcription)
+                val response = session.engine.processCommand(transcription, generateAudio = (session.ttsEnabled && openAIKeyPresent))
                 response match {
                   case Right(gameResponse) =>
                     val message = CommandResponseMessage(
@@ -479,10 +568,18 @@ class TypedWebSocketServer(
                       scene = gameResponse.scene.map(convertScene),
                       audio = gameResponse.audioBase64,
                       hasImage = session.imageGenerationEnabled && session.engine.shouldGenerateSceneImage(gameResponse.text),
-                      hasMusic = session.engine.shouldGenerateBackgroundMusic(gameResponse.text)
+                      hasMusic = session.musicEnabled && session.engine.shouldGenerateBackgroundMusic(gameResponse.text)
                     )
                     
                     sendMessage(conn, message)
+                    // Propagate validation issues if present
+                    session.engine.popValidationIssues().foreach { issues =>
+                      logger.warn(s"Validation issues in audio command response: ${issues.mkString(", ")}")
+                      sendMessage(conn, ErrorMessage(
+                        error = "Response validation failed",
+                        details = Some(issues.mkString("; "))
+                      ))
+                    }
                     
                     // Generate image/music if needed
                     if (message.hasImage) {

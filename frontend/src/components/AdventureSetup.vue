@@ -133,6 +133,25 @@
             >
               Back
             </v-btn>
+            <!-- Session feature toggles -->
+            <div class="session-flags" v-if="featureFlagsLoaded">
+              <v-switch density="compact" hide-details class="mr-2"
+                v-model="enableImages" :disabled="!featureFlags.image.enabled || !featureFlags.image.available"
+                :label="`Images ${featureFlags.image.enabled ? (featureFlags.image.available ? '' : '(unavailable)') : '(disabled)'}`"
+              />
+              <v-switch density="compact" hide-details class="mr-2"
+                v-model="enableMusic" :disabled="!featureFlags.music.enabled || !featureFlags.music.available"
+                :label="`Music ${featureFlags.music.enabled ? (featureFlags.music.available ? '' : '(unavailable)') : '(disabled)'}`"
+              />
+              <v-switch density="compact" hide-details class="mr-2"
+                v-model="enableTTS" :disabled="!featureFlags.tts.enabled || !featureFlags.tts.available"
+                :label="`TTS ${featureFlags.tts.enabled ? (featureFlags.tts.available ? '' : '(unavailable)') : '(disabled)'}`"
+              />
+              <v-switch density="compact" hide-details class="mr-2"
+                v-model="enableSTT" :disabled="!featureFlags.stt.enabled || !featureFlags.stt.available"
+                :label="`STT ${featureFlags.stt.enabled ? (featureFlags.stt.available ? '' : '(unavailable)') : '(disabled)'}`"
+              />
+            </div>
             <v-tooltip
               :text="!serverAvailable ? 'Server not available - please ensure the game server is running' : ''"
               :disabled="serverAvailable"
@@ -201,6 +220,17 @@ export default defineComponent({
     const generationProgress = ref(0);
     const serverAvailable = ref(true);
     const checkingServer = ref(false);
+    const featureFlagsLoaded = ref(false);
+    const featureFlags = ref<any>({
+      image: { enabled: true, available: true },
+      music: { enabled: true, available: true },
+      tts: { enabled: true, available: true },
+      stt: { enabled: true, available: true }
+    });
+    const enableImages = ref(true);
+    const enableMusic = ref(true);
+    const enableTTS = ref(true);
+    const enableSTT = ref(true);
     
     const predefinedThemes: Theme[] = [
       {
@@ -465,11 +495,17 @@ export default defineComponent({
       // Generate the adventure outline
       const outline = await generateAdventureOutline(themeData, styleData);
       
-      // Emit the ready event with the outline
+      // Emit the ready event with the outline and session feature choices
       emit("adventure-ready", {
         theme: themeData,
         style: styleData,
-        outline: outline
+        outline: outline,
+        sessionFeatures: {
+          image: enableImages.value && featureFlags.value.image.enabled && featureFlags.value.image.available,
+          music: enableMusic.value && featureFlags.value.music.enabled && featureFlags.value.music.available,
+          tts: enableTTS.value && featureFlags.value.tts.enabled && featureFlags.value.tts.available,
+          stt: enableSTT.value && featureFlags.value.stt.enabled && featureFlags.value.stt.available
+        }
       });
     };
     
@@ -495,7 +531,13 @@ export default defineComponent({
       generationStatus,
       generationProgress,
       serverAvailable,
-      checkingServer
+      checkingServer,
+      featureFlagsLoaded,
+      featureFlags,
+      enableImages,
+      enableMusic,
+      enableTTS,
+      enableSTT
     };
   }
 });

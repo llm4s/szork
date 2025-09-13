@@ -9,6 +9,11 @@ export interface NewGameRequest {
   theme?: string;
   artStyle?: string;
   imageGeneration?: boolean;
+  adventureOutline?: any;
+  tts?: boolean;
+  stt?: boolean;
+  music?: boolean;
+  image?: boolean;
 }
 
 export interface LoadGameRequest {
@@ -84,6 +89,10 @@ export interface GameStartedMessage {
     audio?: string;
     hasImage?: boolean;
     hasMusic?: boolean;
+    ttsEnabled?: boolean;
+    sttEnabled?: boolean;
+    imageEnabled?: boolean;
+    musicEnabled?: boolean;
   };
 }
 

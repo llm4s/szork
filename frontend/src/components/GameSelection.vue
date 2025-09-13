@@ -2,6 +2,49 @@
   <div class="game-selection-screen">
     <div class="selection-content">
       <h1 class="selection-title">SZork Adventures</h1>
+      <!-- Capability Badges -->
+      <div class="capabilities" v-if="featureFlagsLoaded">
+        <v-chip
+          class="mr-2 mb-2"
+          :color="featureFlags.llm.available ? 'primary' : 'grey'"
+          variant="outlined"
+          label
+        >
+          LLM: {{ featureFlags.llm.provider || 'Unavailable' }}
+        </v-chip>
+        <v-chip
+          class="mr-2 mb-2"
+          :color="featureFlags.image.enabled && featureFlags.image.available ? 'info' : 'grey'"
+          variant="outlined"
+          label
+        >
+          Images: {{ featureFlags.image.enabled ? featureFlags.image.provider : 'Disabled' }}
+        </v-chip>
+        <v-chip
+          class="mr-2 mb-2"
+          :color="featureFlags.music.enabled && featureFlags.music.available ? 'primary' : 'grey'"
+          variant="outlined"
+          label
+        >
+          Music: {{ featureFlags.music.enabled ? (featureFlags.music.available ? 'Enabled' : 'Unavailable') : 'Disabled' }}
+        </v-chip>
+        <v-chip
+          class="mr-2 mb-2"
+          :color="featureFlags.tts.enabled && featureFlags.tts.available ? 'success' : 'grey'"
+          variant="outlined"
+          label
+        >
+          TTS: {{ featureFlags.tts.enabled ? (featureFlags.tts.available ? 'Enabled' : 'Unavailable') : 'Disabled' }}
+        </v-chip>
+        <v-chip
+          class="mr-2 mb-2"
+          :color="featureFlags.stt.enabled && featureFlags.stt.available ? 'success' : 'grey'"
+          variant="outlined"
+          label
+        >
+          STT: {{ featureFlags.stt.enabled ? (featureFlags.stt.available ? 'Enabled' : 'Unavailable') : 'Disabled' }}
+        </v-chip>
+      </div>
       
       <v-btn 
         size="x-large" 
@@ -122,6 +165,14 @@ export default defineComponent({
     const router = useRouter();
     const savedGames = ref<SavedGame[]>([]);
     const loading = ref(true);
+    const featureFlagsLoaded = ref(false);
+    const featureFlags = ref<any>({
+      llm: { provider: '', available: false },
+      image: { enabled: true, provider: '', available: false },
+      music: { enabled: true, available: false },
+      tts: { enabled: true, available: false },
+      stt: { enabled: true, available: false }
+    });
     const deleteDialog = ref(false);
     const gameToDelete = ref<SavedGame | null>(null);
     
@@ -136,6 +187,17 @@ export default defineComponent({
         console.error('Error loading saved games:', error);
       } finally {
         loading.value = false;
+      }
+    };
+
+    const loadFeatureFlags = async () => {
+      try {
+        const resp = await axios.get('/api/feature-flags');
+        featureFlags.value = resp.data;
+        featureFlagsLoaded.value = true;
+      } catch (e) {
+        console.warn('Unable to fetch feature flags:', e);
+        featureFlagsLoaded.value = false;
       }
     };
     
@@ -204,12 +266,15 @@ export default defineComponent({
     
     onMounted(() => {
       loadSavedGames();
+      loadFeatureFlags();
     });
     
     return {
       savedGames,
       loading,
       deleteDialog,
+      featureFlagsLoaded,
+      featureFlags,
       gameToDelete,
       formatDate,
       formatRelativeDate,
@@ -250,6 +315,13 @@ export default defineComponent({
   text-align: center;
   margin-bottom: 1rem;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 1rem;
 }
 
 .new-game-button {

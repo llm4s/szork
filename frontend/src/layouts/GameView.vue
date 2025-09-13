@@ -64,13 +64,14 @@
                       </v-btn>
                     </template>
                   </v-tooltip>
-                  <v-tooltip :text="imageGenerationEnabled ? 'Disable image generation' : 'Enable image generation'" location="bottom">
+                  <v-tooltip :text="imageEnabled ? (imageGenerationEnabled ? 'Disable image generation' : 'Enable image generation') : 'Image generation disabled by server'" location="bottom">
                     <template v-slot:activator="{ props }">
                       <v-btn
                         v-bind="props"
-                        @click="imageGenerationEnabled = !imageGenerationEnabled"
-                        :color="imageGenerationEnabled ? 'info' : 'grey'"
-                        :variant="imageGenerationEnabled ? 'flat' : 'outlined'"
+                        @click="imageEnabled && (imageGenerationEnabled = !imageGenerationEnabled)"
+                        :color="imageGenerationEnabled && imageEnabled ? 'info' : 'grey'"
+                        :variant="imageGenerationEnabled && imageEnabled ? 'flat' : 'outlined'"
+                        :disabled="!imageEnabled"
                         icon
                         size="small"
                         class="mr-2"
@@ -79,13 +80,14 @@
                       </v-btn>
                     </template>
                   </v-tooltip>
-                  <v-tooltip :text="backgroundMusicEnabled ? 'Disable background music' : 'Enable background music'" location="bottom">
+                  <v-tooltip :text="musicEnabled ? (backgroundMusicEnabled ? 'Disable background music' : 'Enable background music') : 'Music disabled by server'" location="bottom">
                     <template v-slot:activator="{ props }">
                       <v-btn
                         v-bind="props"
-                        @click="backgroundMusicEnabled = !backgroundMusicEnabled"
-                        :color="backgroundMusicEnabled ? 'primary' : 'grey'"
-                        :variant="backgroundMusicEnabled ? 'flat' : 'outlined'"
+                        @click="musicEnabled && (backgroundMusicEnabled = !backgroundMusicEnabled)"
+                        :color="backgroundMusicEnabled && musicEnabled ? 'primary' : 'grey'"
+                        :variant="backgroundMusicEnabled && musicEnabled ? 'flat' : 'outlined'"
+                        :disabled="!musicEnabled"
                         icon
                         size="small"
                         class="mr-2"
@@ -94,13 +96,14 @@
                       </v-btn>
                     </template>
                   </v-tooltip>
-                  <v-tooltip :text="narrationEnabled ? 'Disable voice narration' : 'Enable voice narration'" location="bottom">
+                  <v-tooltip :text="ttsEnabled ? (narrationEnabled ? 'Disable voice narration' : 'Enable voice narration') : 'TTS disabled by server'" location="bottom">
                     <template v-slot:activator="{ props }">
                       <v-btn
                         v-bind="props"
-                        @click="narrationEnabled = !narrationEnabled"
-                        :color="narrationEnabled ? 'success' : 'grey'"
-                        :variant="narrationEnabled ? 'flat' : 'outlined'"
+                        @click="ttsEnabled && (narrationEnabled = !narrationEnabled)"
+                        :color="narrationEnabled && ttsEnabled ? 'success' : 'grey'"
+                        :variant="narrationEnabled && ttsEnabled ? 'flat' : 'outlined'"
+                        :disabled="!ttsEnabled"
                         icon
                         size="small"
                       >
@@ -183,7 +186,7 @@
                       @touchstart.prevent="startRecording"
                       @touchend.prevent="stopRecording"
                       @touchcancel.prevent="stopRecording"
-                      :disabled="loading"
+                      :disabled="loading || !sttEnabled"
                       class="audio-record-btn mr-1"
                       :class="{ recording: recording }"
                     >
@@ -262,6 +265,10 @@ export default defineComponent({
       isConnected,
       isStreaming,
       savedGames,
+      ttsEnabled,
+      sttEnabled,
+      musicEnabled,
+      imageEnabled,
       connect,
       disconnect,
       startNewGame: wsStartNewGame,
@@ -272,7 +279,9 @@ export default defineComponent({
       setScrollCallback,
       setPlayBackgroundMusicCallback,
       setPlayAudioNarrationCallback,
-      log: wsLog
+      log: wsLog,
+      errorSnackbar,
+      errorMessage
     } = useWebSocketGame();
     
     // Local UI state
@@ -391,10 +400,16 @@ export default defineComponent({
       setupStarted.value = true;
     };
     
-    const onAdventureReady = (config: { theme: any, style: any, outline?: any }) => {
+    const onAdventureReady = (config: { theme: any, style: any, outline?: any, sessionFeatures?: { image?: boolean; music?: boolean; tts?: boolean; stt?: boolean } }) => {
       adventureTheme.value = config.theme;
       artStyle.value = config.style;
       adventureOutline.value = config.outline || null;
+      if (config.sessionFeatures) {
+        if (typeof config.sessionFeatures.image === 'boolean') imageGenerationEnabled.value = config.sessionFeatures.image;
+        if (typeof config.sessionFeatures.music === 'boolean') backgroundMusicEnabled.value = config.sessionFeatures.music;
+        if (typeof config.sessionFeatures.tts === 'boolean') narrationEnabled.value = config.sessionFeatures.tts;
+        // STT is used to disable mic in UI, handled in View
+      }
       // Set the adventure title if available
       if (config.outline && config.outline.title) {
         adventureTitle.value = config.outline.title;
@@ -860,7 +875,9 @@ export default defineComponent({
       currentGameId,
       adventureTitle,
       imageGenerationEnabled,
-      isConnected
+      isConnected,
+      errorSnackbar,
+      errorMessage
     };
   },
 });

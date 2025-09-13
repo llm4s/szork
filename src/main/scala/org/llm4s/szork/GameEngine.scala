@@ -1,15 +1,24 @@
 package org.llm4s.szork
 
 import org.llm4s.agent.{Agent, AgentState, AgentStatus}
-import org.llm4s.llmconnect.LLM
+import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{Message, UserMessage, AssistantMessage, SystemMessage, ToolMessage, ToolCall}
 import org.llm4s.error.LLMError
-import org.llm4s.config.EnvLoader
 import org.llm4s.toolapi.ToolRegistry
 import org.slf4j.LoggerFactory
-import ujson._
+import org.llm4s.szork.core.{CoreEngine, CoreState}
+import org.llm4s.szork.spi.{Clock, SystemClock, TTSClient, ImageClient, MusicClient}
 
-class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle: Option[String] = None, adventureOutline: Option[AdventureOutline] = None) {
+class GameEngine(
+  sessionId: String = "",
+  theme: Option[String] = None,
+  artStyle: Option[String] = None,
+  adventureOutline: Option[AdventureOutline] = None,
+  clock: Clock = SystemClock,
+  ttsClient: Option[TTSClient] = None,
+  imageClient: Option[ImageClient] = None,
+  musicClient: Option[MusicClient] = None
+)(implicit llmClient: LLMClient) {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   
   private val themeDescription = theme.getOrElse("classic fantasy dungeon adventure")
@@ -175,16 +184,15 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
       |  * NEVER move player through sealed hatches, locked doors, or blocked passages
       |""".stripMargin
 
-  private val client = LLM.client(EnvLoader)
+  private val client: LLMClient = llmClient
   private val toolRegistry = new ToolRegistry(GameTools.allTools)
   private val agent = new Agent(client)
   
   private var currentState: AgentState = _
-  private var currentScene: Option[GameScene] = None
-  private var visitedLocations: Set[String] = Set.empty
-  private var conversationHistory: List[ConversationEntry] = List.empty
-  private val createdAt: Long = System.currentTimeMillis()
-  private var sessionStartTime: Long = System.currentTimeMillis()
+  private var core: CoreState = CoreState()
+  private var lastValidationIssues: Option[List[String]] = None
+  private val createdAt: Long = clock.now()
+  private var sessionStartTime: Long = clock.now()
   private var totalPlayTime: Long = 0L  // Accumulated play time from previous sessions
   private var adventureTitle: Option[String] = adventureOutline.map(_.title)
   
@@ -221,11 +229,9 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
         // Try to parse as JSON scene
         parseSceneFromResponse(responseContent) match {
           case Some(scene) =>
-            currentScene = Some(scene)
-            visitedLocations += scene.locationId
+            core = CoreEngine.applyScene(core, scene)
             logger.info(s"[$sessionId] Game initialized with scene: ${scene.locationId} - ${scene.locationName}")
-            // Track initial conversation
-            trackConversation("assistant", scene.narrationText)
+            // initial assistant narration tracked in core state
             Right(scene.narrationText)
           case None =>
             logger.warn(s"[$sessionId] Failed to parse structured response, using raw text")
@@ -250,8 +256,8 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
   def processCommand(command: String, generateAudio: Boolean = true): Either[LLMError, GameResponse] = {
     logger.debug(s"[$sessionId] Processing command: $command")
     
-    // Track user command in conversation history
-    trackConversation("user", command)
+    // Track user command in conversation history (pure core state)
+    core = CoreEngine.trackUser(core, command)
     
     // Track message count before adding user message
     val previousMessageCount = currentState.conversation.messages.length
@@ -271,18 +277,19 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
         val newMessages = newState.conversation.messages.drop(previousMessageCount + 1) // +1 to skip the user message we just added
         val response = extractAssistantResponses(newMessages)
         
-        // TEMPORARY: Log complete LLM response to console for debugging
-        logger.info(s"[DEBUG] Complete LLM Response for user command: $command")
+        // Debug: LLM response summary
+        logger.debug(s"LLM response (truncated) for '$command': ${response.take(200)}")
         newMessages.foreach {
           case AssistantMessage(content, toolCalls) =>
-            logger.info(s"[DEBUG] Assistant Message Content: $content")
-            logger.info(s"[DEBUG] Assistant Tool Calls: $toolCalls")
+            val preview = content.filter(_ != null).map(_.take(200))
+            logger.debug(s"Assistant content: $preview")
+            logger.debug(s"Assistant tool calls: ${toolCalls.map(_.name)}")
           case ToolMessage(toolCallId, content) =>
-            logger.info(s"[DEBUG] Tool Message (ID: $toolCallId): $content")
+            logger.debug(s"Tool message id=$toolCallId content=${content.take(200)}")
           case msg =>
-            logger.info(s"[DEBUG] Other Message Type: ${msg.getClass.getSimpleName}")
+            logger.debug(s"Other message type: ${msg.getClass.getSimpleName}")
         }
-        logger.info(s"[DEBUG] Extracted response text: $response")
+        logger.debug(s"Extracted response text (truncated): ${response.take(200)}")
         
         val assistantMessageCount = newMessages.count(_.isInstanceOf[AssistantMessage])
         logger.debug(s"Agent added ${newMessages.length} messages, $assistantMessageCount are assistant messages")
@@ -296,15 +303,14 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
         val (responseText, sceneOpt) = parseResponseData(response) match {
           case Some(scene: GameScene) =>
             // Full scene response - update current scene
-            currentScene = Some(scene)
-            visitedLocations += scene.locationId
+            core = CoreEngine.applyScene(core, scene)
             logger.info(s"[$sessionId] Full scene response: ${scene.locationId} - ${scene.locationName}")
             (scene.narrationText, Some(scene))
             
           case Some(simple: SimpleResponse) =>
             // Simple response - keep current scene, just return the text
             logger.info(s"[$sessionId] Simple response for action: ${simple.actionTaken}")
-            (simple.narrationText, currentScene) // Keep the current scene
+            (simple.narrationText, core.currentScene) // Keep the current scene
             
           case None =>
             // Fallback: try to extract just the narrationText from the JSON
@@ -319,15 +325,14 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
                 response
               }
             }
-            (narrationText, currentScene)
+            (narrationText, core.currentScene)
         }
         
         // Generate audio if requested
-        val audioBase64 = if (generateAudio && responseText.nonEmpty) {
+        val audioBase64 = if (generateAudio && responseText.nonEmpty && ttsClient.isDefined) {
           val audioStartTime = System.currentTimeMillis()
           logger.info(s"[$sessionId] Starting audio generation (${responseText.length} chars)")
-          val tts = TextToSpeech()
-          tts.synthesizeToBase64(responseText, TextToSpeech.VOICE_NOVA) match {
+          ttsClient.get.synthesizeToBase64(responseText, "nova") match {
             case Right(audio) => 
               val audioTime = System.currentTimeMillis() - audioStartTime
               logger.info(s"[$sessionId] Audio generation completed in ${audioTime}ms (${audio.length} bytes base64)")
@@ -337,12 +342,12 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
               None
           }
         } else {
-          logger.info(s"[$sessionId] Skipping audio (generateAudio=$generateAudio, empty=${responseText.isEmpty})")
+          logger.info(s"[$sessionId] Skipping audio (generateAudio=$generateAudio, empty=${responseText.isEmpty}, ttsClient=${ttsClient.isDefined})")
           None
         }
         
-        // Track assistant response in conversation history
-        trackConversation("assistant", responseText)
+        // Track assistant response in conversation history (pure core state)
+        core = CoreEngine.applySimpleResponse(core, responseText)
         
         // Image generation is now handled asynchronously in the server
         // Background music generation is also handled asynchronously
@@ -363,7 +368,7 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
     logger.debug(s"[$sessionId] Processing command with streaming: $command")
     
     // Track user command in conversation history
-    trackConversation("user", command)
+    core = CoreEngine.trackUser(core, command)
     
     // Create streaming agent and text parser
     val streamingAgent = new StreamingAgent(client)
@@ -404,8 +409,7 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
         val responseText = accumulatedText.toString
         
         // TEMPORARY: Log complete LLM response to console for debugging
-        logger.info(s"[DEBUG] Complete Streaming LLM Response for user command: $command")
-        logger.info(s"[DEBUG] Full response text: $responseText")
+        logger.debug(s"Streaming LLM response for '$command' (truncated): ${responseText.take(200)}")
         
         val textGenerationTime = System.currentTimeMillis() - textStartTime
         logger.info(s"[$sessionId] Streaming completed: $chunkCount chunks, $narrativeChunkCount narrative chunks, ${responseText.length} chars in ${textGenerationTime}ms")
@@ -426,15 +430,14 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
         val (finalText, sceneOpt) = parseResponseData(jsonResponse) match {
           case Some(scene: GameScene) =>
             // Full scene response - update current scene
-            currentScene = Some(scene)
-            visitedLocations += scene.locationId
+            core = CoreEngine.applyScene(core, scene)
             logger.info(s"[$sessionId] Full scene response: ${scene.locationId} - ${scene.locationName}")
             (scene.narrationText, Some(scene))
             
           case Some(simple: SimpleResponse) =>
             // Simple response - keep current scene, just return the text
             logger.info(s"[$sessionId] Simple response for action: ${simple.actionTaken}")
-            (simple.narrationText, currentScene)
+            (simple.narrationText, core.currentScene)
             
           case None =>
             // Fallback: try to extract just the narrationText from the JSON
@@ -449,11 +452,11 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
                 responseText
               }
             }
-            (narrationText, currentScene)
+            (narrationText, core.currentScene)
         }
         
         // Track assistant response in conversation history
-        trackConversation("assistant", finalText)
+        core = CoreEngine.applySimpleResponse(core, finalText)
         
         // Generate audio if requested (not streamed, generated after text is complete)
         val audioBase64 = if (generateAudio && finalText.nonEmpty) {
@@ -488,49 +491,21 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
   
   private def parseResponseData(response: String): Option[GameResponseData] = {
     if (response.isEmpty) return None
-    
-    try {
-      // Check if response has the JSON marker format
-      val jsonMarkerIndex = response.indexOf("<<<JSON>>>")
-      val jsonWithNarration = if (jsonMarkerIndex >= 0) {
-        // Extract narration text and JSON separately
-        val narrationText = response.substring(0, jsonMarkerIndex).trim
-        val jsonStart = jsonMarkerIndex + "<<<JSON>>>".length
-        val jsonStr = response.substring(jsonStart).trim
-        
-        // Parse JSON and add narrationText field
-        try {
-          val json = ujson.read(jsonStr)
-          json("narrationText") = narrationText
-          json.toString()
-        } catch {
-          case _: Exception =>
-            // If JSON parsing fails, try to construct a valid response
-            jsonStr
-        }
-      } else {
-        // Fallback: try to extract JSON from the response
-        val jsonStart = response.indexOf('{')
-        val jsonEnd = response.lastIndexOf('}')
-        
-        if (jsonStart >= 0 && jsonEnd > jsonStart) {
-          response.substring(jsonStart, jsonEnd + 1)
-        } else {
-          return None
-        }
-      }
-      
-      GameResponseData.fromJson(jsonWithNarration) match {
-        case Right(data) => Some(data)
-        case Left(error) =>
-          logger.warn(s"[$sessionId] Failed to parse response JSON: $error")
-          None
-      }
-    } catch {
-      case e: Exception =>
-        logger.error(s"[$sessionId] Error parsing response", e)
+    GameResponseParser.parseAndValidate(response) match {
+      case Right(data) =>
+        lastValidationIssues = None
+        Some(data)
+      case Left(issues) =>
+        lastValidationIssues = Some(issues)
+        logger.warn(s"[$sessionId] Response validation issues: ${issues.mkString(", ")}")
         None
     }
+  }
+
+  def popValidationIssues(): Option[List[String]] = {
+    val v = lastValidationIssues
+    lastValidationIssues = None
+    v
   }
   
   private def parseSceneFromResponse(response: String): Option[GameScene] = {
@@ -558,24 +533,21 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
     }
   }
   
-  def shouldGenerateSceneImage(responseText: String): Boolean = {
-    // Check if we have a current scene or if it's a new scene based on text
-    currentScene.isDefined || isNewScene(responseText)
-  }
+  def shouldGenerateSceneImage(responseText: String): Boolean = CoreEngine.shouldGenerateSceneImage(core, responseText)
   
   def generateSceneImage(responseText: String, gameId: Option[String] = None): Option[String] = {
     // Use detailed description from current scene if available
-    val (imagePrompt, locationId) = currentScene match {
+    val (imagePrompt, locationId) = core.currentScene match {
       case Some(scene) =>
         logger.info(s"[$sessionId] Using structured image description for ${scene.locationId}")
         (scene.imageDescription, Some(scene.locationId))
-      case None if isNewScene(responseText) =>
+      case None if CoreEngine.isNewScene(responseText) =>
         logger.info(s"[$sessionId] No structured scene, extracting from text")
         (extractSceneDescription(responseText), None)
       case _ =>
         return None
     }
-    
+
     // Include art style prominently in the image prompt with detailed direction
     val styledPrompt = artStyle match {
       case Some("pixel") => 
@@ -594,30 +566,24 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
         s"$imagePrompt, rendered in $artStyleDescription"
     }
     logger.info(s"[$sessionId] Generating scene image with prompt: ${styledPrompt.take(100)}...")
-    val imageGen = ImageGeneration()
-    
-    // Use cached version if available - pass art style for cache matching
-    val artStyleForCache = artStyle.getOrElse("fantasy")
-    imageGen.generateSceneWithCache(styledPrompt, artStyleForCache, gameId, locationId) match {
-      case Right(image) =>
-        logger.info(s"[$sessionId] Scene image generated/retrieved, base64: ${image.length}")
-        Some(image)
-      case Left(error) =>
-        logger.error(s"[$sessionId] Failed to generate image: $error")
+    imageClient match {
+      case Some(client) =>
+        val artStyleForCache = artStyle.getOrElse("fantasy")
+        client.generateScene(styledPrompt, artStyleForCache, gameId, locationId) match {
+          case Right(image) =>
+            logger.info(s"[$sessionId] Scene image generated/retrieved, base64: ${image.length}")
+            Some(image)
+          case Left(error) =>
+            logger.error(s"[$sessionId] Failed to generate image: $error")
+            None
+        }
+      case None =>
+        logger.info(s"[$sessionId] Image client not configured; skipping image generation")
         None
     }
   }
   
-  private def isNewScene(response: String): Boolean = {
-    // Detect if this is a new scene based on keywords
-    val sceneIndicators = List(
-      "you enter", "you arrive", "you find yourself",
-      "you see", "before you", "you are in",
-      "you stand", "exits:", "you reach"
-    )
-    val lowerResponse = response.toLowerCase
-    sceneIndicators.exists(lowerResponse.contains)
-  }
+  // isNewScene moved to CoreEngine
   
   private def extractSceneDescription(response: String): String = {
     // Extract the main scene description, focusing on visual elements
@@ -642,49 +608,35 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
       .replaceAll("you ", "the adventurer ")
   }
   
-  def shouldGenerateBackgroundMusic(responseText: String): Boolean = {
-    // Generate music if we have a scene or detect scene change
-    currentScene.isDefined || {
-      val lowerText = responseText.toLowerCase
-      isNewScene(responseText) || 
-      lowerText.contains("battle") || 
-      lowerText.contains("victory") ||
-      lowerText.contains("defeated") ||
-      lowerText.contains("enter") ||
-      lowerText.contains("arrive")
-    }
-  }
+  def shouldGenerateBackgroundMusic(responseText: String): Boolean = CoreEngine.shouldGenerateBackgroundMusic(core, responseText)
   
   def generateBackgroundMusic(responseText: String, gameId: Option[String] = None): Option[(String, String)] = {
     if (shouldGenerateBackgroundMusic(responseText)) {
       logger.info(s"[$sessionId] Checking if background music should be generated")
       try {
-        val musicGen = MusicGeneration()
-        
         // Check if music generation is available
-        if (!musicGen.isAvailable) {
-          logger.info(s"[$sessionId] Music generation disabled - no API key configured")
+        if (musicClient.isEmpty || !musicClient.get.isAvailable) {
+          logger.info(s"[$sessionId] Music generation disabled or unavailable")
           return None
         }
         
         // Use structured mood and description if available
-        val (mood, contextText, locationId) = currentScene match {
+        val (mood, contextText, locationId) = core.currentScene match {
           case Some(scene) =>
-            // Map the scene's mood string to a MusicMood object
-            val moodObj = getMusicMoodFromString(musicGen, scene.musicMood)
-            logger.info(s"[$sessionId] Using structured music for ${scene.locationId}: mood=${scene.musicMood}")
-            (moodObj, scene.musicDescription, Some(scene.locationId))
+            val moodStr = scene.musicMood
+            logger.info(s"[$sessionId] Using structured music for ${scene.locationId}: mood=$moodStr")
+            (moodStr, scene.musicDescription, Some(scene.locationId))
           case None =>
-            val detectedMood = musicGen.detectMoodFromText(responseText)
-            logger.info(s"[$sessionId] Detected mood: ${detectedMood.name} from text")
+            val detectedMood = detectMoodFromText(responseText)
+            logger.info(s"[$sessionId] Detected mood: $detectedMood from text")
             (detectedMood, responseText, None)
         }
         
-        logger.info(s"[$sessionId] Generating background music with mood: ${mood.name}")
-        musicGen.generateMusicWithCache(mood, contextText, gameId, locationId) match {
+        logger.info(s"[$sessionId] Generating background music with mood: $mood")
+        musicClient.get.generate(mood, contextText, gameId, locationId) match {
           case Right(musicBase64) =>
-            logger.info(s"[$sessionId] Background music generated/retrieved for mood: ${mood.name}, base64: ${musicBase64.length}")
-            Some((musicBase64, mood.name))
+            logger.info(s"[$sessionId] Background music generated/retrieved for mood: $mood, base64: ${musicBase64.length}")
+            Some((musicBase64, mood))
           case Left(error) =>
             logger.warn(s"[$sessionId] Music generation not available: $error")
             None
@@ -698,31 +650,21 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
       None
     }
   }
-  
-  private def getMusicMoodFromString(musicGen: MusicGeneration, moodStr: String): musicGen.MusicMood = {
-    import musicGen.MusicMoods._
-    moodStr.toLowerCase match {
-      case "entrance" => ENTRANCE
-      case "exploration" => EXPLORATION
-      case "combat" => COMBAT
-      case "victory" => VICTORY
-      case "dungeon" => DUNGEON
-      case "forest" => FOREST
-      case "town" => TOWN
-      case "mystery" => MYSTERY
-      case "castle" => CASTLE
-      case "underwater" => UNDERWATER
-      case "temple" => TEMPLE
-      case "boss" => BOSS
-      case "stealth" => STEALTH
-      case "treasure" => TREASURE
-      case "danger" => DANGER
-      case "peaceful" => PEACEFUL
-      case _ => EXPLORATION // Default fallback
-    }
+
+  private def detectMoodFromText(text: String): String = {
+    val t = text.toLowerCase
+    if (t.contains("battle") || t.contains("attack") || t.contains("fight")) "combat"
+    else if (t.contains("victory") || t.contains("triumph")) "victory"
+    else if (t.contains("dungeon") || t.contains("cavern") || t.contains("crypt")) "dungeon"
+    else if (t.contains("forest") || t.contains("grove") || t.contains("woods")) "forest"
+    else if (t.contains("temple") || t.contains("altar") || t.contains("sacred")) "temple"
+    else if (t.contains("stealth") || t.contains("sneak")) "stealth"
+    else if (t.contains("treasure") || t.contains("chest") || t.contains("gold")) "treasure"
+    else if (t.contains("danger") || t.contains("threat") || t.contains("trap")) "danger"
+    else "exploration"
   }
   
-  def getCurrentScene: Option[GameScene] = currentScene
+  def getCurrentScene: Option[GameScene] = core.currentScene
   
   // Track media generation in cache
   def addMediaCacheEntry(locationId: String, entry: MediaCacheEntry): Unit = {
@@ -786,7 +728,7 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
   
   // State extraction for persistence
   def getGameState(gameId: String, gameTheme: Option[GameTheme], gameArtStyle: Option[ArtStyle]): GameState = {
-    val currentSessionTime = System.currentTimeMillis() - sessionStartTime
+    val currentSessionTime = clock.now() - sessionStartTime
     
     // Convert all agent messages to JSON for complete state persistence
     val agentMessagesJson = if (currentState != null) {
@@ -800,13 +742,13 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
       theme = gameTheme,
       artStyle = gameArtStyle,
       adventureOutline = adventureOutline,  // Include the full adventure outline
-      currentScene = currentScene,
-      visitedLocations = visitedLocations,
-      conversationHistory = conversationHistory,
+      currentScene = core.currentScene,
+      visitedLocations = core.visitedLocations,
+      conversationHistory = core.conversationHistory,
       inventory = GameTools.getInventory,
       createdAt = createdAt,
-      lastSaved = System.currentTimeMillis(),
-      lastPlayed = System.currentTimeMillis(),
+      lastSaved = clock.now(),
+      lastPlayed = clock.now(),
       totalPlayTime = totalPlayTime + currentSessionTime,
       adventureTitle = adventureTitle,
       agentMessages = agentMessagesJson,  // Complete agent state
@@ -841,12 +783,14 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
   // Restore game from saved state
   def restoreGameState(state: GameState): Unit = {
     // Restore simple state
-    currentScene = state.currentScene
-    visitedLocations = state.visitedLocations
-    conversationHistory = state.conversationHistory
+    core = core.copy(
+      currentScene = state.currentScene,
+      visitedLocations = state.visitedLocations,
+      conversationHistory = state.conversationHistory
+    )
     GameTools.setInventory(state.inventory)
     totalPlayTime = state.totalPlayTime
-    sessionStartTime = System.currentTimeMillis()  // Reset session timer when restoring
+    sessionStartTime = clock.now()  // Reset session timer when restoring
     adventureTitle = state.adventureTitle
     mediaCache = state.mediaCache  // Restore media cache
     
@@ -898,21 +842,13 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
         }
       }
       
-      logger.info(s"[$sessionId] Game state restored (legacy) with ${conversationHistory.size} conversation entries")
+      logger.info(s"[$sessionId] Game state restored (legacy) with ${core.conversationHistory.size} conversation entries")
     } else {
       // No history to restore, initialize normally
       initialize()
     }
   }
-  
-  // Add conversation tracking to processCommand
-  private def trackConversation(role: String, content: String): Unit = {
-    conversationHistory = conversationHistory :+ ConversationEntry(
-      role = role,
-      content = content,
-      timestamp = System.currentTimeMillis()
-    )
-  }
+
   
   def getAdventureTitle: Option[String] = adventureTitle
   
@@ -926,7 +862,7 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
    */
   private def extractLastAssistantResponse(messages: Seq[Message]): String = {
     messages.reverse.collectFirst {
-      case AssistantMessage(Some(content), _) if content.nonEmpty => content
+      case AssistantMessage(Some(content), _) if (content != null && content.nonEmpty) => content
     }.getOrElse("")
   }
   
@@ -936,12 +872,22 @@ class GameEngine(sessionId: String = "", theme: Option[String] = None, artStyle:
    */
   private def extractAssistantResponses(messages: Seq[Message]): String = {
     messages.collect {
-      case AssistantMessage(Some(content), _) if content.nonEmpty => content
+      case AssistantMessage(Some(content), _) if (content != null && content.nonEmpty) => content
     }.mkString("\n\n")
   }
 }
 
 object GameEngine {
-  def create(sessionId: String = "", theme: Option[String] = None, artStyle: Option[String] = None, adventureOutline: Option[AdventureOutline] = None): GameEngine = 
-    new GameEngine(sessionId, theme, artStyle, adventureOutline)
+  def create(
+    llmClient: LLMClient,
+    sessionId: String = "",
+    theme: Option[String] = None,
+    artStyle: Option[String] = None,
+    adventureOutline: Option[AdventureOutline] = None,
+    clock: Clock = SystemClock,
+    ttsClient: Option[TTSClient] = None,
+    imageClient: Option[ImageClient] = None,
+    musicClient: Option[MusicClient] = None
+  ): GameEngine =
+    new GameEngine(sessionId, theme, artStyle, adventureOutline, clock, ttsClient, imageClient, musicClient)(llmClient)
 }

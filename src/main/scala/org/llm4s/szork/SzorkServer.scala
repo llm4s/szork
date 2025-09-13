@@ -127,28 +127,29 @@ object SzorkServer extends cask.Main with cask.Routes {
 
   // Validate configuration
   config.validate() match {
-    case Left(errors) =>
+    case Left(error) =>
       logger.error("Configuration validation failed:")
-      errors.split("\n").foreach(error => logger.error(s"  - $error"))
+      error.message.split("\n").foreach(line => logger.error(s"  - $line"))
       logger.warn("Server will continue but some features may not work")
     case Right(_) =>
       logger.info("Configuration validation successful")
   }
 
-  // Verify LLM client can be created
+  // Verify LLM client can be created; fail fast if unavailable
   config.llmConfig match {
     case Some(_) =>
       try {
         import org.llm4s.llmconnect.LLMConnect
         LLMConnect.getClient(EnvLoader)
-        logger.info(s"LLM client initialized successfully")
+        logger.info("LLM client initialized successfully")
       } catch {
         case e: Exception =>
           logger.error(s"Failed to initialize LLM client: ${e.getMessage}")
-          logger.error("Server will continue but LLM features will not work")
+          throw new IllegalStateException("LLM initialization failed; refusing to start without a working LLM", e)
       }
     case None =>
       logger.error("No LLM configuration found - text generation will not work")
+      throw new IllegalStateException("No LLM configured; set OPENAI_API_KEY, ANTHROPIC_API_KEY, or LLAMA_BASE_URL")
   }
 
   @post("/api/game/validate-theme")
@@ -268,7 +269,7 @@ object SzorkServer extends cask.Main with cask.Routes {
 
   @get("/api/games")
   def listSavedGames(): ujson.Value = {
-    logger.info("Listing saved games")
+    logger.debug("Listing saved games")
     val games = GamePersistence.listGames()
     val gamesJson = games.map { metadata =>
       ujson.Obj(
@@ -289,6 +290,13 @@ object SzorkServer extends cask.Main with cask.Routes {
 
   @post("/api/game/generate-adventure")
   def generateAdventure(request: Request): ujson.Value = {
+    if (config.llmConfig.isEmpty) {
+      logger.error("Adventure generation requested but no LLM is configured")
+      return ujson.Obj(
+        "status" -> "error",
+        "message" -> "LLM unavailable: server not configured for text generation"
+      )
+    }
     logger.info("Generating adventure outline")
     val json = ujson.read(request.text())
 
@@ -324,7 +332,7 @@ object SzorkServer extends cask.Main with cask.Routes {
         logger.error(s"Failed to generate adventure outline: $error")
         ujson.Obj(
           "status" -> "error",
-          "message" -> error
+          "message" -> error.userMessage
         )
     }
   }
@@ -398,7 +406,7 @@ object SzorkServer extends cask.Main with cask.Routes {
             logger.error(s"Failed to save game: $error")
             ujson.Obj(
               "status" -> "error",
-              "error" -> error
+              "error" -> error.userMessage
             )
         }
       case None =>
@@ -486,15 +494,15 @@ object SzorkServer extends cask.Main with cask.Routes {
         logger.error(s"Failed to load game: $error")
         ujson.Obj(
           "status" -> "error",
-          "error" -> error
+          "error" -> error.userMessage
         )
     }
   }
 
   @get("/api/game/list")
   def listGames(): ujson.Value = {
-    logger.info("Listing saved games")
-
+    logger.debug("Listing saved games")
+    
     val games = GamePersistence.listGames()
     ujson.Obj(
       "status" -> "success",
@@ -512,8 +520,8 @@ object SzorkServer extends cask.Main with cask.Routes {
 
   @get("/api/game/cache/:gameId")
   def getCacheStats(gameId: String): ujson.Value = {
-    logger.info(s"Getting cache stats for game: $gameId")
-
+    logger.debug(s"Getting cache stats for game: $gameId")
+    
     val stats = MediaCache.getCacheStats(gameId)
     ujson.Obj(
       "status" -> "success",
@@ -569,7 +577,7 @@ object SzorkServer extends cask.Main with cask.Routes {
         logger.error(s"Failed to delete game $gameId: $error")
         ujson.Obj(
           "status" -> "error",
-          "error" -> error
+          "error" -> error.userMessage
         )
     }
   }
@@ -587,7 +595,7 @@ object SzorkServer extends cask.Main with cask.Routes {
       case Left(error) =>
         ujson.Obj(
           "status" -> "error",
-          "error" -> error
+          "error" -> error.userMessage
         )
     }
   }

@@ -223,6 +223,12 @@ class TypedWebSocketServer(
     logger.info(
       s"Creating new game with theme: ${request.theme.getOrElse("default")}, artStyle: ${request.artStyle.getOrElse("default")}")
 
+    // Fail fast if no LLM is configured (additional guard; server should already refuse to start)
+    if (config.llmConfig.isEmpty) {
+      sendMessage(conn, ErrorMessage("LLM unavailable: server not configured for text generation"))
+      return
+    }
+
     val sessionId = IdGenerator.sessionId()
     val gameId = IdGenerator.gameId()
     logger.debug(s"Generated IDs - Session: $sessionId, Game: $gameId")
@@ -354,6 +360,9 @@ class TypedWebSocketServer(
         if (message.hasMusic) {
           generateMusicAsync(session, initialMessage, message.messageIndex, conn)
         }
+
+        // Persist initial game state so load screen shows correct title/createdAt immediately
+        saveGameAsync(session)
 
       case Left(error) =>
         logger.error(s"Failed to initialize game: $error")

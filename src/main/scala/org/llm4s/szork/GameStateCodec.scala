@@ -132,16 +132,32 @@ object GameStateCodec {
       case Num(n) => n.toLong
       case _ => 0L
     }
+    val themeName: String = json("theme") match {
+      case Null => "Unknown"
+      case t => t("name").str
+    }
+
+    val artStyleName: String = json("artStyle") match {
+      case Null => "Unknown"
+      case a => a("name").str
+    }
+
+    val titleFromJson: Option[String] =
+      json.obj.get("adventureTitle").flatMap { case Null => None; case s => Some(s.str) }.filter(_.nonEmpty)
+
+    // createdAt may be missing in legacy saves; fall back to lastSaved
+    val created: Long = json.obj
+      .get("createdAt")
+      .map(ts)
+      .filter(_ > 0L)
+      .getOrElse(ts(json("lastSaved")))
+
     GameMetadata(
       gameId = json("gameId").str,
-      theme = json("theme") match { case Null => "Unknown"; case t => t("name").str },
-      artStyle = json("artStyle") match { case Null => "Unknown"; case a => a("name").str },
-      adventureTitle = json.obj
-        .get("adventureTitle")
-        .flatMap { case Null => None; case s => Some(s.str) }
-        .filter(_.nonEmpty)
-        .getOrElse("Untitled Adventure"),
-      createdAt = ts(json("createdAt")),
+      theme = themeName,
+      artStyle = artStyleName,
+      adventureTitle = titleFromJson.getOrElse(themeName),
+      createdAt = created,
       lastSaved = ts(json("lastSaved")),
       lastPlayed = json.obj.get("lastPlayed").map(ts).getOrElse(ts(json("lastSaved"))),
       totalPlayTime = json.obj.get("totalPlayTime").map(ts).getOrElse(0L)

@@ -1,5 +1,7 @@
 package org.llm4s.szork
 
+import org.llm4s.szork.error._
+import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.config.EnvLoader
 import org.slf4j.Logger
 
@@ -199,7 +201,7 @@ object SzorkConfig {
   }
 
   implicit class ConfigOps(config: SzorkConfig) {
-    def validate(): Either[String, Unit] = {
+    def validate(): SzorkResult[Unit] = {
       val errors = scala.collection.mutable.ListBuffer[String]()
 
       // Validate port
@@ -237,7 +239,7 @@ object SzorkConfig {
       if (errors.isEmpty) {
         Right(())
       } else {
-        Left(errors.mkString("\n"))
+        Left(ConfigurationError(errors.mkString("\n")))
       }
     }
 

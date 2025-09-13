@@ -216,7 +216,7 @@ class TypedWebSocketServer(
     
     val sessionId = IdGenerator.sessionId()
     val gameId = IdGenerator.gameId()
-    logger.info(s"Generated IDs - Session: $sessionId, Game: $gameId")
+    logger.debug(s"Generated IDs - Session: $sessionId, Game: $gameId")
     
     val themeObj = request.theme.map(t => GameTheme(t, t, t))
     val artStyleObj = request.artStyle.map(a => ArtStyle(a, a))
@@ -276,10 +276,10 @@ class TypedWebSocketServer(
     
     sessionManager.createSession(session)
     connectionSessions(conn) = sessionId
-    logger.info(s"Session created and registered for connection")
+    logger.debug(s"Session created and registered for connection")
     
     // Initialize the game first
-    logger.info(s"Initializing game engine...")
+    logger.debug(s"Initializing game engine...")
     engine.initialize() match {
       case Right(initialMessage) =>
         logger.info(s"Game initialized successfully. Message length: ${initialMessage.length}")

@@ -26,6 +26,8 @@ jobs:
           key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
       - name: Run tests
         run: sbt test
+      - name: Check formatting
+        run: sbt scalafmtCheckAll
 
   frontend:
     runs-on: ubuntu-latest
@@ -46,4 +48,3 @@ jobs:
         run: npm run lint --if-present
       - name: Build
         run: npm run build --if-present
-

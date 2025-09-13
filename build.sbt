@@ -63,14 +63,9 @@ lazy val root = (project in file("."))
       // HTTP and WebSocket
       "com.lihaoyi"       %% "requests"        % "0.9.0",
       "org.java-websocket" % "Java-WebSocket"  % "1.6.0",
-      "com.softwaremill.sttp.client4" %% "core"  % "4.0.9",
       "com.lihaoyi"                   %% "ujson" % "4.2.1",
       
-      // Document processing
-      "org.apache.pdfbox" % "pdfbox" % "3.0.5",
-      "org.apache.tika" % "tika-core" % "3.2.1",
-      "org.apache.poi" % "poi-ooxml" % "5.4.1",
-      "org.jsoup" % "jsoup" % "1.21.1",
+      // Document processing (none currently needed)
       // Environment configuration (already added above)
       
       // Testing

@@ -214,18 +214,22 @@ class GameEngine(
       case Right(newState) =>
         currentState = newState
         // Extract the last textual response from the agent
-        val responseContent = extractLastAssistantResponse(newState.conversation.messages)
+        val responseContent = ResponseInterpreter.extractLastAssistantResponse(newState.conversation.messages)
         
-        // Try to parse as JSON scene
-        parseSceneFromResponse(responseContent) match {
-          case Some(scene) =>
+        // Try to parse as structured data
+        val (dataOpt, issuesOpt) = ResponseInterpreter.parseToOption(responseContent)
+        lastValidationIssues = issuesOpt
+        dataOpt match {
+          case Some(scene: GameScene) =>
             core = CoreEngine.applyScene(core, scene)
             logger.info(s"[$sessionId] Game initialized with scene: ${scene.locationId} - ${scene.locationName}")
-            // initial assistant narration tracked in core state
             Right(scene.narrationText)
+          case Some(simple: SimpleResponse) =>
+            logger.info(s"[$sessionId] Simple response on initialization: ${simple.actionTaken}")
+            Right(simple.narrationText)
           case None =>
             logger.warn(s"[$sessionId] Failed to parse structured response, using raw text")
-            Right(responseContent.take(200)) // Fallback to raw text if parsing fails
+            Right(responseContent.take(200))
         }
         
       case Left(error) =>
@@ -265,7 +269,7 @@ class GameEngine(
       case Right(newState) =>
         // Get only the new messages added by the agent
         val newMessages = newState.conversation.messages.drop(previousMessageCount + 1) // +1 to skip the user message we just added
-        val response = extractAssistantResponses(newMessages)
+        val response = ResponseInterpreter.extractAssistantResponses(newMessages)
         
         // Debug: LLM response summary
         logger.debug(s"LLM response (truncated) for '$command': ${response.take(200)}")
@@ -290,32 +294,29 @@ class GameEngine(
         logger.info(s"[$sessionId] Text generation completed in ${textGenerationTime}ms (${response.length} chars)")
         
         // Try to parse the response as structured JSON
-        val (responseText, sceneOpt) = parseResponseData(response) match {
-          case Some(scene: GameScene) =>
-            // Full scene response - update current scene
-            core = CoreEngine.applyScene(core, scene)
-            logger.info(s"[$sessionId] Full scene response: ${scene.locationId} - ${scene.locationName}")
-            (scene.narrationText, Some(scene))
-            
-          case Some(simple: SimpleResponse) =>
-            // Simple response - keep current scene, just return the text
-            logger.info(s"[$sessionId] Simple response for action: ${simple.actionTaken}")
-            (simple.narrationText, core.currentScene) // Keep the current scene
-            
-          case None =>
-            // Fallback: try to extract just the narrationText from the JSON
-            logger.warn(s"[$sessionId] Could not parse structured response, attempting to extract narrationText")
-            val narrationText = ResponseInterpreter.extractNarrationTextFromJson(response).getOrElse {
-              // If that also fails and it looks like JSON, return an error message
-              if (response.trim.startsWith("{")) {
-                logger.error(s"[$sessionId] Failed to parse JSON response, showing error to user")
-                "I apologize, but there was an error processing the game response. Please try your command again."
-              } else {
-                // If it's not JSON, use the raw text
-                response
+        val (responseText, sceneOpt) = {
+          val (dataOpt, issuesOpt) = ResponseInterpreter.parseToOption(response)
+          lastValidationIssues = issuesOpt
+          dataOpt match {
+            case Some(scene: GameScene) =>
+              core = CoreEngine.applyScene(core, scene)
+              logger.info(s"[$sessionId] Full scene response: ${scene.locationId} - ${scene.locationName}")
+              (scene.narrationText, Some(scene))
+
+            case Some(simple: SimpleResponse) =>
+              logger.info(s"[$sessionId] Simple response for action: ${simple.actionTaken}")
+              (simple.narrationText, core.currentScene) // Keep the current scene
+
+            case None =>
+              logger.warn(s"[$sessionId] Could not parse structured response, attempting to extract narrationText")
+              val narrationText = ResponseInterpreter.extractNarrationTextFromJson(response).getOrElse {
+                if (response.trim.startsWith("{")) {
+                  logger.error(s"[$sessionId] Failed to parse JSON response, showing error to user")
+                  "I apologize, but there was an error processing the game response. Please try your command again."
+                } else response
               }
-            }
-            (narrationText, core.currentScene)
+              (narrationText, core.currentScene)
+          }
         }
         
         // Generate audio if requested
@@ -417,32 +418,27 @@ class GameEngine(
         }
         
         // Try to parse the JSON response
-        val (finalText, sceneOpt) = parseResponseData(jsonResponse) match {
-          case Some(scene: GameScene) =>
-            // Full scene response - update current scene
-            core = CoreEngine.applyScene(core, scene)
-            logger.info(s"[$sessionId] Full scene response: ${scene.locationId} - ${scene.locationName}")
-            (scene.narrationText, Some(scene))
-            
-          case Some(simple: SimpleResponse) =>
-            // Simple response - keep current scene, just return the text
-            logger.info(s"[$sessionId] Simple response for action: ${simple.actionTaken}")
-            (simple.narrationText, core.currentScene)
-            
-          case None =>
-            // Fallback: try to extract just the narrationText from the JSON
-            logger.warn(s"[$sessionId] Could not parse structured response in streaming, attempting to extract narrationText")
-            val narrationText = ResponseInterpreter.extractNarrationTextFromJson(responseText).getOrElse {
-              // If that also fails and it looks like JSON, return an error message
-              if (responseText.trim.startsWith("{")) {
-                logger.error(s"[$sessionId] Failed to parse JSON response in streaming, showing error to user")
-                "I apologize, but there was an error processing the game response. Please try your command again."
-              } else {
-                // If it's not JSON, use the raw text
-                responseText
+        val (finalText, sceneOpt) = {
+          val (dataOpt, issuesOpt) = ResponseInterpreter.parseToOption(jsonResponse)
+          lastValidationIssues = issuesOpt
+          dataOpt match {
+            case Some(scene: GameScene) =>
+              core = CoreEngine.applyScene(core, scene)
+              logger.info(s"[$sessionId] Full scene response: ${scene.locationId} - ${scene.locationName}")
+              (scene.narrationText, Some(scene))
+            case Some(simple: SimpleResponse) =>
+              logger.info(s"[$sessionId] Simple response for action: ${simple.actionTaken}")
+              (simple.narrationText, core.currentScene)
+            case None =>
+              logger.warn(s"[$sessionId] Could not parse structured response in streaming, attempting to extract narrationText")
+              val narrationText = ResponseInterpreter.extractNarrationTextFromJson(responseText).getOrElse {
+                if (responseText.trim.startsWith("{")) {
+                  logger.error(s"[$sessionId] Failed to parse JSON response in streaming, showing error to user")
+                  "I apologize, but there was an error processing the game response. Please try your command again."
+                } else responseText
               }
-            }
-            (narrationText, core.currentScene)
+              (narrationText, core.currentScene)
+          }
         }
         
         // Track assistant response in conversation history
@@ -479,30 +475,10 @@ class GameEngine(
   
   def getState: AgentState = currentState
   
-  private def parseResponseData(response: String): Option[GameResponseData] = {
-    if (response.isEmpty) return None
-    GameResponseParser.parseAndValidate(response) match {
-      case Right(data) =>
-        lastValidationIssues = None
-        Some(data)
-      case Left(issues) =>
-        lastValidationIssues = Some(issues)
-        logger.warn(s"[$sessionId] Response validation issues: ${issues.mkString(", ")}")
-        None
-    }
-  }
-
   def popValidationIssues(): Option[List[String]] = {
     val v = lastValidationIssues
     lastValidationIssues = None
     v
-  }
-  
-  private def parseSceneFromResponse(response: String): Option[GameScene] = {
-    parseResponseData(response) match {
-      case Some(scene: GameScene) => Some(scene)
-      case _ => None
-    }
   }
   
   // Helper to extract just narrationText from JSON when full parsing fails
@@ -820,25 +796,6 @@ class GameEngine(
     adventureTitle = Some(title)
   }
   
-  /**
-   * Extract textual content from assistant messages, properly handling optional content.
-   * Returns the last non-empty assistant response, or empty string if none found.
-   */
-  private def extractLastAssistantResponse(messages: Seq[Message]): String = {
-    messages.reverse.collectFirst {
-      case AssistantMessage(Some(content), _) if (content != null && content.nonEmpty) => content
-    }.getOrElse("")
-  }
-  
-  /**
-   * Extract and combine all textual responses from a sequence of messages.
-   * Only includes assistant messages that have actual text content.
-   */
-  private def extractAssistantResponses(messages: Seq[Message]): String = {
-    messages.collect {
-      case AssistantMessage(Some(content), _) if (content != null && content.nonEmpty) => content
-    }.mkString("\n\n")
-  }
 }
 
 object GameEngine {

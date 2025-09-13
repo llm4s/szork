@@ -25,154 +25,7 @@ class GameEngine(
   private val artStyleDescription = PromptBuilder.artStyleDescription(artStyle)
   private val adventureOutlinePrompt = PromptBuilder.outlinePrompt(adventureOutline)
   
-  private val gamePrompt = // retained for backward-compat / legacy restore
-    s"""You are a Dungeon Master guiding a text adventure game in the classic Infocom tradition.
-      |
-      |Adventure Theme: $themeDescription
-      |Art Style: $artStyleDescription
-      |
-      |$adventureOutlinePrompt
-      |
-      |GAME INITIALIZATION:
-      |When you receive the message "Start adventure", generate the opening scene of the adventure.
-      |This should be the player's starting location, introducing them to the world and setting.
-      |Create a fullScene JSON response with terse, classic text adventure descriptions.
-      |
-      |TEXT ADVENTURE WRITING CONVENTIONS:
-      |
-      |ROOM DESCRIPTIONS:
-      |- Follow the verbose/brief convention: First visit shows terse description (1-2 sentences), subsequent visits even briefer
-      |- Be economical with words: "Dark cellar. Stone stairs lead up." not "You find yourself in a musty, dimly-lit cellar with ancient stone walls."
-      |- Structure: Location type → key features → exits
-      |- Avoid excessive adjectives: "brass lantern" not "ancient, tarnished brass lantern with mysterious engravings"
-      |- Essential information only: Save atmospheric details for EXAMINE commands
-      |
-      |OBJECT PRESENTATION:
-      |- Use Infocom house style: "There is a brass lantern here" or "A battery-powered lantern is on the trophy case"
-      |- Include state information naturally: "(closed)", "(providing light)", "(locked)"
-      |- Avoid special capitalization - trust players to explore mentioned items
-      |- Follow noun prominence: Important objects appear explicitly, not buried in prose
-      |- Three-tier importance: Essential objects mentioned 3 times, useful twice, atmospheric once
-      |
-      |NARRATIVE STYLE:
-      |- Second-person present tense: "You are in a forest clearing"
-      |- Prioritize clarity over atmosphere - be direct and concise
-      |- Minimal adjectives: Use only when functionally necessary
-      |- Classic terseness: "Forest clearing. Paths lead north and south." is preferred
-      |- Fair play principle: All puzzle information discoverable within game world logic
-      |
-      |EXIT PRESENTATION:
-      |- Integrate naturally into prose: "A path leads north into the forest" rather than "Exits: north"
-      |- Distinguish between open and blocked paths: "an open door leads north" vs "a closed door blocks the northern exit"
-      |- Use standard directions: cardinal (north/south/east/west), vertical (up/down), relative (in/out)
-      |
-      |GAME MECHANICS & OBSTACLES:
-      |- CRITICAL: Respect physical barriers and navigation- sealed, locked, blocked, or closed passages CANNOT be traversed without first being opened in some way.
-      |- obey the map in the adventure outline.
-      |- "sealed hatch" = impassable until unsealed (e.g. might requires tool/action)
-      |- "locked door" = impassable until unlocked (e.g. requires key, or button press)
-      |- "blocked passage" = impassable until cleared (requires action or may never be passable
-      |- "closed door" = can be opened with simple "open door" command
-      |- When player attempts to pass through obstacle, respond with: "The [obstacle] is [sealed/locked/blocked]. You cannot pass."
-      |- Track obstacle states: once opened/unlocked/cleared, they remain so unless explicitly re-sealed
-      |- Puzzle integrity: NEVER allow bypassing puzzle elements - player must solve them properly
-      |
-      |HINTING TECHNIQUES:
-      |- Rule of three: First exposure introduces, second establishes pattern, third reveals significance
-      |- Position important objects prominently with distinctive adjectives
-      |- Environmental inconsistencies guide discovery: dust patterns, temperature variations, sounds
-      |- Examination reveals deeper layers - reward thorough investigation
-      |
-      |STATE CHANGES & DYNAMICS:
-      |- Reflect player actions through dynamic descriptions, chagnges in state.
-      |- Clear state transparency: "The lever clicks into place"
-      |- Persistent consequences: A smashed vase permanently alters room descriptions
-      |- Conditional text based on player knowledge: "strange markings" become "ancient Elvish runes" after finding translation
-      |- a hidden passage or exit should not be revealed until the player has discovered it through exploration or puzzle solving)
-      |
-      |INVENTORY MANAGEMENT:
-      |You have access to three inventory management tools that you MUST use to manage the users inventory:
-      |- list_inventory: Use this to check what items the player currently has
-      |- add_inventory_item: Use this when the player picks up or receives an item
-      |- remove_inventory_item: Use this when the player uses, drops, or gives away an item
-      |
-      |IMPORTANT INVENTORY RULES:
-      |- When a player picks up an item, ALWAYS use add_inventory_item tool
-      |- When a player uses/drops an item, ALWAYS use remove_inventory_item tool
-      |- Check inventory with list_inventory before using items
-      |- Track items consistently - if an item is picked up in one location, it should be in inventory
-      |- Items in the "items" field of a location are available to pick up, not already owned
-      |
-      |Response Format:
-      |
-      |IMPORTANT: Output format for streaming support:
-      |1. First output the narration text on its own line
-      |2. Then output "<<<JSON>>>" on a new line
-      |3. Then output the JSON response (WITHOUT narrationText field - we'll add it programmatically)
-      |
-      |Example:
-      |You enter the dark cavern. Water drips from stalactites overhead.
-      |<<<JSON>>>
-      |{"responseType": "fullScene", "locationId": "cavern_entrance", ...rest of JSON WITHOUT narrationText...}
-      |
-      |Choose the appropriate response type based on the action:
-      |
-      |TYPE 1 - FULL SCENE (for movement, look, or scene changes):
-      |{
-      |  "responseType": "fullScene",
-      |  "locationId": "unique_location_id",  // e.g., "dungeon_entrance", "forest_path_1"
-      |  "locationName": "Human Readable Name",  // e.g., "Dungeon Entrance", "Forest Path"
-      |  "imageDescription": "Detailed 2-3 sentence visual description for image generation in $artStyleDescription. Include colors, lighting, atmosphere, architectural details, and visual elements appropriate for the art style.",
-      |  "musicDescription": "Detailed atmospheric description for music generation. Include mood, tempo, instruments, and emotional tone.",
-      |  "musicMood": "One of: entrance, exploration, combat, victory, dungeon, forest, town, mystery, castle, underwater, temple, boss, stealth, treasure, danger, peaceful",
-      |  "exits": [
-      |    {"direction": "north", "locationId": "forest_clearing", "description": "A winding path disappears into the dark forest"},
-      |    {"direction": "south", "locationId": "village_square", "description": "The cobblestone road leads back to the village"}
-      |  ],
-      |  "items": ["brass_lantern", "mysterious_key"],  // Items available in this location to pick up
-      |  "npcs": ["old_wizard", "guard"]  // NPCs present in this location
-      |}
-      |
-      |TYPE 2 - SIMPLE RESPONSE (for examine, help, inventory, interactions without scene change):
-      |{
-      |  "responseType": "simple",
-      |  "locationId": "current_location_id",  // Keep the same location ID as before
-      |  "actionTaken": "examine/help/inventory/talk/use/etc"  // What action was performed
-      |}
-      |
-      |Rules:
-      |- Follow classic text adventure writing conventions throughout
-      |- Use "fullScene" response ONLY for: movement to new location, "look" command, or major scene changes
-      |- Use "simple" response for: examine, help, inventory, talk, use item (without movement), take/drop items
-      |- The narration text (output BEFORE <<<JSON>>>) should be 1-2 sentences maximum for first visits, single phrase for return visits
-      |- Do NOT include narrationText field in the JSON - only output it before the <<<JSON>>> marker
-      |- Prioritize functional clarity over atmospheric prose - be terse and direct
-      |- ImageDescription should be rich and detailed (50-100 words) focusing on visual elements in the $artStyleDescription
-      |- IMPORTANT: Always describe scenes specifically for the art style: $artStyleDescription
-      |- MusicDescription should evoke the atmosphere and mood (30-50 words)
-      |- Always provide consistent locationIds for navigation
-      |- Track player location, inventory, and game state
-      |- STRICTLY enforce movement restrictions - NEVER allow passage through sealed/locked/blocked obstacles
-      |- When movement is blocked, use "simple" response explaining why: "The hatch is sealed. You cannot pass."
-      |- Use consistent locationIds when revisiting locations
-      |- Use inventory tools for ALL item management
-      |- Maintain puzzle integrity - solutions must be earned through gameplay, not bypassed
-      |
-      |Special commands and their response types:
-      |- "help" - SIMPLE response: List basic commands
-      |- "hint" - SIMPLE response: Provide contextual hint
-      |- "inventory" or "i" - SIMPLE response: Use list_inventory tool, respond with "You are carrying: ..."
-      |- "look" or "l" - FULL SCENE response: Complete room description
-      |- "examine [object]" or "x [object]" - SIMPLE response: Detailed object examination
-      |- "take [item]" or "get [item]" - SIMPLE response: Use add_inventory_item tool, confirm action
-      |- "drop [item]" - SIMPLE response: Use remove_inventory_item tool, confirm action
-      |- "use [item]" - SIMPLE response unless it causes movement
-      |- "talk to [npc]" - SIMPLE response: NPC dialogue
-      |- Movement commands - Check obstacles first:
-      |  * If path is clear: FULL SCENE response with new location
-      |  * If blocked by obstacle: SIMPLE response "The [obstacle] is [sealed/locked/blocked]. You cannot pass."
-      |  * NEVER move player through sealed hatches, locked doors, or blocked passages
-      |""".stripMargin
+  
 
   private val completeSystemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, adventureOutline)
   private val client: LLMClient = llmClient
@@ -509,7 +362,7 @@ class GameEngine(
         (scene.imageDescription, Some(scene.locationId))
       case None if CoreEngine.isNewScene(responseText) =>
         logger.info(s"[$sessionId] No structured scene, extracting from text")
-        (extractSceneDescription(responseText), None)
+        (MediaPlanner.extractSceneDescription(responseText), None)
       case _ =>
         return None
     }
@@ -536,28 +389,7 @@ class GameEngine(
   
   // isNewScene moved to CoreEngine
   
-  private def extractSceneDescription(response: String): String = {
-    // Extract the main scene description, focusing on visual elements
-    val sentences = response.split("[.!?]").filter(_.trim.nonEmpty)
-    val visualSentences = sentences.filter { s =>
-      val lower = s.toLowerCase
-      lower.contains("see") || lower.contains("before") || 
-      lower.contains("stand") || lower.contains("enter") ||
-      lower.contains("room") || lower.contains("cave") ||
-      lower.contains("forest") || lower.contains("dungeon") ||
-      lower.contains("hall") || lower.contains("chamber")
-    }
-    
-    val description = if (visualSentences.nonEmpty) {
-      visualSentences.mkString(". ")
-    } else {
-      sentences.headOption.getOrElse(response.take(100))
-    }
-    
-    // Clean up and enhance for image generation
-    description.replaceAll("You ", "A fantasy adventurer ")
-      .replaceAll("you ", "the adventurer ")
-  }
+  // scene description extraction moved to MediaPlanner
   
   def shouldGenerateBackgroundMusic(responseText: String): Boolean = CoreEngine.shouldGenerateBackgroundMusic(core, responseText)
   
@@ -774,7 +606,7 @@ class GameEngine(
         currentState = agent.initialize(
           messages.head.content,
           toolRegistry,
-          systemPromptAddition = Some(gamePrompt)
+          systemPromptAddition = Some(completeSystemPrompt)
         )
         
         messages.tail.foreach { msg =>

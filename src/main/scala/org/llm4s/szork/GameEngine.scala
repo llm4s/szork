@@ -442,7 +442,7 @@ class GameEngine(
           case None =>
             // Fallback: try to extract just the narrationText from the JSON
             logger.warn(s"[$sessionId] Could not parse structured response in streaming, attempting to extract narrationText")
-            val narrationText = extractNarrationTextFromJson(responseText).getOrElse {
+            val narrationText = ResponseInterpreter.extractNarrationTextFromJson(responseText).getOrElse {
               // If that also fails and it looks like JSON, return an error message
               if (responseText.trim.startsWith("{")) {
                 logger.error(s"[$sessionId] Failed to parse JSON response in streaming, showing error to user")
@@ -549,22 +549,7 @@ class GameEngine(
     }
 
     // Include art style prominently in the image prompt with detailed direction
-    val styledPrompt = artStyle match {
-      case Some("pixel") => 
-        s"Classic retro pixel art game scene: $imagePrompt. Create in detailed 16-bit pixel art style like SNES-era adventure games, with blocky pixels, dithering patterns, limited color palette, tile-based environments, and nostalgic retro gaming aesthetic. Show clear pixelated details and structured grid-based composition."
-      
-      case Some("illustration") => 
-        s"Professional pencil sketch: $imagePrompt. Create as a detailed graphite pencil drawing with realistic shading, cross-hatching techniques, varied line weights, textured surfaces, and fine detail work. Like an artist's sketchbook illustration with visible pencil strokes, subtle gradients, and hand-drawn quality."
-      
-      case Some("painting") => 
-        s"Fantasy concept art painting: $imagePrompt. Create as a fully rendered atmospheric scene with realistic lighting, rich textures, environmental depth, dramatic composition, and painterly details. Like a fantasy book cover or game concept art with visible brushwork, color depth, and artistic atmosphere."
-      
-      case Some("comic") => 
-        s"Dynamic comic book panel: $imagePrompt. Create in comic book art style with bold black outlines, cel shading, dramatic angles, expressive details, and vibrant colors. Like a graphic novel illustration with clear line art, dynamic composition, and stylized comic book aesthetic."
-      
-      case _ => 
-        s"$imagePrompt, rendered in $artStyleDescription"
-    }
+    val styledPrompt = MediaPlanner.styledImagePrompt(artStyle, imagePrompt, artStyleDescription)
     logger.info(s"[$sessionId] Generating scene image with prompt: ${styledPrompt.take(100)}...")
     imageClient match {
       case Some(client) =>
@@ -627,7 +612,7 @@ class GameEngine(
             logger.info(s"[$sessionId] Using structured music for ${scene.locationId}: mood=$moodStr")
             (moodStr, scene.musicDescription, Some(scene.locationId))
           case None =>
-            val detectedMood = detectMoodFromText(responseText)
+            val detectedMood = MediaPlanner.detectMoodFromText(responseText)
             logger.info(s"[$sessionId] Detected mood: $detectedMood from text")
             (detectedMood, responseText, None)
         }
@@ -651,18 +636,7 @@ class GameEngine(
     }
   }
 
-  private def detectMoodFromText(text: String): String = {
-    val t = text.toLowerCase
-    if (t.contains("battle") || t.contains("attack") || t.contains("fight")) "combat"
-    else if (t.contains("victory") || t.contains("triumph")) "victory"
-    else if (t.contains("dungeon") || t.contains("cavern") || t.contains("crypt")) "dungeon"
-    else if (t.contains("forest") || t.contains("grove") || t.contains("woods")) "forest"
-    else if (t.contains("temple") || t.contains("altar") || t.contains("sacred")) "temple"
-    else if (t.contains("stealth") || t.contains("sneak")) "stealth"
-    else if (t.contains("treasure") || t.contains("chest") || t.contains("gold")) "treasure"
-    else if (t.contains("danger") || t.contains("threat") || t.contains("trap")) "danger"
-    else "exploration"
-  }
+  // mood detection moved to MediaPlanner
   
   def getCurrentScene: Option[GameScene] = core.currentScene
   

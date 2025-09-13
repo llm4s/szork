@@ -19,8 +19,8 @@ class CoreEngineSpec extends AnyFunSuite with Matchers {
     val s0 = CoreState()
     val s1 = CoreEngine.applyScene(s0, scene)
     s1.currentScene.map(_.locationId) shouldBe Some("room1")
-    s1.visitedLocations should contain ("room1")
-    s1.conversationHistory.last.content should include ("A small room")
+    s1.visitedLocations should contain("room1")
+    s1.conversationHistory.last.content should include("A small room")
   }
 
   test("shouldGenerate helpers react to content") {
@@ -29,4 +29,3 @@ class CoreEngineSpec extends AnyFunSuite with Matchers {
     CoreEngine.shouldGenerateBackgroundMusic(s0, "a battle begins") shouldBe true
   }
 }
-

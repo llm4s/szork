@@ -2,11 +2,36 @@ package org.llm4s.szork
 
 object GameResponseValidator {
   private val allowedMoods: Set[String] = Set(
-    "entrance","exploration","combat","victory","dungeon","forest","town","mystery",
-    "castle","underwater","temple","boss","stealth","treasure","danger","peaceful"
+    "entrance",
+    "exploration",
+    "combat",
+    "victory",
+    "dungeon",
+    "forest",
+    "town",
+    "mystery",
+    "castle",
+    "underwater",
+    "temple",
+    "boss",
+    "stealth",
+    "treasure",
+    "danger",
+    "peaceful"
   )
   private val allowedDirections: Set[String] = Set(
-    "north","south","east","west","up","down","in","out","left","right","forward","back"
+    "north",
+    "south",
+    "east",
+    "west",
+    "up",
+    "down",
+    "in",
+    "out",
+    "left",
+    "right",
+    "forward",
+    "back"
   )
   private val idPattern = "^[a-z0-9_-]+$".r
   private val maxNarrationLenFull = 400
@@ -20,10 +45,12 @@ object GameResponseValidator {
     data match {
       case s: GameScene =>
         if (s.locationId.trim.isEmpty) errors += "locationId must be non-empty"
-        else if (idPattern.findFirstIn(s.locationId).isEmpty) errors += s"locationId '${s.locationId}' must match [a-z0-9_-]+"
+        else if (idPattern.findFirstIn(s.locationId).isEmpty)
+          errors += s"locationId '${s.locationId}' must match [a-z0-9_-]+"
         if (s.locationName.trim.isEmpty) errors += "locationName must be non-empty"
         if (s.narrationText.trim.isEmpty) errors += "narrationText must be non-empty"
-        else if (s.narrationText.length > maxNarrationLenFull) errors += s"narrationText too long (${s.narrationText.length} > $maxNarrationLenFull)"
+        else if (s.narrationText.length > maxNarrationLenFull)
+          errors += s"narrationText too long (${s.narrationText.length} > $maxNarrationLenFull)"
         if (s.exits.exists(e => e.direction.trim.isEmpty || e.locationId.trim.isEmpty))
           errors += "all exits must have direction and locationId"
         if (s.exits.nonEmpty && s.exits.exists(e => !allowedDirections.contains(e.direction.toLowerCase)))
@@ -39,9 +66,11 @@ object GameResponseValidator {
 
       case s: SimpleResponse =>
         if (s.locationId.trim.isEmpty) errors += "locationId must be non-empty"
-        else if (idPattern.findFirstIn(s.locationId).isEmpty) errors += s"locationId '${s.locationId}' must match [a-z0-9_-]+"
+        else if (idPattern.findFirstIn(s.locationId).isEmpty)
+          errors += s"locationId '${s.locationId}' must match [a-z0-9_-]+"
         if (s.narrationText.trim.isEmpty) errors += "narrationText must be non-empty"
-        else if (s.narrationText.length > maxNarrationLenSimple) errors += s"narrationText too long (${s.narrationText.length} > $maxNarrationLenSimple)"
+        else if (s.narrationText.length > maxNarrationLenSimple)
+          errors += s"narrationText too long (${s.narrationText.length} > $maxNarrationLenSimple)"
         if (s.actionTaken.trim.isEmpty) errors += "actionTaken must be non-empty"
     }
 

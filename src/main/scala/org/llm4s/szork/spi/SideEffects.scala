@@ -21,16 +21,23 @@ trait STTClient {
 }
 
 trait ImageClient {
-  def generateScene(prompt: String, style: String, gameId: Option[String], locationId: Option[String]): Either[String, String]
+  def generateScene(
+    prompt: String,
+    style: String,
+    gameId: Option[String],
+    locationId: Option[String]): Either[String, String]
 }
 
 trait MusicClient {
   def isAvailable: Boolean
-  def generate(mood: String, context: String, gameId: Option[String], locationId: Option[String]): Either[String, String]
+  def generate(
+    mood: String,
+    context: String,
+    gameId: Option[String],
+    locationId: Option[String]): Either[String, String]
 }
 
 trait GameStore {
   def save(state: Any): Either[String, Unit]
   def load(id: String): Either[String, Any]
 }
-

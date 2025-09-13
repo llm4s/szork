@@ -12,10 +12,12 @@ object MediaPlanner {
       lower.contains("hall") || lower.contains("chamber")
     }
 
-    val description = if (visualSentences.nonEmpty) visualSentences.mkString(". ") else sentences.headOption.getOrElse(response.take(100))
+    val description =
+      if (visualSentences.nonEmpty) visualSentences.mkString(". ")
+      else sentences.headOption.getOrElse(response.take(100))
     description.replaceAll("You ", "A fantasy adventurer ").replaceAll("you ", "the adventurer ")
   }
-  def styledImagePrompt(artStyle: Option[String], baseDescription: String, artStyleDescription: String): String = {
+  def styledImagePrompt(artStyle: Option[String], baseDescription: String, artStyleDescription: String): String =
     artStyle match {
       case Some("pixel") =>
         s"Classic retro pixel art game scene: $baseDescription. Create in detailed 16-bit pixel art style like SNES-era adventure games, with blocky pixels, dithering patterns, limited color palette, tile-based environments, and nostalgic retro gaming aesthetic. Show clear pixelated details and structured grid-based composition."
@@ -28,7 +30,6 @@ object MediaPlanner {
       case _ =>
         s"$baseDescription, rendered in $artStyleDescription"
     }
-  }
 
   def detectMoodFromText(text: String): String = {
     val t = text.toLowerCase

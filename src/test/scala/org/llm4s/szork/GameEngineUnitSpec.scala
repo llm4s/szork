@@ -15,7 +15,7 @@ class GameEngineUnitSpec extends AnyFunSuite with Matchers {
 
     val r1 = engine.processCommand("look", generateAudio = false)
     r1.isRight shouldBe true
-    r1.toOption.get.text.toLowerCase should include ("cavern")
+    r1.toOption.get.text.toLowerCase should include("cavern")
 
     val r2 = engine.processCommand("go north", generateAudio = false)
     r2.isRight shouldBe true
@@ -23,7 +23,6 @@ class GameEngineUnitSpec extends AnyFunSuite with Matchers {
 
     val r3 = engine.processCommand("examine wall", generateAudio = false)
     r3.isRight shouldBe true
-    r3.toOption.get.text.toLowerCase should include ("examine")
+    r3.toOption.get.text.toLowerCase should include("examine")
   }
 }
-

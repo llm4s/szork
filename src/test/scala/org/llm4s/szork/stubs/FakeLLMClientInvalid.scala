@@ -4,9 +4,8 @@ import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model._
 import org.llm4s.types.Result
 
-/**
- * Fake LLM that deliberately produces invalid exits to trigger validator errors.
- */
+/** Fake LLM that deliberately produces invalid exits to trigger validator errors.
+  */
 class FakeLLMClientInvalid extends LLMClient {
   private def invalidCompletion(narration: String): Completion = {
     val json = ujson.Obj(
@@ -29,12 +28,12 @@ class FakeLLMClientInvalid extends LLMClient {
     )
   }
 
-  override def complete(conversation: Conversation, options: CompletionOptions): Result[Completion] = {
+  override def complete(conversation: Conversation, options: CompletionOptions): Result[Completion] =
     Right(invalidCompletion("Invalid scene response."))
-  }
 
-  override def streamComplete(conversation: Conversation, options: CompletionOptions, onChunk: StreamedChunk => Unit): Result[Completion] = {
+  override def streamComplete(
+    conversation: Conversation,
+    options: CompletionOptions,
+    onChunk: StreamedChunk => Unit): Result[Completion] =
     Right(invalidCompletion("Invalid scene response (stream)."))
-  }
 }
-

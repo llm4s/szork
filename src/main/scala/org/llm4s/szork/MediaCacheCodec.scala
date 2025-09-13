@@ -4,13 +4,19 @@ import ujson._
 import java.nio.file.{Files, Path}
 import java.nio.charset.StandardCharsets
 
-case class ImageEntry(key: String, artStyle: String, provider: String, description: String, path: String, generatedAt: Long)
+case class ImageEntry(
+  key: String,
+  artStyle: String,
+  provider: String,
+  description: String,
+  path: String,
+  generatedAt: Long)
 case class MusicEntry(key: String, mood: String, provider: String, description: String, path: String, generatedAt: Long)
 case class LocationEntries(images: List[ImageEntry], music: List[MusicEntry])
 case class MediaIndex(locations: Map[String, LocationEntries])
 
 object MediaCacheCodec {
-  private def toJson(index: MediaIndex): Value = {
+  private def toJson(index: MediaIndex): Value =
     Obj(
       "locations" -> Obj.from(index.locations.map { case (loc, entries) =>
         loc -> Obj(
@@ -37,7 +43,6 @@ object MediaCacheCodec {
         )
       })
     )
-  }
 
   private def readTs(v: Value): Long = v match {
     case Str(s) => s.toLongOption.getOrElse(0L)

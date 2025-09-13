@@ -2,14 +2,13 @@ package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
-import org.llm4s.llmconnect.{LLM}
+import org.llm4s.llmconnect.LLM
 import org.llm4s.llmconnect.model.{SystemMessage, UserMessage, Conversation}
 import org.llm4s.config.EnvLoader
 
-/**
- * Integration test: runs an underground realm adventure with an LLM player.
- * Focuses on text-only playthrough (no images, no audio, no music).
- */
+/** Integration test: runs an underground realm adventure with an LLM player. Focuses on text-only playthrough (no
+  * images, no audio, no music).
+  */
 class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
 
   private def hasLLM: Boolean = {
@@ -58,10 +57,11 @@ class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
         %s
       """.stripMargin.format(historyText, narration)
 
-      val convo = Conversation(Seq(
-        SystemMessage("You respond only with the next player command, nothing else."),
-        UserMessage(prompt)
-      ))
+      val convo = Conversation(
+        Seq(
+          SystemMessage("You respond only with the next player command, nothing else."),
+          UserMessage(prompt)
+        ))
 
       player.complete(convo) match {
         case Right(resp) =>
@@ -108,10 +108,11 @@ class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
       """.stripMargin
 
     val transcriptText = transcript.map { case (c, r) => s"Player: $c\nDM: $r" }.mkString("\n\n")
-    val ratingConvo = Conversation(Seq(
-      SystemMessage("You are a critical but fair game reviewer. Output only JSON."),
-      UserMessage(rubric + "\n\nTranscript:\n" + transcriptText)
-    ))
+    val ratingConvo = Conversation(
+      Seq(
+        SystemMessage("You are a critical but fair game reviewer. Output only JSON."),
+        UserMessage(rubric + "\n\nTranscript:\n" + transcriptText)
+      ))
 
     val ratingResp = player.complete(ratingConvo)
     ratingResp.isRight shouldBe true

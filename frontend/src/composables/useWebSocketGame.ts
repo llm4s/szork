@@ -33,6 +33,14 @@ export function useWebSocketGame() {
   const isStreaming = ref(false);
   const savedGames = ref<GameInfo[]>([]);
   const currentStreamingMessage = ref<GameMessage | null>(null);
+  // Error toast state
+  const errorSnackbar = ref(false);
+  const errorMessage = ref("");
+  // Session feature flags
+  const ttsEnabled = ref(true);
+  const sttEnabled = ref(true);
+  const musicEnabled = ref(true);
+  const imageEnabled = ref(true);
   
   // Callback for auto-scrolling during streaming
   let scrollCallback: (() => void) | null = null;
@@ -88,6 +96,11 @@ export function useWebSocketGame() {
       const data = (msg as any).data;
       sessionId.value = data.sessionId;
       gameId.value = data.gameId;
+      // Apply session feature flags from server
+      if (typeof data.ttsEnabled === 'boolean') ttsEnabled.value = data.ttsEnabled;
+      if (typeof data.sttEnabled === 'boolean') sttEnabled.value = data.sttEnabled;
+      if (typeof data.musicEnabled === 'boolean') musicEnabled.value = data.musicEnabled;
+      if (typeof data.imageEnabled === 'boolean') imageEnabled.value = data.imageEnabled;
       // Add initial message
       const gameMessage: GameMessage = {
         text: data.text,
@@ -270,6 +283,9 @@ export function useWebSocketGame() {
         isUser: false,
         timestamp: new Date()
       });
+      // Show toast
+      errorMessage.value = data.details ? `${data.error}: ${data.details}` : data.error;
+      errorSnackbar.value = true;
     });
     
     // Pong
@@ -286,7 +302,13 @@ export function useWebSocketGame() {
       await connect();
     }
     
-    wsClient.value?.newGame(theme, artStyle, imageGeneration, adventureOutline);
+    wsClient.value?.newGame(theme, artStyle, imageGeneration, adventureOutline, {
+      tts: ttsEnabled.value,
+      stt: sttEnabled.value,
+      music: musicEnabled.value,
+      // Only enable image generation if both server and client allow it
+      image: imageEnabled.value && imageGeneration
+    });
   };
   
   /**
@@ -410,6 +432,10 @@ export function useWebSocketGame() {
     isConnected,
     isStreaming,
     savedGames,
+    ttsEnabled,
+    sttEnabled,
+    musicEnabled,
+    imageEnabled,
     
     // Methods
     connect,
@@ -424,6 +450,9 @@ export function useWebSocketGame() {
     setPlayAudioNarrationCallback,
     
     // Expose log function
-    log
+    log,
+    // Error toast
+    errorSnackbar,
+    errorMessage
   };
 }

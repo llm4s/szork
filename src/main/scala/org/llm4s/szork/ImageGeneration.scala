@@ -77,7 +77,7 @@ class ImageGeneration {
         // Check cache first if gameId and locationId are provided
         (gameId, locationId) match {
           case (Some(gId), Some(lId)) =>
-            MediaCache.getCachedImage(gId, lId, prompt, style) match {
+            MediaCache.getCachedImage(gId, lId, prompt, style, providerName) match {
               case Some(cachedImage) =>
                 logger.info(s"Using cached image for game=$gId, location=$lId (0ms - from cache)")
                 return Right(cachedImage)
@@ -114,7 +114,7 @@ class ImageGeneration {
             // Cache the generated image if gameId and locationId are provided
             (gameId, locationId) match {
               case (Some(gId), Some(lId)) =>
-                MediaCache.cacheImage(gId, lId, prompt, style, base64Image)
+                MediaCache.cacheImage(gId, lId, prompt, style, base64Image, providerName)
                 logger.info(s"Cached generated image for game=$gId, location=$lId")
               case _ =>
                 logger.debug("No cache info provided - skipping image caching")

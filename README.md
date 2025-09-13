@@ -41,25 +41,11 @@
 
 ### Environment Setup
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` and fill in your local values. Never commit `.env`.
 
 ```bash
-# LLM Provider (choose one)
-OPENAI_API_KEY=sk-...
-# or
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional: Configure specific models
-SZORK_LLM_PROVIDER=openai  # or anthropic, llama
-SZORK_LLM_MODEL=gpt-4o     # or claude-3-sonnet, etc.
-
-# Optional: Image generation
-SZORK_IMAGE_PROVIDER=dalle3  # or huggingface, stability
-SZORK_IMAGE_ENABLED=true
-
-# Optional: Audio features
-SZORK_TTS_ENABLED=true
-SZORK_STT_ENABLED=true
+cp .env.example .env
+# Edit .env and add your keys (OPENAI_API_KEY/ANTHROPIC_API_KEY, etc.)
 ```
 
 ### Running the Game
@@ -87,23 +73,16 @@ npm run dev
 
 Open your browser to http://localhost:3090
 
-### Using the API
+### API / Protocol
 
-The game also exposes REST and WebSocket APIs:
+- Primary interface: WebSocket `ws://localhost:9002` (typed JSON messages).
+- Selected HTTP endpoints remain for utility:
+  - `GET /api/health` – health check
+  - `GET /api/feature-flags` – capability discovery (LLM/image/music/tts/stt availability)
+  - `GET /api/games`, `GET /api/game/list` – list saved games
+  - `POST /api/game/save/:sessionId`, `GET /api/game/load/:gameId` – persistence helpers
 
-```bash
-# Start a new game
-curl -X POST http://localhost:8090/api/game/start \
-  -H "Content-Type: application/json" \
-  -d '{"theme": "fantasy", "artStyle": "painting"}'
-
-# Send a command
-curl -X POST http://localhost:8090/api/game/{gameId}/command \
-  -H "Content-Type: application/json" \
-  -d '{"command": "look around"}'
-```
-
-WebSocket endpoint: `ws://localhost:9002` for real-time streaming responses.
+See `frontend/src/types/WebSocketProtocol.ts` for the client protocol and `src/main/scala/org/llm4s/szork/protocol/WebSocketProtocol.scala` for server types.
 
 ## 🏗️ Architecture
 
@@ -147,6 +126,22 @@ sbt "~szorkStart"
 - `sbt compile` - Compile the project
 - `sbt test` - Run tests
 
+### Feature Flags & Per‑Session Overrides
+
+The server exposes capabilities and allows per‑session overrides.
+
+- Backend configuration (env vars):
+  - `SZORK_IMAGE_GENERATION_ENABLED`, `SZORK_TTS_ENABLED`, `SZORK_STT_ENABLED`, `SZORK_MUSIC_ENABLED`
+- Capability discovery (frontend):
+  - `GET /api/feature-flags` → `{ llm, image, music, tts, stt }`
+  - The selection screen shows capability chips from this endpoint.
+- WebSocket protocol (per‑session):
+  - Client → Server `newGame` (optional overrides): `{ tts?: boolean, stt?: boolean, music?: boolean, imageGeneration?: boolean }`
+  - Server → Client `gameStarted` (effective flags): `{ ttsEnabled, sttEnabled, imageEnabled, musicEnabled }`
+- UI behavior:
+  - When a capability is disabled by server, related controls are disabled (e.g., mic button when STT is off, TTS/mute toggle when TTS is off, image/music toggles when disabled).
+  - Validation errors from server are surfaced as a toast and also appear in the chat stream.
+
 ### Configuration Options
 
 The game supports extensive configuration through environment variables:
@@ -154,7 +149,7 @@ The game supports extensive configuration through environment variables:
 - `SZORK_PORT` - Server port (default: 8090)
 - `SZORK_AUTO_SAVE` - Enable auto-save (default: true)
 - `SZORK_CACHE_ENABLED` - Enable caching (default: true)
-- `SZORK_IMAGE_ENABLED` - Enable image generation (default: true)
+- `SZORK_IMAGE_GENERATION_ENABLED` - Enable image generation (default: true)
 - `SZORK_TTS_VOICE` - TTS voice selection
 - `SZORK_MUSIC_ENABLED` - Enable background music
 
@@ -163,7 +158,8 @@ The game supports extensive configuration through environment variables:
 - [Development Guide](README_DEVELOPMENT.md) - Detailed development setup
 - [SBT Revolver Guide](README_SBT_REVOLVER.md) - Hot reload configuration
 - [Frontend README](frontend/README.md) - Frontend development
-- [API Documentation](docs/API.md) - REST and WebSocket API reference
+
+Note: Older REST endpoints referenced previously (`/api/game/start`, etc.) have been replaced by WebSocket flows.
 
 ## 🎤 About
 

@@ -168,7 +168,9 @@ class MusicGeneration {
             "top_p" -> mood.topP,
             "classifier_free_guidance" -> mood.cfGuidance
           )
-        ).toString
+        ).toString,
+        readTimeout = 30000,
+        connectTimeout = 10000
       )
       
       if (createResponse.statusCode != 201) {
@@ -227,7 +229,9 @@ class MusicGeneration {
     while (attempts < maxAttempts) {
       val response = get(
         s"https://api.replicate.com/v1/predictions/$predictionId",
-        headers = Map("Authorization" -> s"Bearer ${replicateApiKey.get}")
+        headers = Map("Authorization" -> s"Bearer ${replicateApiKey.get}"),
+        readTimeout = 30000,
+        connectTimeout = 10000
       )
       
       if (response.statusCode == 200) {
@@ -269,6 +273,10 @@ class MusicGeneration {
       val uri = new URI(audioUrl)
       val url = uri.toURL()
       val connection = url.openConnection()
+      try {
+        connection.setConnectTimeout(10000)
+        connection.setReadTimeout(30000)
+      } catch { case _: Throwable => () }
       val inputStream = connection.getInputStream
       
       val outputStream = new ByteArrayOutputStream()

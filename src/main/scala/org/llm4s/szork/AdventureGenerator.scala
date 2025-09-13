@@ -1,8 +1,7 @@
 package org.llm4s.szork
 
-import org.llm4s.llmconnect.LLM
+import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model._
-import org.llm4s.config.EnvLoader
 import org.slf4j.LoggerFactory
 import ujson._
 
@@ -40,7 +39,7 @@ case class CharacterOutline(
 object AdventureGenerator {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   
-  def generateAdventureOutline(theme: String, artStyle: String): Either[String, AdventureOutline] = {
+  def generateAdventureOutline(theme: String, artStyle: String)(implicit client: LLMClient): Either[String, AdventureOutline] = {
     val _ = artStyle // Acknowledge parameter (could be used for style-specific adventure elements)
     logger.info(s"Generating adventure outline for theme: $theme")
     
@@ -136,8 +135,6 @@ object AdventureGenerator {
       |Remember: You're creating an experience that respects player intelligence while sparking their imagination. Channel the best of classic IF while embracing modern design sensibilities. Make it clever, make it fair, make it memorable!
       |""".stripMargin
     
-    val client = LLM.client(EnvLoader)
-    
     val messages = Seq(
       SystemMessage("You are a master interactive fiction designer combining the wit of Infocom classics with modern game design sensibilities. You create text adventures that balance atmospheric prose with clear interactivity, respect player intelligence through fair puzzles, and deliver memorable stories full of personality. Your games are known for clever environmental storytelling, satisfying 'aha!' moments, and descriptions that make players want to examine everything."),
       UserMessage(prompt)
@@ -153,73 +150,12 @@ object AdventureGenerator {
   }
   
   private def parseAdventureOutline(response: String): Either[String, AdventureOutline] = {
-    try {
-      logger.info(s"Parsing adventure outline from response (length: ${response.length} chars)")
-
-      println("------------------------------")
-        println(response)
-        println("------------------------------")
-      // Log first 500 chars of response for debugging
-      if (response.length > 0) {
-        logger.debug(s"Response preview: ${response.take(500)}")
-      } else {
-        logger.warn("Received empty response from LLM")
-        return Left("Received empty response from LLM")
-      }
-      
-      // Extract JSON from response
-      val jsonStart = response.indexOf('{')
-      val jsonEnd = response.lastIndexOf('}')
-      
-      if (jsonStart < 0 || jsonEnd < jsonStart) {
-        logger.error(s"No valid JSON found in response. jsonStart=$jsonStart, jsonEnd=$jsonEnd")
-        logger.error(s"Full response: $response")
-        return Left("No valid JSON found in response")
-      }
-      
-      val jsonStr = response.substring(jsonStart, jsonEnd + 1)
-      logger.debug(s"Extracted JSON string (length: ${jsonStr.length})")
-      
-      val json = read(jsonStr)
-      
-      val outline = AdventureOutline(
-        title = json("title").str,
-        tagline = json.obj.get("tagline").map(_.str),
-        mainQuest = json("mainQuest").str,
-        subQuests = json("subQuests").arr.map(_.str).toList,
-        keyLocations = json("keyLocations").arr.map { loc =>
-          LocationOutline(
-            id = loc("id").str,
-            name = loc("name").str,
-            description = loc("description").str,
-            significance = loc("significance").str
-          )
-        }.toList,
-        importantItems = json("importantItems").arr.map { item =>
-          ItemOutline(
-            name = item("name").str,
-            description = item("description").str,
-            purpose = item("purpose").str
-          )
-        }.toList,
-        keyCharacters = json("keyCharacters").arr.map { char =>
-          CharacterOutline(
-            name = char("name").str,
-            role = char("role").str,
-            description = char("description").str
-          )
-        }.toList,
-        adventureArc = json("adventureArc").str,
-        specialMechanics = json.obj.get("specialMechanics").map(_.str)
-      )
-      
-      logger.info(s"Successfully parsed adventure outline: ${outline.title}")
-      Right(outline)
-    } catch {
-      case e: Exception =>
-        logger.error(s"Failed to parse adventure outline: ${e.getMessage}")
-        Left(s"Failed to parse adventure outline: ${e.getMessage}")
-    }
+    if (response == null || response.isEmpty) return Left("Received empty response from LLM")
+    logger.info(s"Parsing adventure outline from response (length: ${response.length} chars)")
+    logger.debug(s"Response preview: ${response.take(200)}")
+    val parsed = AdventureOutlineParser.parse(response)
+    parsed.foreach(o => logger.info(s"Successfully parsed adventure outline: ${o.title}"))
+    parsed
   }
   
   def outlineToSystemPrompt(outline: AdventureOutline): String = {

@@ -11,11 +11,6 @@ class StreamingJsonParser {
   
   private val accumulatedJson = new StringBuilder()
   private var lastExtractedPosition = 0
-  private var inNarrationText = false
-  private var narrationTextStart = -1
-  private var bracketDepth = 0
-  private var inQuotes = false
-  private var escapeNext = false
   
   /**
    * Process a new chunk of JSON and attempt to extract any new narration text.
@@ -134,11 +129,6 @@ class StreamingJsonParser {
   def reset(): Unit = {
     accumulatedJson.clear()
     lastExtractedPosition = 0
-    inNarrationText = false
-    narrationTextStart = -1
-    bracketDepth = 0
-    inQuotes = false
-    escapeNext = false
     logger.debug("StreamingJsonParser reset")
   }
   

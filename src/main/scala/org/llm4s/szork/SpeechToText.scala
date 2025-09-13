@@ -24,7 +24,9 @@ class SpeechToText {
         data = MultiPart(
           MultiItem("file", audioFile, audioFile.getName),
           MultiItem("model", "whisper-1")
-        )
+        ),
+        readTimeout = 30000,
+        connectTimeout = 10000
       )
       
       if (response.statusCode == 200) {
@@ -68,9 +70,13 @@ class SpeechToText {
       
       transcribe(tempFile.toFile)
     } finally {
-      // For debugging, let's keep the file temporarily
-      logger.info(s"Temp file location (for debugging): ${tempFile.toString}")
-      // Files.deleteIfExists(tempFile)
+      val keep = EnvLoader.get("SZORK_DEBUG_STT_TMP").exists(_.toLowerCase == "true")
+      if (keep) {
+        logger.info(s"Keeping temp file for debugging: ${tempFile.toString}")
+      } else {
+        try Files.deleteIfExists(tempFile)
+        catch { case e: Exception => logger.warn(s"Failed to delete temp file ${tempFile.toString}: ${e.getMessage}") }
+      }
     }
   }
 }

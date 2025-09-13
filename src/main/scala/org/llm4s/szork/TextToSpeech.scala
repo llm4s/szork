@@ -27,7 +27,9 @@ class TextToSpeech {
           "input" -> text,
           "voice" -> voice,
           "response_format" -> "mp3"
-        ).toString
+        ).toString,
+        readTimeout = 30000,
+        connectTimeout = 10000
       )
       
       if (response.statusCode == 200) {

@@ -47,6 +47,11 @@ case class SzorkConfig(
   imageGenerationEnabled: Boolean = true,
   imageProvider: ImageProvider = ImageProvider.None,
   
+  // Audio/speech/media feature flags
+  ttsEnabled: Boolean = true,
+  sttEnabled: Boolean = true,
+  musicEnabled: Boolean = true,
+
   // LLM configuration
   llmConfig: Option[LLMConfig] = None,
   
@@ -82,15 +87,18 @@ object SzorkConfig {
       .getOrElse(true)
     
     val imageProviderStr = EnvLoader.get("SZORK_IMAGE_PROVIDER")
-    println(s"DEBUG: SZORK_IMAGE_PROVIDER from env: $imageProviderStr")
     val imageProvider = imageProviderStr
       .map(ImageProvider.fromString)
       .getOrElse(ImageProvider.None)
-    println(s"DEBUG: Parsed image provider: $imageProvider")
     
     // Load LLM configuration
     val llmConfig = loadLLMConfig()
-    
+
+    // Media feature flags
+    val ttsEnabled = EnvLoader.get("SZORK_TTS_ENABLED").map(_.toLowerCase != "false").getOrElse(true)
+    val sttEnabled = EnvLoader.get("SZORK_STT_ENABLED").map(_.toLowerCase != "false").getOrElse(true)
+    val musicEnabled = EnvLoader.get("SZORK_MUSIC_ENABLED").map(_.toLowerCase != "false").getOrElse(true)
+
     // Load game settings
     val autoSaveEnabled = EnvLoader.get("SZORK_AUTO_SAVE")
       .map(_.toLowerCase != "false")
@@ -108,6 +116,9 @@ object SzorkConfig {
       host = host,
       imageGenerationEnabled = imageGenerationEnabled,
       imageProvider = imageProvider,
+      ttsEnabled = ttsEnabled,
+      sttEnabled = sttEnabled,
+      musicEnabled = musicEnabled,
       llmConfig = llmConfig,
       autoSaveEnabled = autoSaveEnabled,
       cacheEnabled = cacheEnabled,
@@ -203,13 +214,16 @@ object SzorkConfig {
               errors += "OpenAI DALL-E provider selected but OPENAI_API_KEY not found"
             }
           
-          case _ => // No validation needed
+          case ImageProvider.LocalStableDiffusion =>
+            // No API key required; ensure a base URL is configured or default applies
+            ()
+          case _ => ()
         }
       }
       
       // Validate LLM configuration
       if (config.llmConfig.isEmpty) {
-        errors += "No LLM provider configured. Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, or LLAMA_BASE_URL"
+        errors += "No LLM provider configured. Set one of: OPENAI_API_KEY, ANTHROPIC_API_KEY, or LLAMA_BASE_URL (or SZORK_LLM_PROVIDER)."
       }
       
       if (errors.isEmpty) {
@@ -224,6 +238,9 @@ object SzorkConfig {
       logger.info(s"Server: ${config.host}:${config.port}")
       logger.info(s"Image Generation: ${if (config.imageGenerationEnabled) s"Enabled (${ImageProvider.toString(config.imageProvider)})" else "Disabled"}")
       logger.info(s"LLM Provider: ${config.llmConfig.map(_.provider).getOrElse("Not configured")}")
+      logger.info(s"TTS: ${if (config.ttsEnabled) "Enabled" else "Disabled"}")
+      logger.info(s"STT: ${if (config.sttEnabled) "Enabled" else "Disabled"}")
+      logger.info(s"Music: ${if (config.musicEnabled) "Enabled" else "Disabled"}")
       logger.info(s"Auto-save: ${if (config.autoSaveEnabled) "Enabled" else "Disabled"}")
       logger.info(s"Cache: ${if (config.cacheEnabled) s"Enabled (${config.cacheDirectory})" else "Disabled"}")
       logger.info(s"Saves Directory: ${config.savesDirectory}")

@@ -116,7 +116,7 @@ class GameEngine(
     
     // Run the agent
     val textStartTime = System.currentTimeMillis()
-    logger.info(s"[$sessionId] Starting text generation for command: $command")
+    logger.debug(s"[$sessionId] Starting text generation for command: $command")
     
     agent.run(currentState) match {
       case Right(newState) =>
@@ -144,7 +144,7 @@ class GameEngine(
         currentState = newState
         
         val textGenerationTime = System.currentTimeMillis() - textStartTime
-        logger.info(s"[$sessionId] Text generation completed in ${textGenerationTime}ms (${response.length} chars)")
+        logger.debug(s"[$sessionId] Text generation completed in ${textGenerationTime}ms (${response.length} chars)")
         
         // Try to parse the response as structured JSON
         val (responseText, sceneOpt) = {
@@ -186,7 +186,7 @@ class GameEngine(
               None
           }
         } else {
-          logger.info(s"[$sessionId] Skipping audio (generateAudio=$generateAudio, empty=${responseText.isEmpty}, ttsClient=${ttsClient.isDefined})")
+          logger.debug(s"[$sessionId] Skipping audio (generateAudio=$generateAudio, empty=${responseText.isEmpty}, ttsClient=${ttsClient.isDefined})")
           None
         }
         
@@ -256,7 +256,7 @@ class GameEngine(
         logger.debug(s"Streaming LLM response for '$command' (truncated): ${responseText.take(200)}")
         
         val textGenerationTime = System.currentTimeMillis() - textStartTime
-        logger.info(s"[$sessionId] Streaming completed: $chunkCount chunks, $narrativeChunkCount narrative chunks, ${responseText.length} chars in ${textGenerationTime}ms")
+        logger.debug(s"[$sessionId] Streaming completed: $chunkCount chunks, $narrativeChunkCount narrative chunks, ${responseText.length} chars in ${textGenerationTime}ms")
         
         // Extract the JSON portion from the response
         val jsonResponse = textParser.getJson().getOrElse {

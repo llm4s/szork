@@ -1,6 +1,20 @@
 package org.llm4s.szork
 
 object MediaPlanner {
+  def extractSceneDescription(response: String): String = {
+    val sentences = response.split("[.!?]").filter(_.trim.nonEmpty)
+    val visualSentences = sentences.filter { s =>
+      val lower = s.toLowerCase
+      lower.contains("see") || lower.contains("before") ||
+      lower.contains("stand") || lower.contains("enter") ||
+      lower.contains("room") || lower.contains("cave") ||
+      lower.contains("forest") || lower.contains("dungeon") ||
+      lower.contains("hall") || lower.contains("chamber")
+    }
+
+    val description = if (visualSentences.nonEmpty) visualSentences.mkString(". ") else sentences.headOption.getOrElse(response.take(100))
+    description.replaceAll("You ", "A fantasy adventurer ").replaceAll("you ", "the adventurer ")
+  }
   def styledImagePrompt(artStyle: Option[String], baseDescription: String, artStyleDescription: String): String = {
     artStyle match {
       case Some("pixel") =>
@@ -29,4 +43,3 @@ object MediaPlanner {
     else "exploration"
   }
 }
-

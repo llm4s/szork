@@ -17,17 +17,24 @@ class DefaultSTTClient extends STTClient {
 
 class DefaultImageClient extends ImageClient {
   private val impl = ImageGeneration()
-  override def generateScene(prompt: String, style: String, gameId: Option[String], locationId: Option[String]): Either[String, String] =
+  override def generateScene(
+    prompt: String,
+    style: String,
+    gameId: Option[String],
+    locationId: Option[String]): Either[String, String] =
     impl.generateSceneWithCache(prompt, style, gameId, locationId)
 }
 
 class DefaultMusicClient extends MusicClient {
   private val impl = MusicGeneration()
   override def isAvailable: Boolean = impl.isAvailable
-  override def generate(mood: String, context: String, gameId: Option[String], locationId: Option[String]): Either[String, String] = {
+  override def generate(
+    mood: String,
+    context: String,
+    gameId: Option[String],
+    locationId: Option[String]): Either[String, String] = {
     // Map mood string into MusicGeneration's moods
     val m = impl.detectMoodFromText(mood) // fallback; actual engine passes structured mood
     impl.generateMusicWithCache(m, context, gameId, locationId)
   }
 }
-

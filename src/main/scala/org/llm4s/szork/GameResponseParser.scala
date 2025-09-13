@@ -28,19 +28,16 @@ object GameResponseParser {
     }
   }
 
-  def parse(response: String): Either[String, GameResponseData] = {
+  def parse(response: String): Either[String, GameResponseData] =
     extractJsonWithNarration(response) match {
       case Some(json) => GameResponseData.fromJson(json)
       case None => Left("No JSON found in response")
     }
-  }
 
-  def parseAndValidate(response: String): Either[List[String], GameResponseData] = {
+  def parseAndValidate(response: String): Either[List[String], GameResponseData] =
     parse(response) match {
       case Right(data) =>
         GameResponseValidator.validate(data)
       case Left(err) => Left(List(err))
     }
-  }
 }
-

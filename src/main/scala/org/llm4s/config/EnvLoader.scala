@@ -1,7 +1,7 @@
 package org.llm4s.config
 
 import io.github.cdimascio.dotenv.Dotenv
-import java.nio.file.{ Files, Paths }
+import java.nio.file.{Files, Paths}
 
 trait ConfigReader {
   def get(key: String): Option[String]
@@ -14,11 +14,11 @@ object EnvLoader extends ConfigReader {
   private lazy val dotenv: Dotenv = {
     // Try to find .env file in multiple locations
     val currentDir = Paths.get("").toAbsolutePath
-    val parentDir  = currentDir.getParent
+    val parentDir = currentDir.getParent
 
     val possiblePaths = List(
       currentDir.resolve(".env"), // Current directory
-      parentDir.resolve(".env")   // Parent directory (for when running from szork/)
+      parentDir.resolve(".env") // Parent directory (for when running from szork/)
     )
 
     val existingPath = possiblePaths.find(Files.exists(_))

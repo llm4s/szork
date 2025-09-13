@@ -48,7 +48,7 @@ case class NewGameRequest(
   theme: Option[String] = None,
   artStyle: Option[String] = None,
   imageGeneration: Boolean = true,
-  adventureOutline: Option[ujson.Value] = None,  // Adventure outline as JSON
+  adventureOutline: Option[ujson.Value] = None, // Adventure outline as JSON
   tts: Option[Boolean] = None,
   stt: Option[Boolean] = None,
   music: Option[Boolean] = None,

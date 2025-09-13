@@ -8,9 +8,9 @@ import org.llm4s.imagegeneration._
 class ImageGeneration {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   private val config = SzorkConfig.instance
-  
+
   // Configure image generation provider based on configuration
-  private val (imageClientOpt, providerName) = {
+  private val (imageClientOpt, providerName) =
     if (!config.imageGenerationEnabled) {
       logger.info("Image generation is disabled")
       (None, "Disabled")
@@ -19,15 +19,16 @@ class ImageGeneration {
         case ImageProvider.None =>
           logger.info("Image generation provider set to None")
           (None, "None")
-          
+
         case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
-          val hfKey = EnvLoader.get("HUGGINGFACE_API_KEY")
+          val hfKey = EnvLoader
+            .get("HUGGINGFACE_API_KEY")
             .orElse(EnvLoader.get("HF_API_KEY"))
             .orElse(EnvLoader.get("HUGGINGFACE_TOKEN"))
             .getOrElse(
               throw new IllegalStateException(
                 s"Image provider set to ${ImageProvider.toString(config.imageProvider)} but no HuggingFace API key found. " +
-                "Please set HUGGINGFACE_API_KEY, HF_API_KEY, or HUGGINGFACE_TOKEN"
+                  "Please set HUGGINGFACE_API_KEY, HF_API_KEY, or HUGGINGFACE_TOKEN"
               )
             )
           val model = config.imageProvider match {
@@ -36,38 +37,48 @@ class ImageGeneration {
           }
           logger.info(s"Using HuggingFace for image generation with model: $model")
           (Some(imagegeneration.ImageGeneration.huggingFaceClient(hfKey, model)), s"HuggingFace ($model)")
-          
+
         case ImageProvider.OpenAIDalle3 =>
-          val openAIKey = EnvLoader.get("OPENAI_API_KEY").getOrElse(
-            throw new IllegalStateException("Image provider set to OpenAI DALL-E 3 but OPENAI_API_KEY not found")
-          )
+          val openAIKey = EnvLoader
+            .get("OPENAI_API_KEY")
+            .getOrElse(
+              throw new IllegalStateException("Image provider set to OpenAI DALL-E 3 but OPENAI_API_KEY not found")
+            )
           logger.info("Using OpenAI DALL-E 3 for image generation")
           (Some(imagegeneration.ImageGeneration.openAIClient(openAIKey, "dall-e-3")), "OpenAI DALL-E 3")
-          
+
         case ImageProvider.OpenAIDalle2 =>
-          val openAIKey = EnvLoader.get("OPENAI_API_KEY").getOrElse(
-            throw new IllegalStateException("Image provider set to OpenAI DALL-E 2 but OPENAI_API_KEY not found")
-          )
+          val openAIKey = EnvLoader
+            .get("OPENAI_API_KEY")
+            .getOrElse(
+              throw new IllegalStateException("Image provider set to OpenAI DALL-E 2 but OPENAI_API_KEY not found")
+            )
           logger.info("Using OpenAI DALL-E 2 for image generation")
           (Some(imagegeneration.ImageGeneration.openAIClient(openAIKey, "dall-e-2")), "OpenAI DALL-E 2")
-          
+
         case ImageProvider.LocalStableDiffusion =>
-          val baseUrl = EnvLoader.get("STABLE_DIFFUSION_URL")
+          val baseUrl = EnvLoader
+            .get("STABLE_DIFFUSION_URL")
             .orElse(EnvLoader.get("SD_URL"))
             .getOrElse("http://localhost:7860")
-          val apiKey = EnvLoader.get("STABLE_DIFFUSION_API_KEY")
+          val apiKey = EnvLoader
+            .get("STABLE_DIFFUSION_API_KEY")
             .orElse(EnvLoader.get("SD_API_KEY"))
           logger.info(s"Using Local Stable Diffusion for image generation at: $baseUrl")
-          (Some(imagegeneration.ImageGeneration.stableDiffusionClient(baseUrl, apiKey)), s"Local Stable Diffusion ($baseUrl)")
+          (
+            Some(imagegeneration.ImageGeneration.stableDiffusionClient(baseUrl, apiKey)),
+            s"Local Stable Diffusion ($baseUrl)")
       }
     }
-  }
-  
-  def generateScene(prompt: String, style: String = ""): Either[String, String] = {
+
+  def generateScene(prompt: String, style: String = ""): Either[String, String] =
     generateSceneWithCache(prompt, style, None, None)
-  }
-  
-  def generateSceneWithCache(prompt: String, style: String = "", gameId: Option[String] = None, locationId: Option[String] = None): Either[String, String] = {
+
+  def generateSceneWithCache(
+    prompt: String,
+    style: String = "",
+    gameId: Option[String] = None,
+    locationId: Option[String] = None): Either[String, String] =
     // Check if image generation is enabled
     imageClientOpt match {
       case None =>
@@ -87,30 +98,30 @@ class ImageGeneration {
           case _ =>
             logger.info(s"No cache info provided - generating image directly")
         }
-        
+
         val imageStartTime = System.currentTimeMillis()
         logger.info(s"Starting image generation using $providerName for prompt: ${prompt.take(100)}...")
-        
+
         // Use prompt as-is if no additional style specified
         val fullPrompt = if (style.isEmpty) {
           prompt
         } else {
           s"$prompt, $style"
         }
-        
+
         // Configure options for image generation
         val options = ImageGenerationOptions(
-          size = ImageSize.Square512,  // 512x512 for good quality with reasonable file size
+          size = ImageSize.Square512, // 512x512 for good quality with reasonable file size
           format = ImageFormat.PNG
         )
-        
+
         // Use LLM4S image generation
         imageClient.generateImage(fullPrompt, options) match {
           case Right(generatedImage) =>
             val base64Image = generatedImage.data
             val imageGenerationTime = System.currentTimeMillis() - imageStartTime
             logger.info(s"Image generation completed in ${imageGenerationTime}ms (${base64Image.length} bytes base64)")
-            
+
             // Cache the generated image if gameId and locationId are provided
             (gameId, locationId) match {
               case (Some(gId), Some(lId)) =>
@@ -119,9 +130,9 @@ class ImageGeneration {
               case _ =>
                 logger.debug("No cache info provided - skipping image caching")
             }
-            
+
             Right(base64Image)
-            
+
           case Left(error) =>
             val imageGenerationTime = System.currentTimeMillis() - imageStartTime
             val errorMessage = s"Image generation error: ${error.message}"
@@ -129,13 +140,12 @@ class ImageGeneration {
             Left(errorMessage)
         }
     }
-  }
-  
+
 }
 
 object ImageGeneration {
   def apply(): ImageGeneration = new ImageGeneration()
-  
+
   // Style presets for consistent art direction
   val STYLE_FANTASY = "fantasy art, digital painting, concept art"
   val STYLE_DUNGEON = "dark fantasy, dungeon, atmospheric, ominous"

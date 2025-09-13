@@ -6,8 +6,8 @@ import org.scalatest.matchers.should.Matchers
 class PromptBuilderSpec extends AnyFunSuite with Matchers {
   test("fullSystemPrompt includes theme and art style") {
     val prompt = PromptBuilder.fullSystemPrompt(Some("underground realm"), Some("painting"), None)
-    prompt should include ("underground realm")
-    prompt.toLowerCase should include ("oil painting")
+    prompt should include("underground realm")
+    prompt.toLowerCase should include("oil painting")
   }
 
   test("fullSystemPrompt includes outline content when provided") {
@@ -23,8 +23,7 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
       specialMechanics = Some("Hidden doors")
     )
     val prompt = PromptBuilder.fullSystemPrompt(None, None, Some(outline))
-    prompt should include ("Test Adventure")
-    prompt should include ("KEY LOCATIONS")
+    prompt should include("Test Adventure")
+    prompt should include("KEY LOCATIONS")
   }
 }
-

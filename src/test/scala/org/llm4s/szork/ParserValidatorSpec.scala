@@ -31,7 +31,7 @@ class ParserValidatorSpec extends AnyFunSuite with Matchers {
     val scene = parsed.toOption.get.asInstanceOf[GameScene]
     scene.locationId shouldBe "cavern_entrance"
     scene.exits.map(_.direction).toSet should contain allOf ("north", "east")
-    scene.narrationText.toLowerCase should include ("cavern")
+    scene.narrationText.toLowerCase should include("cavern")
   }
 
   test("reject invalid exit direction") {
@@ -54,7 +54,7 @@ class ParserValidatorSpec extends AnyFunSuite with Matchers {
 
     val parsed = GameResponseParser.parseAndValidate(response)
     parsed.isLeft shouldBe true
-    parsed.left.toOption.get.mkString(" ").toLowerCase should include ("invalid exit direction")
+    parsed.left.toOption.get.mkString(" ").toLowerCase should include("invalid exit direction")
   }
 
   test("parse and validate simple response") {
@@ -74,4 +74,3 @@ class ParserValidatorSpec extends AnyFunSuite with Matchers {
     parsed.toOption.get.isInstanceOf[SimpleResponse] shouldBe true
   }
 }
-

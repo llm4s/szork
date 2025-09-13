@@ -5,15 +5,15 @@ import org.llm4s.llmconnect.model._
 import org.llm4s.types.Result
 import org.llm4s.error.LLMError
 
-/**
- * Deterministic LLM stub that returns compact, schema-conforming messages
- * so GameEngine can be tested without network.
- */
+/** Deterministic LLM stub that returns compact, schema-conforming messages so GameEngine can be tested without network.
+  */
 class FakeLLMClient extends LLMClient {
   private def replyFor(conversation: Conversation): Completion = {
     val lastUser = conversation.messages.reverse.collectFirst { case UserMessage(c) => c }.getOrElse("")
     val (narration, json) =
-      if (lastUser.toLowerCase().startsWith("look") || lastUser.toLowerCase().contains("start adventure") || lastUser.isEmpty) {
+      if (lastUser
+          .toLowerCase()
+          .startsWith("look") || lastUser.toLowerCase().contains("start adventure") || lastUser.isEmpty) {
         (
           "You are at the cavern entrance.",
           ujson.Obj(
@@ -63,9 +63,11 @@ class FakeLLMClient extends LLMClient {
     )
   }
 
-  override def complete(conversation: Conversation, options: CompletionOptions): Result[Completion] = {
+  override def complete(conversation: Conversation, options: CompletionOptions): Result[Completion] =
     Right(replyFor(conversation))
-  }
 
-  override def streamComplete(conversation: Conversation, options: CompletionOptions, onChunk: StreamedChunk => Unit): Result[Completion] = Right(replyFor(conversation))
+  override def streamComplete(
+    conversation: Conversation,
+    options: CompletionOptions,
+    onChunk: StreamedChunk => Unit): Result[Completion] = Right(replyFor(conversation))
 }

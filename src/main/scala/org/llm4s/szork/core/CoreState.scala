@@ -14,21 +14,30 @@ object CoreEngine {
     state.copy(
       currentScene = Some(scene),
       visitedLocations = state.visitedLocations + scene.locationId,
-      conversationHistory = state.conversationHistory :+ ConversationEntry("assistant", scene.narrationText, System.currentTimeMillis())
+      conversationHistory =
+        state.conversationHistory :+ ConversationEntry("assistant", scene.narrationText, System.currentTimeMillis())
     )
 
   def applySimpleResponse(state: CoreState, text: String): CoreState =
-    state.copy(conversationHistory = state.conversationHistory :+ ConversationEntry("assistant", text, System.currentTimeMillis()))
+    state.copy(conversationHistory =
+      state.conversationHistory :+ ConversationEntry("assistant", text, System.currentTimeMillis()))
 
   def trackUser(state: CoreState, text: String): CoreState =
-    state.copy(conversationHistory = state.conversationHistory :+ ConversationEntry("user", text, System.currentTimeMillis()))
+    state.copy(conversationHistory =
+      state.conversationHistory :+ ConversationEntry("user", text, System.currentTimeMillis()))
 
   // Pure helpers used by the engine
   def isNewScene(response: String): Boolean = {
     val sceneIndicators = List(
-      "you enter", "you arrive", "you find yourself",
-      "you see", "before you", "you are in",
-      "you stand", "exits:", "you reach"
+      "you enter",
+      "you arrive",
+      "you find yourself",
+      "you see",
+      "before you",
+      "you are in",
+      "you stand",
+      "exits:",
+      "you reach"
     )
     val lowerResponse = response.toLowerCase
     sceneIndicators.exists(lowerResponse.contains)
@@ -40,11 +49,11 @@ object CoreEngine {
   def shouldGenerateBackgroundMusic(state: CoreState, responseText: String): Boolean = {
     val lowerText = responseText.toLowerCase
     state.currentScene.isDefined ||
-      isNewScene(responseText) ||
-      lowerText.contains("battle") ||
-      lowerText.contains("victory") ||
-      lowerText.contains("defeated") ||
-      lowerText.contains("enter") ||
-      lowerText.contains("arrive")
+    isNewScene(responseText) ||
+    lowerText.contains("battle") ||
+    lowerText.contains("victory") ||
+    lowerText.contains("defeated") ||
+    lowerText.contains("enter") ||
+    lowerText.contains("arrive")
   }
 }

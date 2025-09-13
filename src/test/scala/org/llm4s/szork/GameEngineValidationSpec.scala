@@ -14,10 +14,9 @@ class GameEngineValidationSpec extends AnyFunSuite with Matchers {
 
     val issuesOpt = engine.popValidationIssues()
     issuesOpt.isDefined shouldBe true
-    issuesOpt.get.mkString(" ").toLowerCase should include ("invalid exit direction")
+    issuesOpt.get.mkString(" ").toLowerCase should include("invalid exit direction")
 
     // ensure issues are cleared after pop
     engine.popValidationIssues() shouldBe None
   }
 }
-

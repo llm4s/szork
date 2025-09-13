@@ -20,8 +20,7 @@ class MediaPlannerSpec extends AnyFunSuite with Matchers {
   test("extractSceneDescription focuses visual details and adjusts POV") {
     val text = "You enter a large hall. You see banners. A passage leads north."
     val desc = MediaPlanner.extractSceneDescription(text)
-    desc.toLowerCase should include ("hall")
-    desc should not include ("You ")
+    desc.toLowerCase should include("hall")
+    desc should not include "You "
   }
 }
-

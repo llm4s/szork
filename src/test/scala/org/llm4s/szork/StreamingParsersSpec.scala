@@ -15,7 +15,7 @@ class StreamingParsersSpec extends AnyFunSuite with Matchers {
     val json = p.getJson()
     json.isDefined shouldBe true
     val narration = p.getNarration().getOrElse("")
-    narration should include ("You enter a room. More detail")
+    narration should include("You enter a room. More detail")
   }
 
   test("StreamingJsonParser extracts narrationText from partial JSON") {
@@ -25,7 +25,7 @@ class StreamingParsersSpec extends AnyFunSuite with Matchers {
     p.processChunk(chunk1)
     p.processChunk(chunk2)
     val acc = p.getAccumulatedJson
-    acc should include ("Dark hall")
-    acc should include ("with torches")
+    acc should include("Dark hall")
+    acc should include("with torches")
   }
 }

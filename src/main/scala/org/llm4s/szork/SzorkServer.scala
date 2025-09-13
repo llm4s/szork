@@ -10,12 +10,12 @@ import java.util.concurrent.Executors
 
 case class GameSession(
   id: String,
-  gameId: String,  // Unique game ID for persistence
+  gameId: String, // Unique game ID for persistence
   engine: GameEngine,
   theme: Option[GameTheme] = None,
   artStyle: Option[ArtStyle] = None,
   pendingImages: TrieMap[Int, Option[String]] = TrieMap.empty,
-  pendingMusic: TrieMap[Int, Option[(String, String)]] = TrieMap.empty,  // (base64, mood)
+  pendingMusic: TrieMap[Int, Option[(String, String)]] = TrieMap.empty, // (base64, mood)
   autoSaveEnabled: Boolean = true,
   imageGenerationEnabled: Boolean = true,
   ttsEnabled: Boolean = true,
@@ -38,13 +38,13 @@ case class CommandRequest(command: String)
 case class CommandResponse(response: String, sessionId: String)
 
 object SzorkServer extends cask.Main with cask.Routes {
-  
+
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
-  
+
   // Load and validate configuration
   private val config = SzorkConfig.instance
-  
-  // Log the configuration 
+
+  // Log the configuration
   config.logConfiguration(logger)
   logger.info("Hot reload is enabled - file changes will trigger restart")
 
@@ -59,7 +59,11 @@ object SzorkServer extends cask.Main with cask.Routes {
   private val imageRequested = config.imageGenerationEnabled && config.imageProvider != ImageProvider.None
   private val imageKeysPresent: Boolean = config.imageProvider match {
     case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
-      EnvLoader.get("HUGGINGFACE_API_KEY").orElse(EnvLoader.get("HF_API_KEY")).orElse(EnvLoader.get("HUGGINGFACE_TOKEN")).exists(_.nonEmpty)
+      EnvLoader
+        .get("HUGGINGFACE_API_KEY")
+        .orElse(EnvLoader.get("HF_API_KEY"))
+        .orElse(EnvLoader.get("HUGGINGFACE_TOKEN"))
+        .exists(_.nonEmpty)
     case ImageProvider.OpenAIDalle2 | ImageProvider.OpenAIDalle3 => openAIKeyPresent
     case ImageProvider.LocalStableDiffusion => true
     case ImageProvider.None => false
@@ -67,10 +71,19 @@ object SzorkServer extends cask.Main with cask.Routes {
 
   logger.info("=== Feature Availability ===")
   logger.info(s"LLM Text Generation: ${config.llmConfig.map(_.provider).getOrElse("Unavailable")}")
-  logger.info(s"Images: ${if (imageRequested && imageKeysPresent) s"Enabled (${ImageProvider.toString(config.imageProvider)})" else if (imageRequested) s"Disabled (missing credentials for ${ImageProvider.toString(config.imageProvider)})" else "Disabled"}")
-  logger.info(s"Music: ${if (musicRequested && replicateKeyPresent) "Enabled (Replicate)" else if (musicRequested) "Disabled (REPLICATE_API_KEY not set)" else "Disabled (by config)"}")
-  logger.info(s"Speech-to-Text: ${if (sttRequested && openAIKeyPresent) "Enabled (OpenAI Whisper)" else if (sttRequested) "Disabled (OPENAI_API_KEY not set)" else "Disabled (by config)"}")
-  logger.info(s"Text-to-Speech: ${if (ttsRequested && openAIKeyPresent) "Enabled (OpenAI TTS)" else if (ttsRequested) "Disabled (OPENAI_API_KEY not set)" else "Disabled (by config)"}")
+  logger.info(
+    s"Images: ${if (imageRequested && imageKeysPresent) s"Enabled (${ImageProvider.toString(config.imageProvider)})"
+      else if (imageRequested) s"Disabled (missing credentials for ${ImageProvider.toString(config.imageProvider)})"
+      else "Disabled"}")
+  logger.info(s"Music: ${if (musicRequested && replicateKeyPresent) "Enabled (Replicate)"
+    else if (musicRequested) "Disabled (REPLICATE_API_KEY not set)"
+    else "Disabled (by config)"}")
+  logger.info(s"Speech-to-Text: ${if (sttRequested && openAIKeyPresent) "Enabled (OpenAI Whisper)"
+    else if (sttRequested) "Disabled (OPENAI_API_KEY not set)"
+    else "Disabled (by config)"}")
+  logger.info(s"Text-to-Speech: ${if (ttsRequested && openAIKeyPresent) "Enabled (OpenAI TTS)"
+    else if (ttsRequested) "Disabled (OPENAI_API_KEY not set)"
+    else "Disabled (by config)"}")
   logger.info("===========================")
 
   @get("/api/feature-flags")
@@ -78,7 +91,11 @@ object SzorkServer extends cask.Main with cask.Routes {
     val imageRequested = config.imageGenerationEnabled && config.imageProvider != ImageProvider.None
     val imageCreds = config.imageProvider match {
       case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
-        EnvLoader.get("HUGGINGFACE_API_KEY").orElse(EnvLoader.get("HF_API_KEY")).orElse(EnvLoader.get("HUGGINGFACE_TOKEN")).exists(_.nonEmpty)
+        EnvLoader
+          .get("HUGGINGFACE_API_KEY")
+          .orElse(EnvLoader.get("HF_API_KEY"))
+          .orElse(EnvLoader.get("HUGGINGFACE_TOKEN"))
+          .exists(_.nonEmpty)
       case ImageProvider.OpenAIDalle2 | ImageProvider.OpenAIDalle3 => openAIKeyPresent
       case ImageProvider.LocalStableDiffusion => true
       case ImageProvider.None => false
@@ -107,7 +124,7 @@ object SzorkServer extends cask.Main with cask.Routes {
       )
     )
   }
-  
+
   // Validate configuration
   config.validate() match {
     case Left(errors) =>
@@ -117,7 +134,7 @@ object SzorkServer extends cask.Main with cask.Routes {
     case Right(_) =>
       logger.info("Configuration validation successful")
   }
-  
+
   // Verify LLM client can be created
   config.llmConfig match {
     case Some(_) =>
@@ -133,45 +150,47 @@ object SzorkServer extends cask.Main with cask.Routes {
     case None =>
       logger.error("No LLM configuration found - text generation will not work")
   }
-  
+
   @post("/api/game/validate-theme")
   def validateTheme(request: Request): ujson.Value = {
     val json = ujson.read(request.text())
     val themeDescription = json("theme").str
-    
+
     logger.info(s"Validating custom theme: ${themeDescription.take(100)}...")
-    
+
     // Use LLM to validate and enhance the theme
     import org.llm4s.llmconnect.LLM
     import org.llm4s.llmconnect.model.{SystemMessage, UserMessage, Conversation}
-    
+
     val client = LLM.client(EnvLoader)
-    val validationPrompt = s"""Analyze this adventure game theme idea and determine if it would work well for a text-based adventure game:
-    |
-    |Theme: $themeDescription
-    |
-    |Please respond with a JSON object:
-    |{
-    |  "valid": true/false,
-    |  "message": "Brief explanation if not valid",
-    |  "enhancedTheme": "Enhanced version of the theme if valid, focusing on adventure elements"
-    |}
-    |
-    |A good theme should have:
-    |- Clear setting and atmosphere
-    |- Potential for exploration and discovery
-    |- Opportunities for puzzles, challenges, or mysteries
-    |- Interesting locations to visit
-    |""".stripMargin
-    
+    val validationPrompt =
+      s"""Analyze this adventure game theme idea and determine if it would work well for a text-based adventure game:
+        |
+        |Theme: $themeDescription
+        |
+        |Please respond with a JSON object:
+        |{
+        |  "valid": true/false,
+        |  "message": "Brief explanation if not valid",
+        |  "enhancedTheme": "Enhanced version of the theme if valid, focusing on adventure elements"
+        |}
+        |
+        |A good theme should have:
+        |- Clear setting and atmosphere
+        |- Potential for exploration and discovery
+        |- Opportunities for puzzles, challenges, or mysteries
+        |- Interesting locations to visit
+        |""".stripMargin
+
     try {
       val conversation = Conversation(
         Seq(
-          SystemMessage("You are an expert game designer specializing in text adventure games. Evaluate theme ideas and enhance them."),
+          SystemMessage(
+            "You are an expert game designer specializing in text adventure games. Evaluate theme ideas and enhance them."),
           UserMessage(validationPrompt)
         )
       )
-      
+
       client.complete(conversation) match {
         case Right(response) =>
           val responseText = response.message.content
@@ -222,21 +241,21 @@ object SzorkServer extends cask.Main with cask.Routes {
         )
     }
   }
-  
+
   private val sessionManager = new SessionManager()
   private val imageExecutor = Executors.newFixedThreadPool(4)
   private implicit val imageEC: ExecutionContext = ExecutionContext.fromExecutor(imageExecutor)
   // Ensure executor is shut down on JVM exit
   sys.addShutdownHook {
-    try imageExecutor.shutdownNow() catch { case _: Throwable => () }
+    try imageExecutor.shutdownNow()
+    catch { case _: Throwable => () }
   }
-  
+
   // Start WebSocket server for all game communication
   private val wsPort = 9002 // WebSocket port (HTTP is on 9001)
   private val wsServer = new TypedWebSocketServer(wsPort, sessionManager)(imageEC)
   wsServer.start()
   logger.info(s"Type-safe WebSocket server started on port $wsPort for all game communication")
-
 
   @get("/api/health")
   def health(): ujson.Value = {
@@ -246,7 +265,7 @@ object SzorkServer extends cask.Main with cask.Routes {
       "service" -> "szork-server"
     )
   }
-  
+
   @get("/api/games")
   def listSavedGames(): ujson.Value = {
     logger.info("Listing saved games")
@@ -272,7 +291,7 @@ object SzorkServer extends cask.Main with cask.Routes {
   def generateAdventure(request: Request): ujson.Value = {
     logger.info("Generating adventure outline")
     val json = ujson.read(request.text())
-    
+
     val theme = json.obj.get("theme").map { t =>
       GameTheme(
         id = t("id").str,
@@ -280,19 +299,19 @@ object SzorkServer extends cask.Main with cask.Routes {
         prompt = t("prompt").str
       )
     }
-    
+
     val artStyle = json.obj.get("artStyle").map { s =>
       ArtStyle(
         id = s("id").str,
         name = s("name").str
       )
     }
-    
+
     val themePrompt = theme.map(_.prompt).getOrElse("classic fantasy adventure")
     val artStyleId = artStyle.map(_.id).getOrElse("fantasy")
-    
+
     logger.info(s"Generating adventure for theme: ${theme.map(_.name).getOrElse("default")}")
-    
+
     val llmClient = org.llm4s.llmconnect.LLM.client(EnvLoader)
     AdventureGenerator.generateAdventureOutline(themePrompt, artStyleId)(llmClient) match {
       case Right(outline) =>
@@ -309,7 +328,7 @@ object SzorkServer extends cask.Main with cask.Routes {
         )
     }
   }
-  
+
   // Game start endpoint has been removed - use WebSocket newGame message instead
 
   // SSE and HTTP polling endpoints have been removed - all game communication now goes through WebSocket
@@ -320,7 +339,7 @@ object SzorkServer extends cask.Main with cask.Routes {
   // - Audio commands with transcription
   // - Image and music generation notifications
   // See TypedWebSocketServer.scala for the WebSocket implementation
-  
+
   @get("/api/game/session/:sessionId")
   def getSession(sessionId: String): ujson.Value = {
     logger.debug(s"Getting session info for: $sessionId")
@@ -340,8 +359,8 @@ object SzorkServer extends cask.Main with cask.Routes {
     }
   }
 
-  @get("/") 
-  def serveApp(): String = {
+  @get("/")
+  def serveApp(): String =
     """<!DOCTYPE html>
       |<html>
       |<head><title>Szork</title></head>
@@ -350,7 +369,6 @@ object SzorkServer extends cask.Main with cask.Routes {
       |<p>Use the frontend at http://localhost:3090 or the API endpoints directly.</p>
       |</body>
       |</html>""".stripMargin
-  }
 
   // Initialize music generation if configured
   // private val musicGen = MusicGeneration() // Commented out - not currently used
@@ -360,13 +378,12 @@ object SzorkServer extends cask.Main with cask.Routes {
 
   logger.info(s"Starting Szork Server on http://$host:$port")
 
-  
   def allRoutes = Seq(this)
-  
+
   @post("/api/game/save/:sessionId")
   def saveGame(sessionId: String): ujson.Value = {
     logger.info(s"Saving game for session: $sessionId")
-    
+
     sessionManager.getSession(sessionId) match {
       case Some(session) =>
         val gameState = session.engine.getGameState(session.gameId, session.theme, session.artStyle)
@@ -392,21 +409,22 @@ object SzorkServer extends cask.Main with cask.Routes {
         )
     }
   }
-  
+
   @get("/api/game/load/:gameId")
   def loadGame(gameId: String): ujson.Value = {
     logger.info(s"Loading game: $gameId")
-    
+
     GamePersistence.loadGame(gameId) match {
       case Right(gameState) =>
         // Create new session for loaded game
         val sessionId = IdGenerator.sessionId()
         val llmClient = org.llm4s.llmconnect.LLM.client(EnvLoader)
-        val engine = GameEngine.create(llmClient, sessionId, gameState.theme.map(_.prompt), gameState.artStyle.map(_.id), None)
-        
+        val engine =
+          GameEngine.create(llmClient, sessionId, gameState.theme.map(_.prompt), gameState.artStyle.map(_.id), None)
+
         // Restore the game state
         engine.restoreGameState(gameState)
-        
+
         val session = GameSession(
           id = sessionId,
           gameId = gameId,
@@ -414,45 +432,48 @@ object SzorkServer extends cask.Main with cask.Routes {
           theme = gameState.theme,
           artStyle = gameState.artStyle
         )
-        
+
         sessionManager.createSession(session)
         logger.info(s"Game loaded successfully: $gameId -> session $sessionId")
-        
+
         // Check for cached image for current scene
         val cachedImage = gameState.currentScene.flatMap { scene =>
           gameState.artStyle.flatMap { artStyle =>
             MediaCache.getCachedImage(
-              gameId, 
-              scene.locationId, 
-              scene.imageDescription, 
+              gameId,
+              scene.locationId,
+              scene.imageDescription,
               artStyle.id
             )
           }
         }
-        
+
         ujson.Obj(
           "status" -> "success",
           "sessionId" -> sessionId,
           "gameId" -> gameId,
           "adventureTitle" -> gameState.adventureTitle.map(ujson.Str(_)).getOrElse(ujson.Null),
-          "scene" -> gameState.currentScene.map { scene =>
-            ujson.Obj(
-              "locationId" -> scene.locationId,
-              "locationName" -> scene.locationName,
-              "narrationText" -> scene.narrationText,
-              "exits" -> scene.exits.map(exit => ujson.Obj(
-                "direction" -> exit.direction,
-                "description" -> ujson.Str(exit.description.getOrElse(""))
-              )),
-              "items" -> scene.items,
-              "npcs" -> scene.npcs,
-              "imageDescription" -> scene.imageDescription,
-              "cachedImage" -> (cachedImage match {
-                case Some(img) => ujson.Str(img)
-                case None => ujson.Null
-              })
-            )
-          }.getOrElse(ujson.Null),
+          "scene" -> gameState.currentScene
+            .map { scene =>
+              ujson.Obj(
+                "locationId" -> scene.locationId,
+                "locationName" -> scene.locationName,
+                "narrationText" -> scene.narrationText,
+                "exits" -> scene.exits.map(exit =>
+                  ujson.Obj(
+                    "direction" -> exit.direction,
+                    "description" -> ujson.Str(exit.description.getOrElse(""))
+                  )),
+                "items" -> scene.items,
+                "npcs" -> scene.npcs,
+                "imageDescription" -> scene.imageDescription,
+                "cachedImage" -> (cachedImage match {
+                  case Some(img) => ujson.Str(img)
+                  case None => ujson.Null
+                })
+              )
+            }
+            .getOrElse(ujson.Null),
           "conversationHistory" -> gameState.conversationHistory.map { entry =>
             ujson.Obj(
               "role" -> entry.role,
@@ -469,11 +490,11 @@ object SzorkServer extends cask.Main with cask.Routes {
         )
     }
   }
-  
+
   @get("/api/game/list")
   def listGames(): ujson.Value = {
     logger.info("Listing saved games")
-    
+
     val games = GamePersistence.listGames()
     ujson.Obj(
       "status" -> "success",
@@ -488,11 +509,11 @@ object SzorkServer extends cask.Main with cask.Routes {
       }
     )
   }
-  
+
   @get("/api/game/cache/:gameId")
   def getCacheStats(gameId: String): ujson.Value = {
     logger.info(s"Getting cache stats for game: $gameId")
-    
+
     val stats = MediaCache.getCacheStats(gameId)
     ujson.Obj(
       "status" -> "success",
@@ -520,17 +541,17 @@ object SzorkServer extends cask.Main with cask.Routes {
       )
     )
   }
-  
+
   @delete("/api/game/:gameId")
   def deleteGame(gameId: String): ujson.Value = {
     logger.info(s"Deleting game: $gameId")
-    
+
     // Delete the game save file
     val deleteResult = GamePersistence.deleteGame(gameId)
-    
+
     // Also clear the media cache for this game
     val cacheResult = MediaCache.clearGameCache(gameId)
-    
+
     deleteResult match {
       case Right(_) =>
         logger.info(s"Successfully deleted game: $gameId")
@@ -539,7 +560,7 @@ object SzorkServer extends cask.Main with cask.Routes {
           case Left(error) => logger.warn(s"Failed to clear cache for deleted game $gameId: $error")
           case _ => logger.info(s"Also cleared cache for deleted game: $gameId")
         }
-        
+
         ujson.Obj(
           "status" -> "success",
           "message" -> s"Game deleted: $gameId"
@@ -552,11 +573,11 @@ object SzorkServer extends cask.Main with cask.Routes {
         )
     }
   }
-  
-  @delete("/api/game/cache/:gameId")  
+
+  @delete("/api/game/cache/:gameId")
   def clearGameCache(gameId: String): ujson.Value = {
     logger.info(s"Clearing cache for game: $gameId")
-    
+
     MediaCache.clearGameCache(gameId) match {
       case Right(_) =>
         ujson.Obj(
@@ -570,7 +591,7 @@ object SzorkServer extends cask.Main with cask.Routes {
         )
     }
   }
-  
+
   // Initialize routes
   initialize()
 }

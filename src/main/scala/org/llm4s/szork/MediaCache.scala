@@ -33,6 +33,8 @@ object MediaCache {
   private val DEFAULT_MAX_BYTES = 500L * 1024 * 1024 // 500MB
   private def cacheTtlMs: Long = EnvLoader.get("SZORK_CACHE_TTL_MS").flatMap(s => scala.util.Try(s.toLong).toOption).getOrElse(DEFAULT_TTL_MS)
   private def cacheMaxBytes: Long = EnvLoader.get("SZORK_CACHE_MAX_BYTES").flatMap(s => scala.util.Try(s.toLong).toOption).getOrElse(DEFAULT_MAX_BYTES)
+  // Simple lock for metadata updates to avoid concurrent corruption
+  private object MetaLock
   
   // Ensure cache directory structure exists
   private def ensureCacheDir(gameId: String): Path = {
@@ -322,8 +324,6 @@ object MediaCache {
 
   private def hashKey(s: String): String = {
     val md = MessageDigest.getInstance("SHA-1")
-  // Simple lock for metadata updates to avoid concurrent corruption
-  private object MetaLock
     val bytes = md.digest(s.getBytes(StandardCharsets.UTF_8))
     bytes.map(b => f"$b%02x").mkString.take(12)
   }

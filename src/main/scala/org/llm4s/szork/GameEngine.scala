@@ -21,21 +21,11 @@ class GameEngine(
 )(implicit llmClient: LLMClient) {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   
-  private val themeDescription = theme.getOrElse("classic fantasy dungeon adventure")
-  private val artStyleDescription = artStyle match {
-    case Some("pixel") => "pixel art style, 16-bit retro video game aesthetic, blocky pixels, limited color palette, nostalgic 8-bit/16-bit graphics"
-    case Some("illustration") => "professional pencil drawing style, detailed graphite art, realistic shading, fine pencil strokes, sketch-like illustration"
-    case Some("painting") => "oil painting style, fully rendered painting with realistic lighting and textures, painterly brushstrokes, fine art aesthetic"
-    case Some("comic") => "comic book art style with bold lines, cel-shaded coloring, graphic novel aesthetic, dynamic comic book illustration"
-    case _ => "fantasy art style, detailed digital illustration"
-  }
+  private val themeDescription = PromptBuilder.themeDescription(theme)
+  private val artStyleDescription = PromptBuilder.artStyleDescription(artStyle)
+  private val adventureOutlinePrompt = PromptBuilder.outlinePrompt(adventureOutline)
   
-  private val adventureOutlinePrompt = adventureOutline match {
-    case Some(outline) => AdventureGenerator.outlineToSystemPrompt(outline)
-    case None => ""
-  }
-  
-  private val gamePrompt =
+  private val gamePrompt = // retained for backward-compat / legacy restore
     s"""You are a Dungeon Master guiding a text adventure game in the classic Infocom tradition.
       |
       |Adventure Theme: $themeDescription
@@ -184,6 +174,7 @@ class GameEngine(
       |  * NEVER move player through sealed hatches, locked doors, or blocked passages
       |""".stripMargin
 
+  private val completeSystemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, adventureOutline)
   private val client: LLMClient = llmClient
   private val toolRegistry = new ToolRegistry(GameTools.allTools)
   private val agent = new Agent(client)
@@ -198,7 +189,6 @@ class GameEngine(
   
   // Enhanced state tracking
   private var mediaCache: Map[String, MediaCacheEntry] = Map.empty
-  private val completeSystemPrompt: String = gamePrompt  // Store the complete system prompt
   
   def initialize(): Either[String, String] = {
     logger.info(s"[$sessionId] Initializing game with theme: $themeDescription")
@@ -315,7 +305,7 @@ class GameEngine(
           case None =>
             // Fallback: try to extract just the narrationText from the JSON
             logger.warn(s"[$sessionId] Could not parse structured response, attempting to extract narrationText")
-            val narrationText = extractNarrationTextFromJson(response).getOrElse {
+            val narrationText = ResponseInterpreter.extractNarrationTextFromJson(response).getOrElse {
               // If that also fails and it looks like JSON, return an error message
               if (response.trim.startsWith("{")) {
                 logger.error(s"[$sessionId] Failed to parse JSON response, showing error to user")

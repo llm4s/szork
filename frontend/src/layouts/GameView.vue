@@ -875,6 +875,11 @@ export default defineComponent({
       currentGameId,
       adventureTitle,
       imageGenerationEnabled,
+      // Feature flags from server
+      ttsEnabled,
+      sttEnabled,
+      musicEnabled,
+      imageEnabled,
       isConnected,
       errorSnackbar,
       errorMessage

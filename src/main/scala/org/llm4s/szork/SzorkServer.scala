@@ -160,10 +160,19 @@ object SzorkServer extends cask.Main with cask.Routes {
     logger.info(s"Validating custom theme: ${themeDescription.take(100)}...")
 
     // Use LLM to validate and enhance the theme
-    import org.llm4s.llmconnect.LLM
+    import org.llm4s.llmconnect.LLMConnect
     import org.llm4s.llmconnect.model.{SystemMessage, UserMessage, Conversation}
 
-    val client = LLM.client(EnvLoader)
+    val clientResult = LLMConnect.getClient(EnvLoader)
+    val client = clientResult match {
+      case Right(c) => c
+      case Left(error) =>
+        logger.error(s"Failed to get LLM client: ${error.message}")
+        return ujson.Obj(
+          "valid" -> false,
+          "error" -> "LLM service unavailable"
+        )
+    }
     val validationPrompt =
       s"""Analyze this adventure game theme idea and determine if it would work well for a text-based adventure game:
         |
@@ -194,7 +203,7 @@ object SzorkServer extends cask.Main with cask.Routes {
 
       client.complete(conversation) match {
         case Right(response) =>
-          val responseText = response.message.content
+          val responseText = response.content
           // Try to parse JSON from response
           val jsonStart = responseText.indexOf('{')
           val jsonEnd = responseText.lastIndexOf('}')
@@ -253,10 +262,28 @@ object SzorkServer extends cask.Main with cask.Routes {
   }
 
   // Start WebSocket server for all game communication
-  private val wsPort = 9002 // WebSocket port (HTTP is on 9001)
+  private val wsPort = org.llm4s.config.EnvLoader
+    .get("SZORK_WS_PORT")
+    .flatMap(p => scala.util.Try(p.toInt).toOption)
+    .getOrElse(9002) // Default WS port
   private val wsServer = new TypedWebSocketServer(wsPort, sessionManager)(imageEC)
   wsServer.start()
   logger.info(s"Type-safe WebSocket server started on port $wsPort for all game communication")
+  if (wsPort == config.port) {
+    logger.warn(
+      s"Configured WebSocket port ($wsPort) equals HTTP port (${config.port}). WebSocket uses a separate TCP server; ensure no port conflicts or use a reverse proxy.")
+  }
+
+  // Log a clear network summary block
+  private def logNetworkSummary(): Unit = {
+    logger.info("=== Network Endpoints ===")
+    logger.info(f"HTTP        : http://${config.host}:${config.port}")
+    logger.info(f"WebSocket   : ws://${config.host}:${wsPort}")
+    logger.info("Env Overrides: SZORK_HOST, SZORK_PORT, SZORK_WS_PORT")
+    logger.info("Dev Helper  : Vite proxy ws://localhost:3090/ws -> ws://localhost:" + wsPort)
+    logger.info("==========================")
+  }
+  logNetworkSummary()
 
   @get("/api/health")
   def health(): ujson.Value = {
@@ -320,7 +347,16 @@ object SzorkServer extends cask.Main with cask.Routes {
 
     logger.info(s"Generating adventure for theme: ${theme.map(_.name).getOrElse("default")}")
 
-    val llmClient = org.llm4s.llmconnect.LLM.client(EnvLoader)
+    val llmClientResult = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader)
+    val llmClient = llmClientResult match {
+      case Right(c) => c
+      case Left(error) =>
+        logger.error(s"Failed to get LLM client: ${error.message}")
+        return ujson.Obj(
+          "success" -> false,
+          "error" -> "LLM service unavailable"
+        )
+    }
     AdventureGenerator.generateAdventureOutline(themePrompt, artStyleId)(llmClient) match {
       case Right(outline) =>
         logger.info(s"Adventure outline generated: ${outline.title}")
@@ -426,7 +462,16 @@ object SzorkServer extends cask.Main with cask.Routes {
       case Right(gameState) =>
         // Create new session for loaded game
         val sessionId = IdGenerator.sessionId()
-        val llmClient = org.llm4s.llmconnect.LLM.client(EnvLoader)
+        val llmClientResult = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader)
+        val llmClient = llmClientResult match {
+          case Right(c) => c
+          case Left(error) =>
+            logger.error(s"Failed to get LLM client: ${error.message}")
+            return ujson.Obj(
+              "status" -> "error",
+              "error" -> "LLM service unavailable"
+            )
+        }
         val engine =
           GameEngine.create(llmClient, sessionId, gameState.theme.map(_.prompt), gameState.artStyle.map(_.id), None)
 

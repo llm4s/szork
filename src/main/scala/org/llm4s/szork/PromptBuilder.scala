@@ -30,6 +30,20 @@ object PromptBuilder {
       |
       |$outlineDesc
       |
+      |TOOL USAGE AND DISCLOSURE RULES:
+      |- You may have internal tools for inventory management (list_inventory, add_inventory_item, remove_inventory_item).
+      |- Use inventory tools ONLY when the player explicitly asks about inventory (e.g., INVENTORY, TAKE/LIST/DROP item).
+      |- NEVER mention tools, functions, or capabilities to the player. Do not say you lack functions. Always produce a valid response in the required format.
+      |- Movement, LOOK, OPEN/CLOSE, and general interactions DO NOT use tools; you generate the correct JSON directly.
+      |
+      |COMMAND MAPPING:
+      |- Movement commands (north/south/east/west/up/down/in/out):
+      |  • If passable, return TYPE 1 - FULL SCENE for the destination.
+      |  • If blocked/locked/sealed, return TYPE 2 - SIMPLE RESPONSE explaining the obstacle; keep locationId as current.
+      |- Inventory commands (inventory, take, drop, etc.):
+      |  • You may use inventory tools internally, but the user-facing output must still follow TYPE 2 - SIMPLE RESPONSE format.
+      |- Examination/help/other non-movement interactions: TYPE 2 - SIMPLE RESPONSE.
+      |
       |GAME INITIALIZATION:
       |When you receive the message "Start adventure", generate the opening scene of the adventure.
       |This should be the player's starting location, introducing them to the world and setting.
@@ -80,9 +94,9 @@ object PromptBuilder {
       |Output ONLY the complete JSON response with narrationText field included.
       |
       |FOR ALL OTHER COMMANDS (after initialization):
-      |1. First output the narration text on its own line
+      |1. First output ONLY the narration text on its own line (no meta commentary)
       |2. Then output "<<<JSON>>>" on a new line
-      |3. Then output the JSON response (WITHOUT narrationText field - we'll add it programmatically)
+      |3. Then output ONLY the JSON response (WITHOUT narrationText field - we'll add it programmatically)
       |
       |CRITICAL EXIT FORMAT:
       |The "exits" array MUST contain objects with this exact structure:

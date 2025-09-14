@@ -45,7 +45,13 @@ The frontend is configured to proxy API requests to `http://localhost:8080/api` 
 
 ## TODO
 
-- [ ] Connect to backend WebSocket/API for real-time game communication
+ - [ ] Connect to backend WebSocket/API for real-time game communication
+
+## Configuration
+
+- WebSocket URL can be configured via `VITE_WS_URL` (e.g. `ws://localhost:9002`).
+- In dev, the app connects to `ws://localhost:3090/ws`, which Vite proxies to `ws://localhost:9002`.
+- If neither is set, it defaults to `ws://<host>:9002`.
 - [ ] Add game state management with Pinia
 - [ ] Implement command history (up/down arrows)
 - [ ] Add sound effects and music

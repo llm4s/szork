@@ -21,6 +21,27 @@ import type {
 
 export type MessageHandler<T extends ServerMessage> = (message: T) => void;
 
+function deriveWsUrl(): string {
+  // 1) Explicit override via env
+  const envWs = (import.meta as any)?.env?.VITE_WS_URL as string | undefined;
+  if (envWs && envWs.trim().length > 0) return envWs.trim();
+
+  // 2) Dev server: use WS proxy path if on Vite dev port (3090)
+  try {
+    const { protocol, hostname, port } = window.location;
+    const wsScheme = protocol === 'https:' ? 'wss:' : 'ws:';
+    if (port === '3090') {
+      // Vite dev server will proxy '/ws' to the backend WS target
+      return `${wsScheme}//${hostname}:${port}/ws`;
+    }
+    // 3) Otherwise default to the known WS port 9002 on same host
+    return `${wsScheme}//${hostname}:9002`;
+  } catch {
+    // 4) Last resort
+    return 'ws://localhost:9002';
+  }
+}
+
 export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
@@ -37,8 +58,8 @@ export class WebSocketClient {
   
   private debug = (import.meta as any)?.env?.MODE !== 'production';
 
-  constructor(url: string = 'ws://localhost:9002') {
-    this.url = url;
+  constructor(url?: string) {
+    this.url = url ?? deriveWsUrl();
   }
   
   /**

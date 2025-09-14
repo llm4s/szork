@@ -35,6 +35,9 @@ class TypedWebSocketServer(
 
   override def onOpen(conn: WebSocket, handshake: ClientHandshake): Unit = {
     logger.info(s"WebSocket connection opened from: ${conn.getRemoteSocketAddress}")
+    try {
+      logger.info(s"WebSocket resource: ${handshake.getResourceDescriptor}")
+    } catch { case _: Throwable => () }
     logger.info(s"Server instance ID: $serverInstanceId")
     // Send welcome message with server instance ID
     sendMessage(
@@ -264,7 +267,19 @@ class TypedWebSocketServer(
       case ImageProvider.None => false
     }
 
-    val llmClient = org.llm4s.llmconnect.LLM.client(EnvLoader)
+    val llmClientResult = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader)
+    implicit val llmClient: org.llm4s.llmconnect.LLMClient = llmClientResult match {
+      case Right(c) => c
+      case Left(error) =>
+        logger.error(s"Failed to get LLM client: ${error.message}")
+        val errorResponse = ujson.Obj(
+          "type" -> "error",
+          "errorType" -> "NEW_GAME_ERROR",
+          "message" -> s"Failed to get LLM client: ${error.message}"
+        )
+        conn.send(ujson.write(errorResponse))
+        return
+    }
     val engine = new GameEngine(
       sessionId = sessionId,
       theme = request.theme,
@@ -277,7 +292,7 @@ class TypedWebSocketServer(
           Some(new DefaultImageClient())
         else None,
       musicClient = if (config.musicEnabled && replicateKeyPresent) Some(new DefaultMusicClient()) else None
-    )(llmClient)
+    )
 
     val sessionTts = request.tts.getOrElse(config.ttsEnabled)
     val sessionStt = request.stt.getOrElse(config.sttEnabled)
@@ -377,7 +392,19 @@ class TypedWebSocketServer(
     GamePersistence.loadGame(request.gameId) match {
       case Right(gameState) =>
         val sessionId = IdGenerator.sessionId()
-        val llmClient = org.llm4s.llmconnect.LLM.client(EnvLoader)
+        val llmClientResult = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader)
+        implicit val llmClient: org.llm4s.llmconnect.LLMClient = llmClientResult match {
+          case Right(c) => c
+          case Left(error) =>
+            logger.error(s"Failed to get LLM client: ${error.message}")
+            val errorResponse = ujson.Obj(
+              "type" -> "error",
+              "errorType" -> "LOAD_GAME_ERROR",
+              "message" -> s"Failed to get LLM client: ${error.message}"
+            )
+            conn.send(ujson.write(errorResponse))
+            return
+        }
         def imageCredsAvailable: Boolean = config.imageProvider match {
           case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
             EnvLoader
@@ -401,7 +428,7 @@ class TypedWebSocketServer(
               Some(new DefaultImageClient())
             else None,
           musicClient = if (config.musicEnabled && replicateKeyPresent) Some(new DefaultMusicClient()) else None
-        )(llmClient)
+        )
 
         // Restore game state
         engine.restoreGameState(gameState)

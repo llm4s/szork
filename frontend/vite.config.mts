@@ -41,6 +41,13 @@ export default defineConfig({
         target: "http://localhost:8090",
         changeOrigin: true,
       },
+      "/ws": {
+        target: "ws://localhost:9002",
+        ws: true,
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path: string) => path.replace(/^\/ws/, ""),
+      },
     },
   },
 });

@@ -278,8 +278,9 @@ export function useWebSocketGame() {
     wsClient.value.on('error', (msg) => {
       const data = (msg as any).data;
       // Add error message to chat
+      const details = data.details ? `: ${data.details}` : '';
       messages.value.push({
-        text: `Error: ${data.error}`,
+        text: `Error: ${data.error}${details}`,
         isUser: false,
         timestamp: new Date()
       });

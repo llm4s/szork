@@ -191,9 +191,8 @@ object SzorkServer extends cask.Main with cask.Routes {
         |- Opportunities for puzzles, challenges, or mysteries
         |- Interesting locations to visit
         |""".stripMargin
-
     try {
-      val conversation = Conversation(
+      val conversation = Conversation(  // Conversation is used in client.complete below
         Seq(
           SystemMessage(
             "You are an expert game designer specializing in text adventure games. Evaluate theme ideas and enhance them."),

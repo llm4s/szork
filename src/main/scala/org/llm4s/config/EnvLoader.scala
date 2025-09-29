@@ -6,12 +6,16 @@ import java.nio.file.{Files, Paths}
 trait ConfigReader {
   def get(key: String): Option[String]
   def getOrElse(key: String, default: String): String = get(key).getOrElse(default)
-  def require(key: String): scala.util.Either[String, String] =
+
+  def require(key: String): Either[ConfigError, String] = {
     get(key) match {
-      case Some(value) => scala.util.Right(value)
-      case None => scala.util.Left(s"Required configuration key '$key' not found")
+      case Some(value) => Right(value)
+      case None => Left(ConfigError(s"Required configuration key not found: $key"))
     }
+  }
 }
+
+case class ConfigError(message: String)
 
 object EnvLoader extends ConfigReader {
   private val logger = org.slf4j.LoggerFactory.getLogger(getClass.getSimpleName)

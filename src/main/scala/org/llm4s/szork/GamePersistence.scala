@@ -78,7 +78,6 @@ object GamePersistence {
 
       // Convert GameState to JSON
       val json = GameStateCodec.toJson(state)
-
       // Write to file with pretty formatting
       val jsonString = ujson.write(json, indent = 2)
       Files.write(filePath, jsonString.getBytes(StandardCharsets.UTF_8))

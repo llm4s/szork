@@ -34,7 +34,7 @@ object GameTools {
   /** Tool to list the player's current inventory
     */
   val listInventorySchema: ObjectSchema[Map[String, Any]] = Schema
-    .`object`[Map[String, Any]]("List inventory parameters")
+    .`object`[Map[String, Any]]("Simple returns the list of items in your inventory")
 
   def listInventoryHandler(params: SafeParameterExtractor): Either[String, InventoryListResult] = {
     val _ = params // No parameters needed for list operation

@@ -147,7 +147,9 @@ object AdventureGenerator {
 
     client.complete(Conversation(messages)) match {
       case Right(completion) =>
-        parseAdventureOutline(completion.message.content)
+        // Completion has a content field directly
+        val content = completion.content
+        parseAdventureOutline(content)
       case Left(error) =>
         logger.error(s"Failed to generate adventure outline: $error")
         Left(LLMError(s"Failed to generate adventure outline: $error", retryable = true))

@@ -40,3 +40,17 @@ class DefaultMusicClient extends MusicClient {
     impl.generateMusicWithCache(m, context, gameId, locationId) // Already returns SzorkResult
   }
 }
+
+object DefaultClients {
+  def createTTSClient(envLoader: Any): Option[TTSClient] =
+    Some(new DefaultTTSClient())
+
+  def createSTTClient(envLoader: Any): Option[STTClient] =
+    Some(new DefaultSTTClient())
+
+  def createImageClient(envLoader: Any): Option[ImageClient] =
+    Some(new DefaultImageClient())
+
+  def createMusicClient(envLoader: Any): Option[MusicClient] =
+    Some(new DefaultMusicClient())
+}

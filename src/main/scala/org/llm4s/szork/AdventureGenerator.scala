@@ -159,9 +159,23 @@ object AdventureGenerator {
   private def parseAdventureOutline(response: String): SzorkResult[AdventureOutline] = {
     if (response == null || response.isEmpty) return Left(LLMError("Received empty response from LLM", retryable = true))
     logger.info(s"Parsing adventure outline from response (length: ${response.length} chars)")
-    logger.debug(s"Response preview: ${response.take(200)}")
+    logger.info(s"Response preview: ${response.take(500)}")
+    logger.info(s"Response ending: ...${response.takeRight(200)}")
+
+    // Debug: Save full LLM response
+    try {
+      val debugFile = java.nio.file.Paths.get("debug-llm-response.txt")
+      java.nio.file.Files.write(debugFile, response.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      logger.info(s"Saved full LLM response to: ${debugFile.toAbsolutePath}")
+    } catch {
+      case e: Exception => logger.warn(s"Failed to save debug response: ${e.getMessage}")
+    }
+
     val parsed = AdventureOutlineParser.parse(response)
-    parsed.foreach(o => logger.info(s"Successfully parsed adventure outline: ${o.title}"))
+    parsed match {
+      case Right(o) => logger.info(s"Successfully parsed adventure outline: ${o.title}")
+      case Left(err) => logger.error(s"Parse error: ${err.message}")
+    }
     parsed
   }
 

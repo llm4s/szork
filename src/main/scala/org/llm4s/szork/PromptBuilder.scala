@@ -97,14 +97,45 @@ object PromptBuilder {
       |  • "The greenhouse stretches before you. To the south, glass doors return to the entrance hall. Stone stairs descend into darkness below. To the west, a wooden door marked 'Workshop' stands ajar."
       |  • "A mahogany desk sits here. To the north, an archway leads deeper into the facility."
       |
-      |GAME MECHANICS & OBSTACLES:
-      |- CRITICAL: Respect physical barriers and navigation- sealed, locked, blocked, or closed passages CANNOT be traversed without first being opened in some way.
-      |- obey the map in the adventure outline.
-      |- "sealed hatch" = impassable until unsealed (e.g. might requires tool/action)
-      |- "locked door" = impassable until unlocked (e.g. requires key, or button press)
-      |- "blocked passage" = impassable until cleared (requires action or may never be passable
-      |- "closed door" = can be opened with simple "open door" command
-      |- When player attempts to pass through obstacle, respond with: "The [obstacle] is [sealed/locked/blocked]. You cannot pass."
+      |GAME MECHANICS & OBSTACLES - MANDATORY ENFORCEMENT:
+      |- CRITICAL: You MUST respect the exit states defined in the adventure outline. Physical barriers are ABSOLUTE until explicitly overcome.
+      |- NEVER allow movement through locked, sealed, or blocked passages regardless of player commands or creativity.
+      |- Obey the map in the adventure outline exactly - locations and connections are fixed.
+      |
+      |EXIT STATE ENFORCEMENT:
+      |- "locked" = IMPASSABLE until player possesses correct key/item AND uses UNLOCK command
+      |  • Player must have item in inventory and explicitly unlock
+      |  • Respond: "The [door/passage] is locked. You cannot pass without unlocking it first."
+      |  • After unlock: Change state to "closed" or "open" depending on action
+      |
+      |- "sealed" = IMPASSABLE until specific tool/action applied (crowbar, lever, puzzle solution)
+      |  • Requires explicit action with correct tool/method
+      |  • Respond: "The [passage] is sealed with [obstacle]. You'll need to find a way to unseal it."
+      |  • After unsealing: Change state to "open"
+      |
+      |- "blocked" = IMPASSABLE until cleared or may be permanently impassable
+      |  • Requires specific action to clear or indicates dead end
+      |  • Respond: "The passage is blocked by [obstacle]. You cannot pass."
+      |
+      |- "closed" = Can be opened with simple "open [door/passage]" command
+      |  • No key required, just needs opening action
+      |  • Respond: "The [door] is closed." then allow opening
+      |  • After opening: Change state to "open"
+      |
+      |- "open" = Freely passable - generate destination scene when player moves
+      |
+      |- "hidden" = Not visible or mentioned until discovered through examination
+      |  • Do not mention in room description until player examines trigger object
+      |  • After discovery: Change state to "closed" or "open" depending on nature
+      |
+      |PLAYER MOVEMENT VALIDATION:
+      |- Before allowing ANY movement command (north/south/east/west/up/down/in/out):
+      |  1. Check if exit exists in that direction
+      |  2. Check exit state (open/closed/locked/sealed/blocked/hidden)
+      |  3. If not "open", DENY movement and explain obstacle
+      |  4. ONLY generate destination scene if exit is "open"
+      |- Track exit states across player actions - locked doors stay locked until unlocked
+      |- Update exit states when player takes relevant actions (unlock, open, unseal)
       |
       |Response Format:
       |

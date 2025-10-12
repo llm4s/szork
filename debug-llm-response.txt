@@ -1,120 +1,129 @@
 ```json
 {
-  "title": "The Cartographer's Last Map",
-  "tagline": "Some treasures are worth more than gold—they're worth remembering.",
-  "mainQuest": "Find the legendary Celestial Compass hidden within the abandoned tower of Master Aldric, the realm's greatest cartographer. But beware—his final creation may hold secrets darker than mere navigation.",
+  "title": "The Blackwood Inheritance",
+  "tagline": "Some legacies are better left unclaimed",
+  "mainQuest": "You've inherited your great-aunt Cordelia's mansion, but to claim it legally, you must spend one night inside and solve the mystery of her disappearance. The house itself seems determined to prevent you from succeeding.",
   "subQuests": [
-    "Recover Aldric's personal journal to understand his final days",
-    "Restore the ancient star chart to unlock the tower's deepest mystery",
-    "Discover the true fate of Eldara, Aldric's vanished apprentice"
+    "Restore power to the mansion by repairing the generator",
+    "Uncover the truth about the previous caretaker's fate",
+    "Locate Cordelia's hidden will and testament"
   ],
   "keyLocations": [
     {
-      "id": "tower_entrance",
-      "name": "Tower Entrance Hall",
-      "description": "Dust motes dance in pale shafts of light filtering through cracked windows, illuminating a circular chamber that once welcomed visitors to Master Aldric's tower. Faded murals of distant lands spiral up the walls, their colors dulled by years of neglect. A grand staircase curves upward to the north, its marble banister worn smooth by countless hands, while an iron-bound door stands firmly closed to the east.",
+      "id": "foyer",
+      "name": "Grand Foyer",
+      "description": "Moonlight filters through grimy stained glass, casting colored shadows across a once-magnificent entrance hall. A crystal chandelier hangs dark and silent overhead, while dust motes dance in the pale beams. An ornate mahogany desk sits against the east wall, its brass lamp unlit but promising. To the north, double doors of dark oak stand slightly ajar, revealing glimpses of a shadowy parlor beyond. A narrow servants' staircase climbs upward along the west wall, and to the south, the heavy front door remains your only certain escape.",
       "exits": [
         {
           "direction": "north",
-          "targetId": "library",
-          "description": "A marble staircase curves gracefully upward",
+          "targetId": "parlor",
+          "description": "Double doors of dark oak stand slightly ajar",
+          "state": "open",
+          "obstacle": ""
+        },
+        {
+          "direction": "up",
+          "targetId": "upstairs_hall",
+          "description": "A narrow servants' staircase climbs upward along the west wall",
+          "state": "open",
+          "obstacle": ""
+        },
+        {
+          "direction": "south",
+          "targetId": "outside",
+          "description": "The heavy front door leads back to the world beyond",
+          "state": "open",
+          "obstacle": ""
+        }
+      ],
+      "interactables": ["mahogany desk", "brass lamp", "crystal chandelier", "stained glass windows", "dust patterns on floor"],
+      "puzzles": "The desk drawer is locked, but examining the lamp base reveals a hidden key. The chandelier can be lowered by pulling a concealed chain, revealing a message etched in the crystal.",
+      "secrets": "Examining the dust patterns on the floor reveals recent footprints leading to the desk - someone else has been here recently. The lamp, when examined, has a key taped to its base.",
+      "significance": "Tutorial area that teaches basic interactions and introduces the mystery. The desk contains Cordelia's journal with the first clues about her research into the house's history."
+    },
+    {
+      "id": "parlor",
+      "name": "Moonlit Parlor",
+      "description": "Heavy velvet drapes frame tall windows that let in pools of silver light, illuminating a room frozen in time. Leather-bound books line the walls from floor to ceiling, while a marble fireplace dominates the north wall, cold ashes scattered on its hearth. A grandfather clock stands silent in the corner, its pendulum still, hands pointing to midnight. To the east, a narrow door marked 'STUDY' bears a heavy brass lock, while westward, an archway opens into what appears to be a dining room shrouded in darkness.",
+      "exits": [
+        {
+          "direction": "south",
+          "targetId": "foyer",
+          "description": "The double doors lead back to the foyer",
           "state": "open",
           "obstacle": ""
         },
         {
           "direction": "east",
-          "targetId": "workshop",
-          "description": "An iron-bound oak door, its surface carved with compass roses",
+          "targetId": "study",
+          "description": "A narrow door marked 'STUDY' bears a heavy brass lock",
           "state": "locked",
-          "obstacle": "secured with an intricate brass lock shaped like a sextant"
-        }
-      ],
-      "interactables": ["murals", "windows", "banister", "brass lock", "floor tiles", "dust patterns"],
-      "puzzles": "The brass lock requires the Sextant Key. Examining the murals reveals they form a map showing the tower's layout, with certain locations marked by tiny gemstones.",
-      "secrets": "Close examination of the floor tiles reveals wear patterns leading primarily to the staircase, but also faint scuff marks toward a section of wall that seems slightly discolored.",
-      "significance": "Establishes the tower's former grandeur and introduces the locked workshop mystery. The murals serve as both atmosphere and a subtle map for navigation."
-    },
-    {
-      "id": "library",
-      "name": "The Circular Library",
-      "description": "Books line the curved walls from floor to ceiling, their leather bindings creating a patchwork of browns and burgundies in the soft light from tall windows. A reading desk sits in the center, its surface scattered with open atlases and navigation instruments, as if someone left mid-calculation. Stone steps spiral upward through an opening in the ceiling to the north, while the entrance hall lies south down the marble staircase.",
-      "exits": [
-        {
-          "direction": "north",
-          "targetId": "observatory",
-          "description": "Stone steps spiral up through a circular opening in the ceiling",
-          "state": "open",
-          "obstacle": ""
+          "obstacle": "locked with an ornate brass lock requiring an old-fashioned skeleton key"
         },
-        {
-          "direction": "south",
-          "targetId": "tower_entrance",
-          "description": "The marble staircase descends to the entrance hall",
-          "state": "open",
-          "obstacle": ""
-        }
-      ],
-      "interactables": ["books", "reading desk", "atlases", "navigation instruments", "windows", "bookshelf sections", "scattered papers", "ink wells"],
-      "puzzles": "Aldric's journal is hidden in a secret compartment in the desk, revealed by examining the navigation instruments—one compass points to a specific drawer. The scattered papers contain fragments of star charts that must be assembled.",
-      "secrets": "The books are organized by a peculiar system—examining them reveals certain volumes have been moved recently, and these form a code when their spine symbols are read in order.",
-      "significance": "Central hub of the tower containing Aldric's journal and crucial star chart fragments. Environmental storytelling through the 'interrupted work' scene suggests his sudden disappearance."
-    },
-    {
-      "id": "observatory",
-      "name": "The Star Chamber Observatory",
-      "description": "A magnificent brass telescope dominates this circular room, its lens trained on the heavens through an open dome overhead. Star charts paper the walls like celestial wallpaper, their constellation patterns glittering with tiny embedded crystals. Ancient astronomical instruments crowd a workbench beneath the eastern window, while a narrow ladder leads down through a trapdoor to the south.",
-      "exits": [
-        {
-          "direction": "south",
-          "targetId": "library",
-          "description": "Stone steps spiral down through the circular opening",
-          "state": "open",
-          "obstacle": ""
-        },
-        {
-          "direction": "down",
-          "targetId": "hidden_chamber",
-          "description": "A narrow ladder descends through a wooden trapdoor",
-          "state": "hidden",
-          "obstacle": "concealed beneath a moveable section of star charts"
-        }
-      ],
-      "interactables": ["telescope", "star charts", "crystals", "astronomical instruments", "workbench", "dome mechanism", "crystal patterns", "trapdoor"],
-      "puzzles": "The telescope must be aligned with specific constellations shown in the assembled star chart fragments. When properly aligned, it reveals the location of the hidden trapdoor by casting light patterns on the floor.",
-      "secrets": "The crystals in the star charts form a three-dimensional constellation map when viewed through the telescope at the correct angle. One instrument on the workbench is actually the Sextant Key in disguise.",
-      "significance": "The astronomical puzzle hub that reveals the hidden chamber. The telescope serves as both a magnificent centerpiece and the key mechanism for progression."
-    },
-    {
-      "id": "workshop",
-      "name": "The Cartographer's Workshop",
-      "description": "Hundreds of maps cover every surface—walls, tables, even the ceiling—creating a paper labyrinth of distant realms and forgotten places. Drafting tools lie scattered across a massive oak table, alongside bottles of colored inks that have long since dried to jewel-like crusts. A cold fireplace dominates the western wall, its mantel crowded with curious globe-shaped objects, while the entrance door stands to the west.",
-      "exits": [
         {
           "direction": "west",
-          "targetId": "tower_entrance",
-          "description": "The iron-bound door leads back to the entrance hall",
+          "targetId": "dining_room",
+          "description": "An archway opens westward into shadowy darkness",
           "state": "open",
           "obstacle": ""
         }
       ],
-      "interactables": ["maps", "drafting tools", "oak table", "ink bottles", "fireplace", "globe objects", "mantel", "map details", "compass roses", "partially drawn maps"],
-      "puzzles": "The globes on the mantel are actually combination locks. The correct combination is hidden in the details of specific maps around the room. When solved, they reveal compartments containing map-making tools needed elsewhere.",
-      "secrets": "One map appears unfinished but examining it closely reveals it's actually a map of the tower itself, with a secret passage marked. The fireplace has a false back that opens when the correct globe combination is entered.",
-      "significance": "Aldric's creative heart, containing tools needed for other puzzles and revealing his obsession with mapping everything—including his own tower's secrets."
+      "interactables": ["bookshelf", "grandfather clock", "marble fireplace", "velvet drapes", "scattered ashes", "leather-bound books"],
+      "puzzles": "The grandfather clock can be wound with a key found elsewhere, revealing a hidden compartment. Certain books can be pulled to activate a mechanism. The fireplace has a loose brick hiding a skeleton key.",
+      "secrets": "Examining the bookshelf reveals that several volumes are actually false fronts. Pulling 'Mysteries of Architecture' causes the fireplace to swing inward slightly. The ashes in the fireplace, when examined closely, contain fragments of burned letters.",
+      "significance": "Central hub connecting multiple areas. Contains the skeleton key needed for the study and introduces the house's mechanical secrets through the bookshelf puzzle."
     },
     {
-      "id": "hidden_chamber",
-      "name": "The Memory Vault",
-      "description": "This secret chamber pulses with an otherworldly blue glow emanating from crystalline formations embedded in the walls. At the room's heart stands a pedestal holding an ornate compass that seems to contain swirling galaxies within its face—the legendary Celestial Compass. Ancient stone tablets line the walls, covered in symbols that shift and change when viewed directly, while the ladder back to the observatory provides the only visible exit upward.",
+      "id": "study",
+      "name": "Cordelia's Study",
+      "description": "This intimate chamber feels like the heart of the house's mysteries, lined with arcane texts and scientific instruments that gleam in the lamplight. A massive oak desk dominates the center, its surface covered with charts, calculations, and what appears to be architectural blueprints of the mansion itself. Strange symbols are chalked on a blackboard mounted on the east wall, while to the north, a heavy wooden door bears multiple locks and warning signs. The only other exit leads south, back to the parlor through the door you entered.",
       "exits": [
         {
+          "direction": "south",
+          "targetId": "parlor",
+          "description": "The door leads back to the parlor",
+          "state": "open",
+          "obstacle": ""
+        },
+        {
+          "direction": "north",
+          "targetId": "basement_stairs",
+          "description": "A heavy wooden door bears three different locks and warning signs",
+          "state": "sealed",
+          "obstacle": "sealed with three different locks: brass, iron, and silver, each requiring a different key"
+        }
+      ],
+      "interactables": ["oak desk", "architectural blueprints", "blackboard", "strange symbols", "scientific instruments", "arcane texts", "warning signs"],
+      "puzzles": "The blueprints reveal the location of hidden passages. The symbols on the blackboard form a cipher that, when decoded, gives the combination to a safe. The desk has a secret compartment activated by pressing certain points on the blueprints.",
+      "secrets": "The blueprints show rooms that don't appear to exist, including a chamber directly beneath the study. Examining the scientific instruments reveals they're designed to measure electromagnetic fields. The desk's secret compartment contains Cordelia's research notes about 'temporal anomalies' in the basement.",
+      "significance": "Key story location revealing Cordelia's research into the house's supernatural properties. Contains crucial information needed to understand the basement mystery and provides tools for the final confrontation."
+    },
+    {
+      "id": "dining_room",
+      "name": "Abandoned Dining Room",
+      "description": "A long mahogany table stretches the length of this formal dining room, set for twelve but covered in decades of dust and neglect. Tarnished silver candlesticks stand like sentinels down its center, while portraits of stern-faced ancestors gaze down from the walls with disapproving eyes. A crystal chandelier hangs precariously overhead, several chains broken and crystals scattered on the floor below. To the north, a swinging door leads toward what must be the kitchen, while an elegant staircase curves upward to the east, its bannister carved with intricate roses.",
+      "exits": [
+        {
+          "direction": "east",
+          "targetId": "parlor",
+          "description": "The archway leads back to the parlor",
+          "state": "open",
+          "obstacle": ""
+        },
+        {
+          "direction": "north",
+          "targetId": "kitchen",
+          "description": "A swinging door leads toward the kitchen",
+          "state": "open",
+          "obstacle": ""
+        },
+        {
           "direction": "up",
-          "targetId": "observatory",
-          "description": "The narrow ladder climbs back to the observatory",
+          "targetId": "upstairs_hall",
+          "description": "An elegant staircase curves upward, its bannister carved with roses",
           "state": "open",
           "obstacle": ""
         }
       ],
-      "interactables": ["crystalline formations", "pedestal", "Celestial Compass", "stone tablets", "shifting symbols", "blue glow", "galaxy patterns", "ancient inscriptions"],
-      "puzzles": "The Celestial Compass is protected by a final puzzle requiring elements from all previous areas: the assembled star chart, Aldric's journal, and the proper astronomical alignment from the observatory telescope.",
-      "secrets": "The shifting
+      "interactables": ["mahogany table", "tarnished candlesticks", "ancestor portraits", "crystal chandelier", "scattered crystals", "carved bannister"],
+      "puzzles": "One of the portraits hides a wall safe behin

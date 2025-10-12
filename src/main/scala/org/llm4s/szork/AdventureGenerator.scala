@@ -149,6 +149,30 @@ object AdventureGenerator {
         |- At least 1 hidden passage or secret compartment discoverable by examination
         |- Clear progression: starting area → obstacles requiring items → goal achievement
         |
+        |STARTING LOCATION DESIGN (Tutorial Elements):
+        |- The FIRST location in keyLocations array is the starting room - design it carefully as the player's introduction
+        |- MUST have at least one obvious item to pick up (lying on table/floor, sitting on shelf)
+        |  • Make it visually prominent in description: "A brass lantern sits on the dusty table"
+        |  • Should be useful but not critical (flashlight, key to optional room, map, notebook)
+        |- MUST have at least one clearly examinable object that rewards examination
+        |  • Object should reveal interesting detail or minor clue when examined
+        |  • Example: desk reveals hidden drawer, painting shows map detail, book contains hint
+        |- MUST have at least ONE open/unlocked exit for immediate exploration
+        |  • Player should never feel trapped in starting location
+        |  • At least one direction should be freely accessible (state: "open")
+        |  • Other exits can be locked/closed to teach obstacle mechanics
+        |- Should introduce core mechanics implicitly through obvious opportunities:
+        |  • Taking items: obvious item to pick up
+        |  • Examining: interesting object that rewards closer look
+        |  • Navigation: clear open passage mentioned in description
+        |  • Obstacles: perhaps one locked/closed door to introduce barriers
+        |- Keep starting room relatively simple - don't overwhelm with puzzles
+        |  • 2-3 interactable objects maximum in starting location
+        |  • Save complex puzzles for later locations
+        |  • Focus on teaching "examine everything" and "try obvious things"
+        |- Establish tone and atmosphere immediately but prioritize clarity
+        |  • Players should quickly understand: where they are, what they can do, where they can go
+        |
         |DESIGN PHILOSOPHY:
         |- Every detail serves atmosphere OR gameplay, ideally both
         |- Players feel clever for noticing connections, not frustrated by obscurity

@@ -56,9 +56,10 @@ object PromptBuilder {
       |ROOM DESCRIPTIONS:
       |- Follow the verbose/brief convention: First visit shows terse description (1-2 sentences), subsequent visits even briefer
       |- Be economical with words: "Dark cellar. Stone stairs lead up." not "You find yourself in a musty, dimly-lit cellar with ancient stone walls."
-      |- Structure: Location type → key features → exits
+      |- Structure: Location type → key features → objects → exits (in prose)
       |- Avoid excessive adjectives: "brass lantern" not "ancient, tarnished brass lantern with mysterious engravings"
       |- Essential information only: Save atmospheric details for EXAMINE commands
+      |- CRITICAL: Every room description must mention ALL exits naturally within the prose
       |
       |OBJECT PRESENTATION:
       |- Use Infocom house style: "There is a brass lantern here" or "A battery-powered lantern is on the trophy case"
@@ -66,6 +67,7 @@ object PromptBuilder {
       |- Avoid special capitalization - trust players to explore mentioned items
       |- Follow noun prominence: Important objects appear explicitly, not buried in prose
       |- Three-tier importance: Essential objects mentioned 3 times, useful twice, atmospheric once
+      |- Every mentioned noun should reward examination with additional detail
       |
       |NARRATIVE STYLE:
       |- Second-person present tense: "You are in a forest clearing"
@@ -73,11 +75,27 @@ object PromptBuilder {
       |- Minimal adjectives: Use only when functionally necessary
       |- Classic terseness: "Forest clearing. Paths lead north and south." is preferred
       |- Fair play principle: All puzzle information discoverable within game world logic
+      |- Make rooms feel interactive: include objects to examine, things to manipulate, puzzles to solve
       |
-      |EXIT PRESENTATION:
-      |- Integrate naturally into prose: "A path leads north into the forest" rather than "Exits: north"
-      |- Distinguish between open and blocked paths: "an open door leads north" vs "a closed door blocks the northern exit"
-      |- Use standard directions: cardinal (north/south/east/west), vertical (up/down), relative (in/out)
+      |EXIT PRESENTATION - CRITICAL REQUIREMENT:
+      |- MANDATORY: ALL exits MUST be integrated into the narrationText prose naturally
+      |- NEVER rely on separate exit display - the description must be complete and self-contained
+      |- Classic patterns to use:
+      |  • "To the north, glass doors lead into a greenhouse"
+      |  • "Stone stairs descend into darkness below"
+      |  • "A wooden door stands to the east"
+      |  • "The path continues south through twisted trees"
+      |  • "An archway opens to the west"
+      |- Distinguish passage states clearly:
+      |  • Open: "To the north, glass doors stand open" or "A path leads north"
+      |  • Closed: "To the east, a wooden door is closed"
+      |  • Locked: "To the south, an iron door is locked shut"
+      |  • Sealed: "The northern passage is sealed with heavy stones"
+      |  • Hidden: Don't mention until discovered
+      |- The exits JSON array is for navigation mechanics only - players read narrationText
+      |- Examples of proper integration:
+      |  • "The greenhouse stretches before you. To the south, glass doors return to the entrance hall. Stone stairs descend into darkness below. To the west, a wooden door marked 'Workshop' stands ajar."
+      |  • "A mahogany desk sits here. To the north, an archway leads deeper into the facility."
       |
       |GAME MECHANICS & OBSTACLES:
       |- CRITICAL: Respect physical barriers and navigation- sealed, locked, blocked, or closed passages CANNOT be traversed without first being opened in some way.

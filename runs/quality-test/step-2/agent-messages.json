@@ -1,0 +1,20 @@
+[
+  {
+    "type": "user",
+    "content": "Start adventure"
+  },
+  {
+    "type": "assistant",
+    "content": "{\n  \"responseType\": \"fullScene\",\n  \"narrationText\": \"You stand before the brass-bound doors of the Clockwork Conservatory. Through tall windows, impossible gardens shimmer where copper roses bloom in perpetual spring while iron daisies wilt in endless autumn. The entrance hall stretches before you - brass pipes snake across vaulted ceilings like metallic vines, and a reception desk of polished mahogany sits beneath a flickering gas lamp.\",\n  \"locationId\": \"entrance_hall\",\n  \"locationName\": \"The Entrance Hall\",\n  \"imageDescription\": \"A grand entrance hall with vaulted ceilings covered in brass pipes that twist like metallic vines, their surfaces green with patina. A polished mahogany reception desk sits beneath a flickering gas lamp, with drawers slightly ajar. Through tall arched windows, glimpses of impossible gardens where mechanical flowers bloom in different seasons simultaneously.\",\n  \"musicDescription\": \"Mysterious and atmospheric music with subtle mechanical ticking sounds, brass instrument undertones, and an air of faded grandeur mixed with temporal distortion.\",\n  \"musicMood\": \"mystery\",\n  \"exits\": [\n    {\n      \"direction\": \"north\",\n      \"locationId\": \"temporal_greenhouse\",\n      \"description\": \"Glass doors lead to a greenhouse where clockwork trees tick softly\"\n    }\n  ],\n  \"items\": [\"visitor's logbook\", \"flickering gas lamp\"],\n  \"npcs\": []\n}",
+    "toolCalls": []
+  },
+  {
+    "type": "user",
+    "content": "look around"
+  },
+  {
+    "type": "assistant",
+    "content": "You examine the entrance hall more carefully. Brass pipes snake across the vaulted ceiling, their aged surfaces telling stories of countless seasons. The mahogany reception desk dominates the space, its drawers slightly ajar as if recently searched. A visitor's logbook lies open on the desk's surface, and the flickering gas lamp casts dancing shadows across faded wallpaper.\n\n<<<JSON>>>\n{\n  \"responseType\": \"fullScene\",\n  \"locationId\": \"entrance_hall\",\n  \"locationName\": \"The Entrance Hall\",\n  \"imageDescription\": \"A detailed view of the entrance hall showing the intricate brass pipe network across the ceiling, the mahogany reception desk with partially opened drawers, an open visitor's logbook, and flickering gas lamp casting warm light and shadows across faded Victorian wallpaper.\",\n  \"musicDescription\": \"Mysterious and atmospheric music with subtle mechanical ticking sounds, brass instrument undertones, and an air of faded grandeur mixed with temporal distortion.\",\n  \"musicMood\": \"mystery\",\n  \"exits\": [\n    {\n      \"direction\": \"north\",\n      \"locationId\": \"temporal_greenhouse\",\n      \"description\": \"Glass doors lead to a greenhouse where clockwork trees tick softly\"\n    }\n  ],\n  \"items\": [\"visitor's logbook\", \"flickering gas lamp\"],\n  \"npcs\": []\n}",
+    "toolCalls": []
+  }
+]

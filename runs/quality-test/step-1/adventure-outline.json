@@ -1,0 +1,99 @@
+{
+  "title": "The Clockwork Conservatory",
+  "tagline": "Where time grows wild and mechanical flowers bloom eternal",
+  "mainQuest": "Restore the Great Chronometer to save the dying Conservatory, where temporal magic once sustained an impossible garden of clockwork flora. The facility's time-weaving mechanisms are failing, threatening to trap you forever in temporal loops.",
+  "subQuests": [
+    "Discover the fate of Master Botanist Elara Gearwright",
+    "Collect the three Temporal Seeds hidden throughout the facility",
+    "Repair the relationships between the feuding mechanical gardeners"
+  ],
+  "keyLocations": [
+    {
+      "id": "entrance_hall",
+      "name": "The Entrance Hall",
+      "description": "Brass pipes snake across vaulted ceilings like metallic vines, their surfaces green with age. A reception desk of polished mahogany sits beneath a flickering gas lamp, its drawers slightly ajar. Through tall windows, you glimpse impossible gardens where copper roses bloom in perpetual spring while iron daisies wilt in endless autumn.",
+      "significance": "Establishes the temporal anomalies and introduces the facility's dual nature - beautiful but broken. Contains the visitor's logbook revealing Elara's last day and the master key hidden in the desk's secret compartment."
+    },
+    {
+      "id": "temporal_greenhouse",
+      "name": "The Temporal Greenhouse",
+      "description": "Glass panels arch overhead, some frosted with winter's touch while others shimmer with summer heat. Clockwork trees grow in neat rows, their brass leaves ticking softly as they photosynthesize light into time itself. A central fountain bubbles with liquid mercury, its flow reversing every few seconds.",
+      "significance": "Core puzzle location where players learn to manipulate time flow using the Temporal Seeds. The mercury fountain is key to understanding the facility's time mechanics, and examining the trees reveals the pattern needed for the final restoration."
+    },
+    {
+      "id": "workshop",
+      "name": "Master Gearwright's Workshop",
+      "description": "Workbenches overflow with half-assembled botanical automata and crystalline chronometers. A massive orrery dominates the center, its planets frozen mid-orbit. Blueprints cover every surface, their ink shifting between fresh blue and faded sepia as temporal waves wash over them.",
+      "significance": "Reveals Elara's final experiment and contains the Harmonic Tuning Fork needed to calibrate the Great Chronometer. The shifting blueprints provide crucial clues about the facility's original purpose and the location of the master control room."
+    },
+    {
+      "id": "memory_garden",
+      "name": "The Memory Garden",
+      "description": "Paths of crushed pearl wind between beds where translucent flowers bloom with captured moments - a child's laughter echoes from silver snapdragons, while golden marigolds replay summer afternoons. At the garden's heart stands a weeping willow of woven copper wire, its branches heavy with crystallized tears.",
+      "significance": "Emotional centerpiece where players discover Elara's personal story through the memory flowers. The copper willow contains her final message and the location of the third Temporal Seed, accessible only after solving the gardeners' conflict."
+    },
+    {
+      "id": "chronometer_chamber",
+      "name": "The Great Chronometer Chamber",
+      "description": "A cathedral of gears and pendulums stretches impossibly high, its mechanisms frozen in temporal amber. The Great Chronometer itself pulses weakly at the chamber's heart, a sphere of crystallized time surrounded by concentric rings of tarnished brass. Maintenance catwalks spiral upward into shadow.",
+      "significance": "Final location where all puzzles converge. Players must use everything they've learned about temporal manipulation to restart the Great Chronometer, with multiple solutions possible based on their choices throughout the adventure."
+    },
+    {
+      "id": "servants_quarters",
+      "name": "The Servants' Quarters",
+      "description": "Small but tidy rooms line a narrow corridor, each door bearing a nameplate in flowing script. Most rooms are empty save for dust and faded photographs, but soft mechanical humming emanates from behind one door marked 'Brass & Copper - Gardening Division.'",
+      "significance": "Hidden location discovered through careful exploration, housing the feuding mechanical gardeners Brass and Copper. Solving their conflict unlocks crucial information about the facility's maintenance protocols and provides an alternate solution to the final puzzle."
+    }
+  ],
+  "importantItems": [
+    {
+      "name": "Harmonic Tuning Fork",
+      "description": "A silver tuning fork rests among the scattered tools, its prongs humming faintly with residual temporal energy",
+      "purpose": "Essential for calibrating the Great Chronometer's resonance frequency. When struck, it reveals hidden temporal currents and can synchronize disconnected mechanisms throughout the facility."
+    },
+    {
+      "name": "Memory Crystal Lens",
+      "description": "A multifaceted crystal lens catches the light, its surface swirling with trapped rainbow patterns",
+      "purpose": "Allows players to view and interact with memory flowers in the Memory Garden, revealing crucial backstory and the location of hidden items. Also serves as a component in repairing the Great Chronometer."
+    },
+    {
+      "name": "Temporal Seeds",
+      "description": "Three seeds of different metals gleam with inner light - one copper (warmth), one silver (balance), and one gold (acceleration)",
+      "purpose": "Control time flow in different areas of the Conservatory. Must be planted in specific locations to restore temporal stability. Each seed also unlocks different ending paths based on how they're used."
+    },
+    {
+      "name": "Master's Journal",
+      "description": "A leather-bound journal lies open, its pages filled with Elara's precise handwriting and detailed botanical diagrams",
+      "purpose": "Contains the theoretical framework for temporal botany, essential formulas for the final puzzle, and personal entries that reveal the true cause of the facility's breakdown. Provides multiple puzzle solutions."
+    },
+    {
+      "name": "Maintenance Wrench",
+      "description": "A brass wrench with an adjustable head sits on the workbench, its handle worn smooth by countless hands",
+      "purpose": "Multi-use tool for mechanical puzzles throughout the facility. Can adjust clockwork mechanisms, repair broken automata, and serves as a key for accessing maintenance areas. Essential for the gardeners' subplot."
+    }
+  ],
+  "keyCharacters": [
+    {
+      "name": "Brass",
+      "role": "Mechanical gardener (perfectionist)",
+      "description": "A humanoid automaton of polished brass moves with precise, measured steps. Their voice chimes like a music box as they obsessively tend to perfectly symmetrical flower beds, muttering about 'proper growing protocols' and 'inefficient organic methods.'"
+    },
+    {
+      "name": "Copper",
+      "role": "Mechanical gardener (free spirit)",
+      "description": "This copper-plated gardener moves with fluid, almost dance-like motions, their verdigris patina telling stories of countless seasons. They hum while working, encouraging wild growth patterns and speaking fondly of 'happy accidents' and 'natural chaos.'"
+    },
+    {
+      "name": "The Echo",
+      "role": "Temporal ghost/guide",
+      "description": "A shimmering, translucent figure that appears at moments of temporal instability - sometimes young, sometimes old, always wearing a botanist's apron. They speak in overlapping voices from different time periods, offering cryptic but helpful advice."
+    },
+    {
+      "name": "Master Elara Gearwright",
+      "role": "Absent creator/mystery",
+      "description": "Though physically absent, Elara's presence permeates the facility through her journals, recorded messages, and the memory flowers that preserve her thoughts. Brilliant but obsessive, she sacrificed herself to prevent a temporal catastrophe."
+    }
+  ],
+  "adventureArc": "",
+  "specialMechanics": null
+}

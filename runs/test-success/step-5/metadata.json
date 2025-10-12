@@ -1,0 +1,11 @@
+{
+  "sessionName": "test-success",
+  "stepNumber": 5,
+  "timestamp": "1760297355907",
+  "userCommand": "take coiled rope",
+  "responseLength": 131,
+  "toolCallCount": 1,
+  "messageCount": 12,
+  "success": true,
+  "error": null
+}

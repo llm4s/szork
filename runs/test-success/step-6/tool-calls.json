@@ -1,0 +1,18 @@
+[
+  {
+    "id": "toolu_019FSJAUwWPGgiqQMxNpkBcF",
+    "name": "add_inventory_item",
+    "arguments": {
+      "item": "coiled rope"
+    },
+    "result": "{\"success\":true,\"message\":\"Added 'coiled rope' to your inventory\",\"item\":\"coiled rope\",\"inventory\":[\"coiled rope\"]}",
+    "timestamp": "1760297371644"
+  },
+  {
+    "id": "toolu_01LxzF37B5A6KnVxoSv4mJ46",
+    "name": "list_inventory",
+    "arguments": {},
+    "result": null,
+    "timestamp": "1760297371644"
+  }
+]

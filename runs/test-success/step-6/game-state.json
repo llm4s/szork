@@ -1,0 +1,318 @@
+{
+  "gameId": "game-6713c494",
+  "theme": {
+    "id": "fantasy",
+    "name": "pirate",
+    "prompt": "pirate"
+  },
+  "artStyle": {
+    "id": "fantasy",
+    "name": "fantasy"
+  },
+  "currentScene": {
+    "locationId": "ship_deck",
+    "locationName": "Ship's Deck",
+    "narrationText": "You stand on the weathered deck of Captain Redbeard's ship, the Crimson Tide. First Mate Sullivan paces nervously near the mainmast, his weathered hands fidgeting with a length of rope. A wooden hatch in the deck leads down to the hold, while the captain's cabin door stands slightly ajar to the north. Rope rigging stretches up toward the crow's nest, and a gangplank extends east to the dock.",
+    "imageDescription": "A weathered pirate ship deck under overcast skies, with coiled ropes, wooden barrels, and brass fittings gleaming despite the salt corrosion. The mainmast towers overhead with furled sails, while the harbor stretches beyond the gunwale. Fantasy art style, detailed digital illustration.",
+    "musicDescription": "Atmospheric sea shanty with creaking wood, distant gulls, and gentle waves lapping against the hull, building tension with minor key undertones suggesting mystery and danger.",
+    "musicMood": "mystery",
+    "exits": [
+      {
+        "direction": "down",
+        "locationId": "ship_hold",
+        "description": "A wooden hatch leads down into the ship's hold"
+      },
+      {
+        "direction": "north",
+        "locationId": "redbeard_cabin",
+        "description": "The captain's cabin door stands slightly ajar"
+      },
+      {
+        "direction": "up",
+        "locationId": "crow_nest",
+        "description": "Rope rigging leads up to the crow's nest"
+      },
+      {
+        "direction": "east",
+        "locationId": "tavern_main",
+        "description": "A gangplank leads to the dock and the Salty Anchor Tavern"
+      }
+    ],
+    "items": [
+      "coiled rope",
+      "water barrel"
+    ],
+    "npcs": [
+      "First Mate Sullivan"
+    ]
+  },
+  "visitedLocations": [
+    "ship_deck"
+  ],
+  "conversationHistory": [
+    {
+      "role": "assistant",
+      "content": "You stand on the weathered deck of Captain Redbeard's ship, the Crimson Tide, as salt spray mists your face. The captain vanished three nights ago, leaving only questions and a crew full of suspicious glances. The ship creaks gently at anchor while gulls cry overhead.",
+      "timestamp": 1760221641048
+    },
+    {
+      "role": "user",
+      "content": "'look",
+      "timestamp": 1760221663010
+    },
+    {
+      "role": "assistant",
+      "content": "You stand on the weathered deck of Captain Redbeard's ship, the Crimson Tide. First Mate Sullivan paces nervously near the mainmast, his weathered hands fidgeting with a length of rope. A wooden hatch in the deck leads down to the hold, while the captain's cabin door stands slightly ajar to the north. Rope rigging stretches up toward the crow's nest, and a gangplank extends east to the dock.",
+      "timestamp": 1760221670311
+    },
+    {
+      "role": "assistant",
+      "content": "You stand on the weathered deck of Captain Redbeard's ship, the Crimson Tide. First Mate Sullivan paces nervously near the mainmast, his weathered hands fidgeting with a length of rope. A wooden hatch in the deck leads down to the hold, while the captain's cabin door stands slightly ajar to the north. Rope rigging stretches up toward the crow's nest, and a gangplank extends east to the dock.",
+      "timestamp": 1760221670311
+    },
+    {
+      "role": "user",
+      "content": "'take",
+      "timestamp": 1760221682226
+    },
+    {
+      "role": "assistant",
+      "content": "You need to specify what you want to take.",
+      "timestamp": 1760221685728
+    },
+    {
+      "role": "user",
+      "content": "'take",
+      "timestamp": 1760221696796
+    },
+    {
+      "role": "assistant",
+      "content": "You need to specify what you want to take.",
+      "timestamp": 1760221700068
+    },
+    {
+      "role": "user",
+      "content": "take coiled rope",
+      "timestamp": 1760297349850
+    },
+    {
+      "role": "assistant",
+      "content": "You pick up the coiled rope. The hemp fibers are rough against your hands, worn smooth in places from years of use aboard the ship.",
+      "timestamp": 1760297355903
+    },
+    {
+      "role": "user",
+      "content": "inventory",
+      "timestamp": 1760297366130
+    },
+    {
+      "role": "assistant",
+      "content": "You are carrying a coiled rope.",
+      "timestamp": 1760297371643
+    }
+  ],
+  "inventory": [
+    "coiled rope"
+  ],
+  "createdAt": 1760297366127,
+  "lastSaved": 1760297371646,
+  "lastPlayed": 1760297371646,
+  "totalPlayTime": 36537,
+  "adventureTitle": "The Compass Rose Conspiracy",
+  "adventureOutline": {
+    "title": "The Compass Rose Conspiracy",
+    "tagline": "When honor among thieves becomes a matter of life and death",
+    "mainQuest": "Uncover the truth behind Captain Redbeard's mysterious disappearance and the theft of the legendary Compass Rose before rival pirates claim both his ship and his secrets. Navigate a web of betrayal where your former crewmates may be your greatest enemies.",
+    "subQuests": [
+      "Recover your confiscated personal effects from the harbormaster's office",
+      "Decode the secret messages hidden in the ship's logbook entries",
+      "Reunite the scattered pieces of Redbeard's treasure map"
+    ],
+    "keyLocations": [
+      {
+        "id": "tavern_main",
+        "name": "The Salty Anchor Tavern",
+        "description": "Smoke and sea shanties fill this cramped tavern where cutthroats nurse their grog and count their coins. The barkeep's weathered hands never stray far from the cudgel beneath the bar, while patrons huddle over tables scarred by countless knife games. A back room door stands slightly ajar, revealing glimpses of clandestine meetings.",
+        "significance": "The social hub where information flows like rum, featuring the game's central NPC network and introducing the conspiracy's key players through overheard conversations and careful observation."
+      },
+      {
+        "id": "redbeard_cabin",
+        "name": "Captain Redbeard's Cabin",
+        "description": "This opulent cabin reflects a pirate captain's taste for the finer things stolen from merchant vessels. Charts cover every surface, their edges weighted down by exotic trinkets, while a massive oak desk dominates the room. The captain's chair sits empty, its leather still bearing the impression of its missing occupant.",
+        "significance": "The mystery's epicenter containing crucial clues about Redbeard's fate, the Compass Rose's location, and the conspiracy's scope, revealed through careful examination of seemingly decorative objects."
+      },
+      {
+        "id": "ship_hold",
+        "name": "The Ship's Hold",
+        "description": "Darkness reigns in this cavernous space below deck, broken only by slivers of light filtering through the planks above. Water sloshes gently in the bilge, and the air carries the mingled scents of tar, salt, and something else—something that doesn't belong on any honest pirate vessel.",
+        "significance": "A puzzle-heavy location where players discover the conspiracy's physical evidence while navigating environmental challenges, culminating in the revelation of the traitor's identity."
+      },
+      {
+        "id": "hidden_cove",
+        "name": "Smuggler's Cove",
+        "description": "This secluded inlet, invisible from the open sea, serves as nature's perfect hiding spot. Ancient pirates carved steps into the cliff face, leading to caves that once stored countless treasures. Now the caves echo with whispers of a different sort of conspiracy.",
+        "significance": "The climactic location where all plot threads converge, featuring the game's most complex puzzle sequence and the final confrontation that determines multiple possible endings."
+      },
+      {
+        "id": "port_authority",
+        "name": "Harbormaster's Office",
+        "description": "Official documents and confiscated contraband create organized chaos in this stuffy office overlooking the harbor. The harbormaster's meticulous records contrast sharply with his nervous demeanor, and his eyes dart frequently toward a locked strongbox that seems to hold more than routine paperwork.",
+        "significance": "Introduces the game's lock-picking mechanics while revealing the conspiracy's reach into legitimate authority, providing crucial background information through official records."
+      },
+      {
+        "id": "crow_nest",
+        "name": "The Crow's Nest",
+        "description": "Perched high above the ship's deck, this precarious platform offers a commanding view of the harbor and beyond. The previous lookout's telescope remains mounted here, its brass fittings green with salt corrosion. Personal belongings scattered about suggest someone left in great haste.",
+        "significance": "A unique perspective location that rewards thorough exploration with visual clues about distant locations and serves as the key to solving the map fragment puzzle."
+      }
+    ],
+    "importantItems": [
+      {
+        "name": "Redbeard's Compass",
+        "description": "An ornate brass compass rests in a place of honor on the captain's desk, its needle spinning wildly rather than pointing north",
+        "purpose": "The compass reveals hidden passages when used in specific locations and serves as the key to decoding the conspiracy's secret messages, ultimately pointing toward the Compass Rose's location."
+      },
+      {
+        "name": "Ship's Logbook",
+        "description": "A leather-bound logbook lies open on the navigation table, its pages filled with entries in multiple handwritings",
+        "purpose": "Contains coded messages from conspirators when read carefully, provides alibis and timeline information, and reveals the location of hidden compartments when specific entries are cross-referenced."
+      },
+      {
+        "name": "Skeleton Key Ring",
+        "description": "A ring of mismatched keys hangs from a hook near the cabin door, each key worn smooth by countless uses",
+        "purpose": "Opens various locked containers throughout the adventure, with each key's unique wear patterns providing clues about what it unlocks and how frequently it was used by different characters."
+      },
+      {
+        "name": "Spyglass",
+        "description": "A collapsible spyglass sits beside the crow's nest telescope, its leather grip darkened by years of handling",
+        "purpose": "Allows players to examine distant objects and locations for clues, reveals details about character movements and hidden locations, and serves as a component in the final puzzle sequence."
+      },
+      {
+        "name": "Torn Map Fragments",
+        "description": "Pieces of parchment bearing partial coastline drawings are scattered throughout various locations, each fragment showing different handwriting styles",
+        "purpose": "When assembled correctly, reveals the location of the Compass Rose and exposes which crew members were involved in the conspiracy through handwriting analysis and geographical knowledge."
+      }
+    ],
+    "keyCharacters": [
+      {
+        "name": "One-Eyed Pete",
+        "role": "The unreliable informant and comic relief who knows more than he admits",
+        "description": "This grizzled veteran pirate nurses his rum with the dedication of a man who's seen too much. His remaining eye gleams with cunning intelligence that contradicts his bumbling exterior, and his stories change slightly with each telling—but the contradictions themselves might be the most valuable information."
+      },
+      {
+        "name": "Madame Cordelia",
+        "role": "The tavern keeper and information broker who maintains neutrality through fear and respect",
+        "description": "Behind her welcoming smile lies the calculating mind of someone who's survived decades in a world of cutthroats. She polishes glasses with mechanical precision while her keen ears catch every whispered conversation, and her advice always comes with a price—though not always the one you'd expect."
+      },
+      {
+        "name": "First Mate Sullivan",
+        "role": "The loyal second-in-command whose devotion may hide darker motives",
+        "description": "Sullivan's weathered hands shake slightly as he maintains the ship's daily routines despite his captain's absence. His dedication to duty seems absolute, but careful observers might notice how his eyes avoid certain areas of the ship and how he changes the subject whenever the conversation turns to the night of Redbeard's disappearance."
+      },
+      {
+        "name": "Harbormaster Wickham",
+        "role": "The nervous official caught between legal duty and illegal survival",
+        "description": "Sweat beads constantly on Wickham's forehead despite the sea breeze, and his fingers drum anxious rhythms on his desk. He speaks in careful, measured sentences that reveal more through what they omit than what they include, and his eyes dart frequently toward the locked strongbox that dominates his office."
+      },
+      {
+        "name": "The Hooded Stranger",
+        "role": "The mysterious figure whose true identity drives the entire conspiracy",
+        "description": "This cloaked figure appears at crucial moments throughout the adventure, always in shadow, always just out of clear sight. Their voice carries the authority of someone accustomed to command, but their mannerisms suggest familiarity with the ship and its crew that goes deeper than any casual acquaintance should possess."
+      }
+    ],
+    "adventureArc": "",
+    "specialMechanics": null
+  },
+  "agentMessages": [
+    {
+      "type": "user",
+      "content": "Start adventure"
+    },
+    {
+      "type": "assistant",
+      "content": "{\n  \"responseType\": \"fullScene\",\n  \"narrationText\": \"You stand on the weathered deck of Captain Redbeard's ship, the Crimson Tide, as salt spray mists your face. The captain vanished three nights ago, leaving only questions and a crew full of suspicious glances. The ship creaks gently at anchor while gulls cry overhead.\",\n  \"locationId\": \"ship_deck\",\n  \"locationName\": \"Ship's Deck\",\n  \"imageDescription\": \"A weathered pirate ship deck under overcast skies, with coiled ropes, wooden barrels, and brass fittings gleaming despite the salt corrosion. The mainmast towers overhead with furled sails, while the harbor stretches beyond the gunwale. Fantasy art style, detailed digital illustration.\",\n  \"musicDescription\": \"Atmospheric sea shanty with creaking wood, distant gulls, and gentle waves lapping against the hull, building tension with minor key undertones suggesting mystery and danger.\",\n  \"musicMood\": \"mystery\",\n  \"exits\": [\n    {\n      \"direction\": \"down\",\n      \"locationId\": \"ship_hold\",\n      \"description\": \"A wooden hatch leads down into the ship's hold\"\n    },\n    {\n      \"direction\": \"north\",\n      \"locationId\": \"redbeard_cabin\",\n      \"description\": \"The captain's cabin door stands slightly ajar\"\n    },\n    {\n      \"direction\": \"up\",\n      \"locationId\": \"crow_nest\",\n      \"description\": \"Rope rigging leads up to the crow's nest\"\n    },\n    {\n      \"direction\": \"east\",\n      \"locationId\": \"tavern_main\",\n      \"description\": \"A gangplank leads to the dock and the Salty Anchor Tavern\"\n    }\n  ],\n  \"items\": [\"coiled rope\", \"water barrel\"],\n  \"npcs\": [\"First Mate Sullivan\"]\n}",
+      "toolCalls": []
+    },
+    {
+      "type": "user",
+      "content": "'look"
+    },
+    {
+      "type": "assistant",
+      "content": "You stand on the weathered deck of Captain Redbeard's ship, the Crimson Tide. First Mate Sullivan paces nervously near the mainmast, his weathered hands fidgeting with a length of rope. A wooden hatch in the deck leads down to the hold, while the captain's cabin door stands slightly ajar to the north. Rope rigging stretches up toward the crow's nest, and a gangplank extends east to the dock.\n\n<<<JSON>>>\n{\n  \"responseType\": \"fullScene\",\n  \"locationId\": \"ship_deck\",\n  \"locationName\": \"Ship's Deck\",\n  \"imageDescription\": \"A weathered pirate ship deck under overcast skies, with coiled ropes, wooden barrels, and brass fittings gleaming despite the salt corrosion. The mainmast towers overhead with furled sails, while the harbor stretches beyond the gunwale. Fantasy art style, detailed digital illustration.\",\n  \"musicDescription\": \"Atmospheric sea shanty with creaking wood, distant gulls, and gentle waves lapping against the hull, building tension with minor key undertones suggesting mystery and danger.\",\n  \"musicMood\": \"mystery\",\n  \"exits\": [\n    {\n      \"direction\": \"down\",\n      \"locationId\": \"ship_hold\",\n      \"description\": \"A wooden hatch leads down into the ship's hold\"\n    },\n    {\n      \"direction\": \"north\",\n      \"locationId\": \"redbeard_cabin\",\n      \"description\": \"The captain's cabin door stands slightly ajar\"\n    },\n    {\n      \"direction\": \"up\",\n      \"locationId\": \"crow_nest\",\n      \"description\": \"Rope rigging leads up to the crow's nest\"\n    },\n    {\n      \"direction\": \"east\",\n      \"locationId\": \"tavern_main\",\n      \"description\": \"A gangplank leads to the dock and the Salty Anchor Tavern\"\n    }\n  ],\n  \"items\": [\"coiled rope\", \"water barrel\"],\n  \"npcs\": [\"First Mate Sullivan\"]\n}",
+      "toolCalls": []
+    },
+    {
+      "type": "user",
+      "content": "'take"
+    },
+    {
+      "type": "assistant",
+      "content": "You need to specify what you want to take.\n\n<<<JSON>>>\n{\n  \"responseType\": \"simple\",\n  \"narrationText\": \"You need to specify what you want to take.\",\n  \"locationId\": \"ship_deck\",\n  \"actionTaken\": \"take\"\n}",
+      "toolCalls": []
+    },
+    {
+      "type": "user",
+      "content": "'take"
+    },
+    {
+      "type": "assistant",
+      "content": "You need to specify what you want to take.\n\n<<<JSON>>>\n{\n  \"responseType\": \"simple\",\n  \"narrationText\": \"You need to specify what you want to take.\",\n  \"locationId\": \"ship_deck\",\n  \"actionTaken\": \"take\"\n}",
+      "toolCalls": []
+    },
+    {
+      "type": "user",
+      "content": "take coiled rope"
+    },
+    {
+      "type": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "id": "toolu_019FSJAUwWPGgiqQMxNpkBcF",
+          "name": "add_inventory_item",
+          "arguments": {
+            "item": "coiled rope"
+          }
+        }
+      ]
+    },
+    {
+      "type": "tool",
+      "toolCallId": "toolu_019FSJAUwWPGgiqQMxNpkBcF",
+      "content": "{\"success\":true,\"message\":\"Added 'coiled rope' to your inventory\",\"item\":\"coiled rope\",\"inventory\":[\"coiled rope\"]}"
+    },
+    {
+      "type": "assistant",
+      "content": "You pick up the coiled rope. The hemp fibers are rough against your hands, worn smooth in places from years of use aboard the ship.\n\n<<<JSON>>>\n{\n  \"responseType\": \"simple\",\n  \"narrationText\": \"You pick up the coiled rope. The hemp fibers are rough against your hands, worn smooth in places from years of use aboard the ship.\",\n  \"locationId\": \"ship_deck\",\n  \"actionTaken\": \"take\"\n}",
+      "toolCalls": []
+    },
+    {
+      "type": "user",
+      "content": "inventory"
+    },
+    {
+      "type": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "id": "toolu_01LxzF37B5A6KnVxoSv4mJ46",
+          "name": "list_inventory",
+          "arguments": {}
+        }
+      ]
+    },
+    {
+      "type": "tool",
+      "toolCallId": "{\"inventory\":[\"coiled rope\"],\"count\":1,\"message\":\"You have 1 item(s) in your inventory\"}",
+      "content": "toolu_01LxzF37B5A6KnVxoSv4mJ46"
+    },
+    {
+      "type": "assistant",
+      "content": "You are carrying a coiled rope.\n\n<<<JSON>>>\n{\n  \"responseType\": \"simple\",\n  \"narrationText\": \"You are carrying a coiled rope.\",\n  \"locationId\": \"ship_deck\",\n  \"actionTaken\": \"inventory\"\n}",
+      "toolCalls": []
+    }
+  ],
+  "mediaCache": {},
+  "systemPrompt": "You are a Dungeon Master guiding a text adventure game in the classic Infocom tradition.\n\nAdventure Theme: pirate\nArt Style: fantasy art style, detailed digital illustration\n\n\nADVENTURE OUTLINE:\n==================\nTitle: The Compass Rose Conspiracy\nTagline: When honor among thieves becomes a matter of life and death\n\nMAIN QUEST: Uncover the truth behind Captain Redbeard's mysterious disappearance and the theft of the legendary Compass Rose before rival pirates claim both his ship and his secrets. Navigate a web of betrayal where your former crewmates may be your greatest enemies.\n\nSTORY ARC: \n\nKEY LOCATIONS (use these consistently):\n- The Salty Anchor Tavern (tavern_main): Smoke and sea shanties fill this cramped tavern where cutthroats nurse their grog and count their coins. The barkeep's weathered hands never stray far from the cudgel beneath the bar, while patrons huddle over tables scarred by countless knife games. A back room door stands slightly ajar, revealing glimpses of clandestine meetings. - The social hub where information flows like rum, featuring the game's central NPC network and introducing the conspiracy's key players through overheard conversations and careful observation.\n- Captain Redbeard's Cabin (redbeard_cabin): This opulent cabin reflects a pirate captain's taste for the finer things stolen from merchant vessels. Charts cover every surface, their edges weighted down by exotic trinkets, while a massive oak desk dominates the room. The captain's chair sits empty, its leather still bearing the impression of its missing occupant. - The mystery's epicenter containing crucial clues about Redbeard's fate, the Compass Rose's location, and the conspiracy's scope, revealed through careful examination of seemingly decorative objects.\n- The Ship's Hold (ship_hold): Darkness reigns in this cavernous space below deck, broken only by slivers of light filtering through the planks above. Water sloshes gently in the bilge, and the air carries the mingled scents of tar, salt, and something else—something that doesn't belong on any honest pirate vessel. - A puzzle-heavy location where players discover the conspiracy's physical evidence while navigating environmental challenges, culminating in the revelation of the traitor's identity.\n- Smuggler's Cove (hidden_cove): This secluded inlet, invisible from the open sea, serves as nature's perfect hiding spot. Ancient pirates carved steps into the cliff face, leading to caves that once stored countless treasures. Now the caves echo with whispers of a different sort of conspiracy. - The climactic location where all plot threads converge, featuring the game's most complex puzzle sequence and the final confrontation that determines multiple possible endings.\n- Harbormaster's Office (port_authority): Official documents and confiscated contraband create organized chaos in this stuffy office overlooking the harbor. The harbormaster's meticulous records contrast sharply with his nervous demeanor, and his eyes dart frequently toward a locked strongbox that seems to hold more than routine paperwork. - Introduces the game's lock-picking mechanics while revealing the conspiracy's reach into legitimate authority, providing crucial background information through official records.\n- The Crow's Nest (crow_nest): Perched high above the ship's deck, this precarious platform offers a commanding view of the harbor and beyond. The previous lookout's telescope remains mounted here, its brass fittings green with salt corrosion. Personal belongings scattered about suggest someone left in great haste. - A unique perspective location that rewards thorough exploration with visual clues about distant locations and serves as the key to solving the map fragment puzzle.\n\nIMPORTANT ITEMS (these should appear in appropriate locations):\n- Redbeard's Compass: An ornate brass compass rests in a place of honor on the captain's desk, its needle spinning wildly rather than pointing north (Purpose: The compass reveals hidden passages when used in specific locations and serves as the key to decoding the conspiracy's secret messages, ultimately pointing toward the Compass Rose's location.)\n- Ship's Logbook: A leather-bound logbook lies open on the navigation table, its pages filled with entries in multiple handwritings (Purpose: Contains coded messages from conspirators when read carefully, provides alibis and timeline information, and reveals the location of hidden compartments when specific entries are cross-referenced.)\n- Skeleton Key Ring: A ring of mismatched keys hangs from a hook near the cabin door, each key worn smooth by countless uses (Purpose: Opens various locked containers throughout the adventure, with each key's unique wear patterns providing clues about what it unlocks and how frequently it was used by different characters.)\n- Spyglass: A collapsible spyglass sits beside the crow's nest telescope, its leather grip darkened by years of handling (Purpose: Allows players to examine distant objects and locations for clues, reveals details about character movements and hidden locations, and serves as a component in the final puzzle sequence.)\n- Torn Map Fragments: Pieces of parchment bearing partial coastline drawings are scattered throughout various locations, each fragment showing different handwriting styles (Purpose: When assembled correctly, reveals the location of the Compass Rose and exposes which crew members were involved in the conspiracy through handwriting analysis and geographical knowledge.)\n\nKEY CHARACTERS (introduce these NPCs at appropriate moments):\n- One-Eyed Pete (The unreliable informant and comic relief who knows more than he admits): This grizzled veteran pirate nurses his rum with the dedication of a man who's seen too much. His remaining eye gleams with cunning intelligence that contradicts his bumbling exterior, and his stories change slightly with each telling—but the contradictions themselves might be the most valuable information.\n- Madame Cordelia (The tavern keeper and information broker who maintains neutrality through fear and respect): Behind her welcoming smile lies the calculating mind of someone who's survived decades in a world of cutthroats. She polishes glasses with mechanical precision while her keen ears catch every whispered conversation, and her advice always comes with a price—though not always the one you'd expect.\n- First Mate Sullivan (The loyal second-in-command whose devotion may hide darker motives): Sullivan's weathered hands shake slightly as he maintains the ship's daily routines despite his captain's absence. His dedication to duty seems absolute, but careful observers might notice how his eyes avoid certain areas of the ship and how he changes the subject whenever the conversation turns to the night of Redbeard's disappearance.\n- Harbormaster Wickham (The nervous official caught between legal duty and illegal survival): Sweat beads constantly on Wickham's forehead despite the sea breeze, and his fingers drum anxious rhythms on his desk. He speaks in careful, measured sentences that reveal more through what they omit than what they include, and his eyes dart frequently toward the locked strongbox that dominates his office.\n- The Hooded Stranger (The mysterious figure whose true identity drives the entire conspiracy): This cloaked figure appears at crucial moments throughout the adventure, always in shadow, always just out of clear sight. Their voice carries the authority of someone accustomed to command, but their mannerisms suggest familiarity with the ship and its crew that goes deeper than any casual acquaintance should possess.\n\nSIDE QUESTS (optional objectives for the player):\n- Recover your confiscated personal effects from the harbormaster's office\n- Decode the secret messages hidden in the ship's logbook entries\n- Reunite the scattered pieces of Redbeard's treasure map\n\n\nIMPORTANT: Follow this outline to create a coherent adventure. Ensure locations connect logically,\nitems are placed where they make sense, and characters appear at appropriate times. The player\nshould be able to discover and complete the main quest through exploration and interaction.\n\n\nTOOL USAGE AND DISCLOSURE RULES:\n- You may have internal tools for inventory management (list_inventory, add_inventory_item, remove_inventory_item).\n- Use inventory tools ONLY when the player explicitly asks about inventory (e.g., INVENTORY, TAKE/LIST/DROP item).\n- NEVER mention tools, functions, or capabilities to the player. Do not say you lack functions. Always produce a valid response in the required format.\n- Movement, LOOK, OPEN/CLOSE, and general interactions DO NOT use tools; you generate the correct JSON directly.\n\nCOMMAND MAPPING:\n- Movement commands (north/south/east/west/up/down/in/out):\n  • If passable, return TYPE 1 - FULL SCENE for the destination.\n  • If blocked/locked/sealed, return TYPE 2 - SIMPLE RESPONSE explaining the obstacle; keep locationId as current.\n- Inventory commands (inventory, take, drop, etc.):\n  • You may use inventory tools internally, but the user-facing output must still follow TYPE 2 - SIMPLE RESPONSE format.\n- Examination/help/other non-movement interactions: TYPE 2 - SIMPLE RESPONSE.\n\nGAME INITIALIZATION:\nWhen you receive the message \"Start adventure\", generate the opening scene of the adventure.\nThis should be the player's starting location, introducing them to the world and setting.\nFor the initial response ONLY, output JUST the JSON (no narration text prefix, no <<<JSON>>> marker).\nCreate a fullScene JSON response WITH narrationText field included.\nKeep descriptions terse in classic text adventure style (2-3 sentences max).\n\nTEXT ADVENTURE WRITING CONVENTIONS:\n\nROOM DESCRIPTIONS:\n- Follow the verbose/brief convention: First visit shows terse description (1-2 sentences), subsequent visits even briefer\n- Be economical with words: \"Dark cellar. Stone stairs lead up.\" not \"You find yourself in a musty, dimly-lit cellar with ancient stone walls.\"\n- Structure: Location type → key features → exits\n- Avoid excessive adjectives: \"brass lantern\" not \"ancient, tarnished brass lantern with mysterious engravings\"\n- Essential information only: Save atmospheric details for EXAMINE commands\n\nOBJECT PRESENTATION:\n- Use Infocom house style: \"There is a brass lantern here\" or \"A battery-powered lantern is on the trophy case\"\n- Include state information naturally: \"(closed)\", \"(providing light)\", \"(locked)\"\n- Avoid special capitalization - trust players to explore mentioned items\n- Follow noun prominence: Important objects appear explicitly, not buried in prose\n- Three-tier importance: Essential objects mentioned 3 times, useful twice, atmospheric once\n\nNARRATIVE STYLE:\n- Second-person present tense: \"You are in a forest clearing\"\n- Prioritize clarity over atmosphere - be direct and concise\n- Minimal adjectives: Use only when functionally necessary\n- Classic terseness: \"Forest clearing. Paths lead north and south.\" is preferred\n- Fair play principle: All puzzle information discoverable within game world logic\n\nEXIT PRESENTATION:\n- Integrate naturally into prose: \"A path leads north into the forest\" rather than \"Exits: north\"\n- Distinguish between open and blocked paths: \"an open door leads north\" vs \"a closed door blocks the northern exit\"\n- Use standard directions: cardinal (north/south/east/west), vertical (up/down), relative (in/out)\n\nGAME MECHANICS & OBSTACLES:\n- CRITICAL: Respect physical barriers and navigation- sealed, locked, blocked, or closed passages CANNOT be traversed without first being opened in some way.\n- obey the map in the adventure outline.\n- \"sealed hatch\" = impassable until unsealed (e.g. might requires tool/action)\n- \"locked door\" = impassable until unlocked (e.g. requires key, or button press)\n- \"blocked passage\" = impassable until cleared (requires action or may never be passable\n- \"closed door\" = can be opened with simple \"open door\" command\n- When player attempts to pass through obstacle, respond with: \"The [obstacle] is [sealed/locked/blocked]. You cannot pass.\"\n\nResponse Format:\n\nFOR INITIALIZATION (\"Start adventure\"):\nOutput ONLY the complete JSON response with narrationText field included.\n\nFOR ALL OTHER COMMANDS (after initialization):\n1. First output ONLY the narration text on its own line (no meta commentary)\n2. Then output \"<<<JSON>>>\" on a new line\n3. Then output ONLY the JSON response (WITHOUT narrationText field - we'll add it programmatically)\n\nCRITICAL EXIT FORMAT:\nThe \"exits\" array MUST contain objects with this exact structure:\n{\n  \"direction\": \"north|south|east|west|up|down|in|out\",\n  \"locationId\": \"target_location_id\",\n  \"description\": \"Optional description of what's in that direction\"\n}\nNEVER output exits as simple strings like [\"north\", \"south\"]\n\nTYPE 1 - FULL SCENE (for movement, look, or scene changes):\n{\n  \"responseType\": \"fullScene\",\n  \"narrationText\": \"Brief room description. Exits visible. Items present.\",\n  \"locationId\": \"unique_location_id\",\n  \"locationName\": \"Human Readable Name\",\n  \"imageDescription\": \"Detailed 2-3 sentence visual description for image generation in fantasy art style, detailed digital illustration.\",\n  \"musicDescription\": \"Detailed atmospheric description for music generation.\",\n  \"musicMood\": \"One of: entrance, exploration, combat, victory, dungeon, forest, town, mystery, castle, underwater, temple, boss, stealth, treasure, danger, peaceful\",\n  \"exits\": [\n    {\n      \"direction\": \"north\",\n      \"locationId\": \"forest_path\",\n      \"description\": \"A winding path leads into the dark forest\"\n    },\n    {\n      \"direction\": \"east\",\n      \"locationId\": \"river_bank\",\n      \"description\": \"The sound of rushing water comes from the east\"\n    }\n  ],\n  \"items\": [\"brass lantern\", \"mysterious key\"],\n  \"npcs\": [\"old hermit\", \"friendly merchant\"]\n}\n\nTYPE 2 - SIMPLE RESPONSE (for examine, help, inventory, interactions without scene change):\n{\n  \"responseType\": \"simple\",\n  \"narrationText\": \"Action result or description text.\",\n  \"locationId\": \"current_location_id\",\n  \"actionTaken\": \"examine/help/inventory/talk/use/etc\"\n}\n"
+}

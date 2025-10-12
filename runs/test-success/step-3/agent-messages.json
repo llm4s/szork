@@ -1,0 +1,29 @@
+[
+  {
+    "type": "user",
+    "content": "Start adventure"
+  },
+  {
+    "type": "assistant",
+    "content": "{\n  \"responseType\": \"fullScene\",\n  \"narrationText\": \"You stand on the weathered deck of Captain Redbeard's ship, the Crimson Tide, as salt spray mists your face. The captain vanished three nights ago, leaving only questions and a crew full of suspicious glances. The ship creaks gently at anchor while gulls cry overhead.\",\n  \"locationId\": \"ship_deck\",\n  \"locationName\": \"Ship's Deck\",\n  \"imageDescription\": \"A weathered pirate ship deck under overcast skies, with coiled ropes, wooden barrels, and brass fittings gleaming despite the salt corrosion. The mainmast towers overhead with furled sails, while the harbor stretches beyond the gunwale. Fantasy art style, detailed digital illustration.\",\n  \"musicDescription\": \"Atmospheric sea shanty with creaking wood, distant gulls, and gentle waves lapping against the hull, building tension with minor key undertones suggesting mystery and danger.\",\n  \"musicMood\": \"mystery\",\n  \"exits\": [\n    {\n      \"direction\": \"down\",\n      \"locationId\": \"ship_hold\",\n      \"description\": \"A wooden hatch leads down into the ship's hold\"\n    },\n    {\n      \"direction\": \"north\",\n      \"locationId\": \"redbeard_cabin\",\n      \"description\": \"The captain's cabin door stands slightly ajar\"\n    },\n    {\n      \"direction\": \"up\",\n      \"locationId\": \"crow_nest\",\n      \"description\": \"Rope rigging leads up to the crow's nest\"\n    },\n    {\n      \"direction\": \"east\",\n      \"locationId\": \"tavern_main\",\n      \"description\": \"A gangplank leads to the dock and the Salty Anchor Tavern\"\n    }\n  ],\n  \"items\": [\"coiled rope\", \"water barrel\"],\n  \"npcs\": [\"First Mate Sullivan\"]\n}",
+    "toolCalls": []
+  },
+  {
+    "type": "user",
+    "content": "'look"
+  },
+  {
+    "type": "assistant",
+    "content": "You stand on the weathered deck of Captain Redbeard's ship, the Crimson Tide. First Mate Sullivan paces nervously near the mainmast, his weathered hands fidgeting with a length of rope. A wooden hatch in the deck leads down to the hold, while the captain's cabin door stands slightly ajar to the north. Rope rigging stretches up toward the crow's nest, and a gangplank extends east to the dock.\n\n<<<JSON>>>\n{\n  \"responseType\": \"fullScene\",\n  \"locationId\": \"ship_deck\",\n  \"locationName\": \"Ship's Deck\",\n  \"imageDescription\": \"A weathered pirate ship deck under overcast skies, with coiled ropes, wooden barrels, and brass fittings gleaming despite the salt corrosion. The mainmast towers overhead with furled sails, while the harbor stretches beyond the gunwale. Fantasy art style, detailed digital illustration.\",\n  \"musicDescription\": \"Atmospheric sea shanty with creaking wood, distant gulls, and gentle waves lapping against the hull, building tension with minor key undertones suggesting mystery and danger.\",\n  \"musicMood\": \"mystery\",\n  \"exits\": [\n    {\n      \"direction\": \"down\",\n      \"locationId\": \"ship_hold\",\n      \"description\": \"A wooden hatch leads down into the ship's hold\"\n    },\n    {\n      \"direction\": \"north\",\n      \"locationId\": \"redbeard_cabin\",\n      \"description\": \"The captain's cabin door stands slightly ajar\"\n    },\n    {\n      \"direction\": \"up\",\n      \"locationId\": \"crow_nest\",\n      \"description\": \"Rope rigging leads up to the crow's nest\"\n    },\n    {\n      \"direction\": \"east\",\n      \"locationId\": \"tavern_main\",\n      \"description\": \"A gangplank leads to the dock and the Salty Anchor Tavern\"\n    }\n  ],\n  \"items\": [\"coiled rope\", \"water barrel\"],\n  \"npcs\": [\"First Mate Sullivan\"]\n}",
+    "toolCalls": []
+  },
+  {
+    "type": "user",
+    "content": "'take"
+  },
+  {
+    "type": "assistant",
+    "content": "You need to specify what you want to take.\n\n<<<JSON>>>\n{\n  \"responseType\": \"simple\",\n  \"narrationText\": \"You need to specify what you want to take.\",\n  \"locationId\": \"ship_deck\",\n  \"actionTaken\": \"take\"\n}",
+    "toolCalls": []
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "sessionName": "test-success",
+  "stepNumber": 6,
+  "timestamp": "1760297371646",
+  "userCommand": "inventory",
+  "responseLength": 31,
+  "toolCallCount": 2,
+  "messageCount": 16,
+  "success": true,
+  "error": null
+}

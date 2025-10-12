@@ -1,0 +1,132 @@
+=== CONVERSATION HISTORY ===
+
+[Message 1] USER:
+Start adventure
+
+[Message 2] ASSISTANT:
+{
+  "responseType": "fullScene",
+  "narrationText": "You stand on the weathered deck of Captain Redbeard's ship, the Crimson Tide, as salt spray mists your face. The captain vanished three nights ago, leaving only questions and a crew full of suspicious glances. The ship creaks gently at anchor while gulls cry overhead.",
+  "locationId": "ship_deck",
+  "locationName": "Ship's Deck",
+  "imageDescription": "A weathered pirate ship deck under overcast skies, with coiled ropes, wooden barrels, and brass fittings gleaming despite the salt corrosion. The mainmast towers overhead with furled sails, while the harbor stretches beyond the gunwale. Fantasy art style, detailed digital illustration.",
+  "musicDescription": "Atmospheric sea shanty with creaking wood, distant gulls, and gentle waves lapping against the hull, building tension with minor key undertones suggesting mystery and danger.",
+  "musicMood": "mystery",
+  "exits": [
+    {
+      "direction": "down",
+      "locationId": "ship_hold",
+      "description": "A wooden hatch leads down into the ship's hold"
+    },
+    {
+      "direction": "north",
+      "locationId": "redbeard_cabin",
+      "description": "The captain's cabin door stands slightly ajar"
+    },
+    {
+      "direction": "up",
+      "locationId": "crow_nest",
+      "description": "Rope rigging leads up to the crow's nest"
+    },
+    {
+      "direction": "east",
+      "locationId": "tavern_main",
+      "description": "A gangplank leads to the dock and the Salty Anchor Tavern"
+    }
+  ],
+  "items": ["coiled rope", "water barrel"],
+  "npcs": ["First Mate Sullivan"]
+}
+
+[Message 3] USER:
+'look
+
+[Message 4] ASSISTANT:
+You stand on the weathered deck of Captain Redbeard's ship, the Crimson Tide. First Mate Sullivan paces nervously near the mainmast, his weathered hands fidgeting with a length of rope. A wooden hatch in the deck leads down to the hold, while the captain's cabin door stands slightly ajar to the north. Rope rigging stretches up toward the crow's nest, and a gangplank extends east to the dock.
+
+<<<JSON>>>
+{
+  "responseType": "fullScene",
+  "locationId": "ship_deck",
+  "locationName": "Ship's Deck",
+  "imageDescription": "A weathered pirate ship deck under overcast skies, with coiled ropes, wooden barrels, and brass fittings gleaming despite the salt corrosion. The mainmast towers overhead with furled sails, while the harbor stretches beyond the gunwale. Fantasy art style, detailed digital illustration.",
+  "musicDescription": "Atmospheric sea shanty with creaking wood, distant gulls, and gentle waves lapping against the hull, building tension with minor key undertones suggesting mystery and danger.",
+  "musicMood": "mystery",
+  "exits": [
+    {
+      "direction": "down",
+      "locationId": "ship_hold",
+      "description": "A wooden hatch leads down into the ship's hold"
+    },
+    {
+      "direction": "north",
+      "locationId": "redbeard_cabin",
+      "description": "The captain's cabin door stands slightly ajar"
+    },
+    {
+      "direction": "up",
+      "locationId": "crow_nest",
+      "description": "Rope rigging leads up to the crow's nest"
+    },
+    {
+      "direction": "east",
+      "locationId": "tavern_main",
+      "description": "A gangplank leads to the dock and the Salty Anchor Tavern"
+    }
+  ],
+  "items": ["coiled rope", "water barrel"],
+  "npcs": ["First Mate Sullivan"]
+}
+
+[Message 5] USER:
+'take
+
+[Message 6] ASSISTANT:
+You need to specify what you want to take.
+
+<<<JSON>>>
+{
+  "responseType": "simple",
+  "narrationText": "You need to specify what you want to take.",
+  "locationId": "ship_deck",
+  "actionTaken": "take"
+}
+
+[Message 7] USER:
+'take
+
+[Message 8] ASSISTANT:
+You need to specify what you want to take.
+
+<<<JSON>>>
+{
+  "responseType": "simple",
+  "narrationText": "You need to specify what you want to take.",
+  "locationId": "ship_deck",
+  "actionTaken": "take"
+}
+
+[Message 9] USER:
+take coiled rope
+
+[Message 10] ASSISTANT:
+
+Tool Calls:
+  - add_inventory_item({
+"item": "coiled rope"
+})
+
+[Message 11] TOOL RESULT (id={"success":true,"message":"Added 'coiled rope' to your inventory","item":"coiled rope","inventory":["coiled rope"]}):
+toolu_019FSJAUwWPGgiqQMxNpkBcF
+
+[Message 12] ASSISTANT:
+You pick up the coiled rope. The hemp fibers are rough against your hands, worn smooth in places from years of use aboard the ship.
+
+<<<JSON>>>
+{
+  "responseType": "simple",
+  "narrationText": "You pick up the coiled rope. The hemp fibers are rough against your hands, worn smooth in places from years of use aboard the ship.",
+  "locationId": "ship_deck",
+  "actionTaken": "take"
+}
+

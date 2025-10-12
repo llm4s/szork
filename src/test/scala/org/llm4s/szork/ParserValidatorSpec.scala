@@ -54,7 +54,7 @@ class ParserValidatorSpec extends AnyFunSuite with Matchers {
 
     val parsed = GameResponseParser.parseAndValidate(response)
     parsed.isLeft shouldBe true
-    parsed.left.toOption.get.mkString(" ").toLowerCase should include("invalid exit direction")
+    parsed.left.toOption.get.message.toLowerCase should include("invalid exit direction")
   }
 
   test("parse and validate simple response") {

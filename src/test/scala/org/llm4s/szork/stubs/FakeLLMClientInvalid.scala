@@ -23,7 +23,10 @@ class FakeLLMClientInvalid extends LLMClient {
     Completion(
       id = java.util.UUID.randomUUID().toString,
       created = System.currentTimeMillis(),
+      content = content,
+      model = "fake-llm-invalid",
       message = AssistantMessage(Some(content)),
+      toolCalls = Nil,
       usage = Some(TokenUsage(promptTokens = 5, completionTokens = 5, totalTokens = 10))
     )
   }
@@ -36,4 +39,7 @@ class FakeLLMClientInvalid extends LLMClient {
     options: CompletionOptions,
     onChunk: StreamedChunk => Unit): Result[Completion] =
     Right(invalidCompletion("Invalid scene response (stream)."))
+
+  override def getContextWindow(): Int = 8000
+  override def getReserveCompletion(): Int = 1000
 }

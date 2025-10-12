@@ -58,7 +58,10 @@ class FakeLLMClient extends LLMClient {
     Completion(
       id = java.util.UUID.randomUUID().toString,
       created = System.currentTimeMillis(),
+      content = content,
+      model = "fake-llm",
       message = AssistantMessage(Some(content)),
+      toolCalls = Nil,
       usage = Some(TokenUsage(promptTokens = 10, completionTokens = 20, totalTokens = 30))
     )
   }
@@ -70,4 +73,7 @@ class FakeLLMClient extends LLMClient {
     conversation: Conversation,
     options: CompletionOptions,
     onChunk: StreamedChunk => Unit): Result[Completion] = Right(replyFor(conversation))
+
+  override def getContextWindow(): Int = 8000
+  override def getReserveCompletion(): Int = 1000
 }

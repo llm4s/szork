@@ -26,4 +26,64 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt should include("Test Adventure")
     prompt should include("KEY LOCATIONS")
   }
+
+  test("fullSystemPrompt clearly establishes LLM as the game engine") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
+    prompt should include("=== YOUR ROLE AND CAPABILITIES ===")
+    prompt should include("YOU ARE THE GAME ENGINE")
+    prompt should include("You have FULL capability to:")
+    prompt should include("Generate room descriptions and scenes for ANY location")
+    prompt should include("Process ALL player commands")
+  }
+
+  test("fullSystemPrompt clarifies tools are optional and only for inventory") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
+    prompt should include("=== TOOL USAGE - OPTIONAL INVENTORY ONLY ===")
+    prompt should include("Tools are OPTIONAL helpers for inventory management ONLY")
+    prompt should include("You do NOT need special functions or tools for most gameplay")
+  }
+
+  test("fullSystemPrompt has critical rules for movement commands") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
+    prompt should include("CRITICAL RULES:")
+    prompt should include("Movement commands (north/south/east/west/up/down/in/out) NEVER use tools")
+    prompt should include("generate JSON scene directly")
+    prompt should include("LOOK, EXAMINE, OPEN, CLOSE, etc. NEVER use tools")
+  }
+
+  test("fullSystemPrompt emphasizes LLM should never claim lack of functions") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
+    prompt should include("NEVER say \"I don't have functions\" or \"I can't do that\"")
+    prompt should include("you CAN do everything")
+    prompt should include("NEVER mention tools, capabilities, or limitations to the player")
+  }
+
+  test("fullSystemPrompt has movement validation workflow") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
+    prompt should include("PLAYER MOVEMENT VALIDATION:")
+    prompt should include("Before allowing ANY movement command")
+    prompt should include("Check if exit exists in that direction")
+    prompt should include("Check exit state (open/closed/locked/sealed/blocked/hidden)")
+    prompt should include("If not \"open\", DENY movement and explain obstacle")
+    prompt should include("ONLY generate destination scene if exit is \"open\"")
+  }
+
+  test("fullSystemPrompt defines all exit states with enforcement rules") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
+    prompt should include("EXIT STATE ENFORCEMENT:")
+    prompt should include("\"locked\" = IMPASSABLE until player possesses correct key/item")
+    prompt should include("\"sealed\" = IMPASSABLE until specific tool/action applied")
+    prompt should include("\"blocked\" = IMPASSABLE until cleared")
+    prompt should include("\"closed\" = Can be opened with simple \"open [door/passage]\" command")
+    prompt should include("\"open\" = Freely passable")
+    prompt should include("\"hidden\" = Not visible or mentioned until discovered")
+  }
+
+  test("fullSystemPrompt emphasizes mandatory enforcement of game mechanics") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
+    prompt should include("GAME MECHANICS & OBSTACLES - MANDATORY ENFORCEMENT:")
+    prompt should include("CRITICAL: You MUST respect the exit states")
+    prompt should include("Physical barriers are ABSOLUTE until explicitly overcome")
+    prompt should include("NEVER allow movement through locked, sealed, or blocked passages")
+  }
 }

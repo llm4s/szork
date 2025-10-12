@@ -1,0 +1,33 @@
+{
+  "text": "You push through the glass doors into the temporal greenhouse. Glass panels arch overhead, some frosted with winter's touch while others shimmer with summer heat. Clockwork trees grow in neat rows, their brass leaves ticking softly as they photosynthesize light into time itself. A central fountain bubbles with liquid mercury, its flow reversing every few seconds.",
+  "scene": {
+    "locationId": "temporal_greenhouse",
+    "locationName": "The Temporal Greenhouse",
+    "narrationText": "You push through the glass doors into the temporal greenhouse. Glass panels arch overhead, some frosted with winter's touch while others shimmer with summer heat. Clockwork trees grow in neat rows, their brass leaves ticking softly as they photosynthesize light into time itself. A central fountain bubbles with liquid mercury, its flow reversing every few seconds.",
+    "imageDescription": "A magnificent greenhouse with arched glass panels showing different seasons simultaneously - some frosted with winter ice, others glowing with summer warmth. Neat rows of clockwork trees with brass leaves that tick rhythmically. A central fountain of liquid mercury flows upward and downward in temporal loops, surrounded by impossible botanical machinery.",
+    "musicDescription": "Ethereal music with gentle ticking rhythms, flowing water sounds that reverse and repeat, and harmonious chimes that suggest the passage of time made audible.",
+    "musicMood": "mystery",
+    "exits": [
+      {
+        "direction": "south",
+        "locationId": "entrance_hall",
+        "description": "Glass doors lead back to the entrance hall"
+      },
+      {
+        "direction": "east",
+        "locationId": "workshop",
+        "description": "A brass door marked 'Master Gearwright's Workshop'"
+      },
+      {
+        "direction": "west",
+        "locationId": "memory_garden",
+        "description": "An archway leads to paths of crushed pearl"
+      }
+    ],
+    "items": [
+      "clockwork trees",
+      "mercury fountain"
+    ],
+    "npcs": []
+  }
+}

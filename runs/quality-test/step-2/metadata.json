@@ -1,0 +1,11 @@
+{
+  "sessionName": "quality-test",
+  "stepNumber": 2,
+  "timestamp": "1760297477962",
+  "userCommand": "look around",
+  "responseLength": 376,
+  "toolCallCount": 0,
+  "messageCount": 4,
+  "success": true,
+  "error": null
+}

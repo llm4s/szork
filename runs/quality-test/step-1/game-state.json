@@ -1,0 +1,160 @@
+{
+  "gameId": "game-3aa469ec",
+  "theme": {
+    "id": "fantasy",
+    "name": "fantasy",
+    "prompt": "fantasy"
+  },
+  "artStyle": {
+    "id": "fantasy",
+    "name": "fantasy"
+  },
+  "currentScene": {
+    "locationId": "entrance_hall",
+    "locationName": "The Entrance Hall",
+    "narrationText": "You stand before the brass-bound doors of the Clockwork Conservatory. Through tall windows, impossible gardens shimmer where copper roses bloom in perpetual spring while iron daisies wilt in endless autumn. The entrance hall stretches before you - brass pipes snake across vaulted ceilings like metallic vines, and a reception desk of polished mahogany sits beneath a flickering gas lamp.",
+    "imageDescription": "A grand entrance hall with vaulted ceilings covered in brass pipes that twist like metallic vines, their surfaces green with patina. A polished mahogany reception desk sits beneath a flickering gas lamp, with drawers slightly ajar. Through tall arched windows, glimpses of impossible gardens where mechanical flowers bloom in different seasons simultaneously.",
+    "musicDescription": "Mysterious and atmospheric music with subtle mechanical ticking sounds, brass instrument undertones, and an air of faded grandeur mixed with temporal distortion.",
+    "musicMood": "mystery",
+    "exits": [
+      {
+        "direction": "north",
+        "locationId": "temporal_greenhouse",
+        "description": "Glass doors lead to a greenhouse where clockwork trees tick softly"
+      }
+    ],
+    "items": [
+      "visitor's logbook",
+      "flickering gas lamp"
+    ],
+    "npcs": []
+  },
+  "visitedLocations": [
+    "entrance_hall"
+  ],
+  "conversationHistory": [
+    {
+      "role": "assistant",
+      "content": "You stand before the brass-bound doors of the Clockwork Conservatory. Through tall windows, impossible gardens shimmer where copper roses bloom in perpetual spring while iron daisies wilt in endless autumn. The entrance hall stretches before you - brass pipes snake across vaulted ceilings like metallic vines, and a reception desk of polished mahogany sits beneath a flickering gas lamp.",
+      "timestamp": 1760297452841
+    }
+  ],
+  "inventory": [],
+  "createdAt": 1760297445587,
+  "lastSaved": 1760297452843,
+  "lastPlayed": 1760297452843,
+  "totalPlayTime": 7255,
+  "adventureTitle": "The Clockwork Conservatory",
+  "adventureOutline": {
+    "title": "The Clockwork Conservatory",
+    "tagline": "Where time grows wild and mechanical flowers bloom eternal",
+    "mainQuest": "Restore the Great Chronometer to save the dying Conservatory, where temporal magic once sustained an impossible garden of clockwork flora. The facility's time-weaving mechanisms are failing, threatening to trap you forever in temporal loops.",
+    "subQuests": [
+      "Discover the fate of Master Botanist Elara Gearwright",
+      "Collect the three Temporal Seeds hidden throughout the facility",
+      "Repair the relationships between the feuding mechanical gardeners"
+    ],
+    "keyLocations": [
+      {
+        "id": "entrance_hall",
+        "name": "The Entrance Hall",
+        "description": "Brass pipes snake across vaulted ceilings like metallic vines, their surfaces green with age. A reception desk of polished mahogany sits beneath a flickering gas lamp, its drawers slightly ajar. Through tall windows, you glimpse impossible gardens where copper roses bloom in perpetual spring while iron daisies wilt in endless autumn.",
+        "significance": "Establishes the temporal anomalies and introduces the facility's dual nature - beautiful but broken. Contains the visitor's logbook revealing Elara's last day and the master key hidden in the desk's secret compartment."
+      },
+      {
+        "id": "temporal_greenhouse",
+        "name": "The Temporal Greenhouse",
+        "description": "Glass panels arch overhead, some frosted with winter's touch while others shimmer with summer heat. Clockwork trees grow in neat rows, their brass leaves ticking softly as they photosynthesize light into time itself. A central fountain bubbles with liquid mercury, its flow reversing every few seconds.",
+        "significance": "Core puzzle location where players learn to manipulate time flow using the Temporal Seeds. The mercury fountain is key to understanding the facility's time mechanics, and examining the trees reveals the pattern needed for the final restoration."
+      },
+      {
+        "id": "workshop",
+        "name": "Master Gearwright's Workshop",
+        "description": "Workbenches overflow with half-assembled botanical automata and crystalline chronometers. A massive orrery dominates the center, its planets frozen mid-orbit. Blueprints cover every surface, their ink shifting between fresh blue and faded sepia as temporal waves wash over them.",
+        "significance": "Reveals Elara's final experiment and contains the Harmonic Tuning Fork needed to calibrate the Great Chronometer. The shifting blueprints provide crucial clues about the facility's original purpose and the location of the master control room."
+      },
+      {
+        "id": "memory_garden",
+        "name": "The Memory Garden",
+        "description": "Paths of crushed pearl wind between beds where translucent flowers bloom with captured moments - a child's laughter echoes from silver snapdragons, while golden marigolds replay summer afternoons. At the garden's heart stands a weeping willow of woven copper wire, its branches heavy with crystallized tears.",
+        "significance": "Emotional centerpiece where players discover Elara's personal story through the memory flowers. The copper willow contains her final message and the location of the third Temporal Seed, accessible only after solving the gardeners' conflict."
+      },
+      {
+        "id": "chronometer_chamber",
+        "name": "The Great Chronometer Chamber",
+        "description": "A cathedral of gears and pendulums stretches impossibly high, its mechanisms frozen in temporal amber. The Great Chronometer itself pulses weakly at the chamber's heart, a sphere of crystallized time surrounded by concentric rings of tarnished brass. Maintenance catwalks spiral upward into shadow.",
+        "significance": "Final location where all puzzles converge. Players must use everything they've learned about temporal manipulation to restart the Great Chronometer, with multiple solutions possible based on their choices throughout the adventure."
+      },
+      {
+        "id": "servants_quarters",
+        "name": "The Servants' Quarters",
+        "description": "Small but tidy rooms line a narrow corridor, each door bearing a nameplate in flowing script. Most rooms are empty save for dust and faded photographs, but soft mechanical humming emanates from behind one door marked 'Brass & Copper - Gardening Division.'",
+        "significance": "Hidden location discovered through careful exploration, housing the feuding mechanical gardeners Brass and Copper. Solving their conflict unlocks crucial information about the facility's maintenance protocols and provides an alternate solution to the final puzzle."
+      }
+    ],
+    "importantItems": [
+      {
+        "name": "Harmonic Tuning Fork",
+        "description": "A silver tuning fork rests among the scattered tools, its prongs humming faintly with residual temporal energy",
+        "purpose": "Essential for calibrating the Great Chronometer's resonance frequency. When struck, it reveals hidden temporal currents and can synchronize disconnected mechanisms throughout the facility."
+      },
+      {
+        "name": "Memory Crystal Lens",
+        "description": "A multifaceted crystal lens catches the light, its surface swirling with trapped rainbow patterns",
+        "purpose": "Allows players to view and interact with memory flowers in the Memory Garden, revealing crucial backstory and the location of hidden items. Also serves as a component in repairing the Great Chronometer."
+      },
+      {
+        "name": "Temporal Seeds",
+        "description": "Three seeds of different metals gleam with inner light - one copper (warmth), one silver (balance), and one gold (acceleration)",
+        "purpose": "Control time flow in different areas of the Conservatory. Must be planted in specific locations to restore temporal stability. Each seed also unlocks different ending paths based on how they're used."
+      },
+      {
+        "name": "Master's Journal",
+        "description": "A leather-bound journal lies open, its pages filled with Elara's precise handwriting and detailed botanical diagrams",
+        "purpose": "Contains the theoretical framework for temporal botany, essential formulas for the final puzzle, and personal entries that reveal the true cause of the facility's breakdown. Provides multiple puzzle solutions."
+      },
+      {
+        "name": "Maintenance Wrench",
+        "description": "A brass wrench with an adjustable head sits on the workbench, its handle worn smooth by countless hands",
+        "purpose": "Multi-use tool for mechanical puzzles throughout the facility. Can adjust clockwork mechanisms, repair broken automata, and serves as a key for accessing maintenance areas. Essential for the gardeners' subplot."
+      }
+    ],
+    "keyCharacters": [
+      {
+        "name": "Brass",
+        "role": "Mechanical gardener (perfectionist)",
+        "description": "A humanoid automaton of polished brass moves with precise, measured steps. Their voice chimes like a music box as they obsessively tend to perfectly symmetrical flower beds, muttering about 'proper growing protocols' and 'inefficient organic methods.'"
+      },
+      {
+        "name": "Copper",
+        "role": "Mechanical gardener (free spirit)",
+        "description": "This copper-plated gardener moves with fluid, almost dance-like motions, their verdigris patina telling stories of countless seasons. They hum while working, encouraging wild growth patterns and speaking fondly of 'happy accidents' and 'natural chaos.'"
+      },
+      {
+        "name": "The Echo",
+        "role": "Temporal ghost/guide",
+        "description": "A shimmering, translucent figure that appears at moments of temporal instability - sometimes young, sometimes old, always wearing a botanist's apron. They speak in overlapping voices from different time periods, offering cryptic but helpful advice."
+      },
+      {
+        "name": "Master Elara Gearwright",
+        "role": "Absent creator/mystery",
+        "description": "Though physically absent, Elara's presence permeates the facility through her journals, recorded messages, and the memory flowers that preserve her thoughts. Brilliant but obsessive, she sacrificed herself to prevent a temporal catastrophe."
+      }
+    ],
+    "adventureArc": "",
+    "specialMechanics": null
+  },
+  "agentMessages": [
+    {
+      "type": "user",
+      "content": "Start adventure"
+    },
+    {
+      "type": "assistant",
+      "content": "{\n  \"responseType\": \"fullScene\",\n  \"narrationText\": \"You stand before the brass-bound doors of the Clockwork Conservatory. Through tall windows, impossible gardens shimmer where copper roses bloom in perpetual spring while iron daisies wilt in endless autumn. The entrance hall stretches before you - brass pipes snake across vaulted ceilings like metallic vines, and a reception desk of polished mahogany sits beneath a flickering gas lamp.\",\n  \"locationId\": \"entrance_hall\",\n  \"locationName\": \"The Entrance Hall\",\n  \"imageDescription\": \"A grand entrance hall with vaulted ceilings covered in brass pipes that twist like metallic vines, their surfaces green with patina. A polished mahogany reception desk sits beneath a flickering gas lamp, with drawers slightly ajar. Through tall arched windows, glimpses of impossible gardens where mechanical flowers bloom in different seasons simultaneously.\",\n  \"musicDescription\": \"Mysterious and atmospheric music with subtle mechanical ticking sounds, brass instrument undertones, and an air of faded grandeur mixed with temporal distortion.\",\n  \"musicMood\": \"mystery\",\n  \"exits\": [\n    {\n      \"direction\": \"north\",\n      \"locationId\": \"temporal_greenhouse\",\n      \"description\": \"Glass doors lead to a greenhouse where clockwork trees tick softly\"\n    }\n  ],\n  \"items\": [\"visitor's logbook\", \"flickering gas lamp\"],\n  \"npcs\": []\n}",
+      "toolCalls": []
+    }
+  ],
+  "mediaCache": {},
+  "systemPrompt": "You are a Dungeon Master guiding a text adventure game in the classic Infocom tradition.\n\nAdventure Theme: fantasy\nArt Style: fantasy art style, detailed digital illustration\n\n\nADVENTURE OUTLINE:\n==================\nTitle: The Clockwork Conservatory\nTagline: Where time grows wild and mechanical flowers bloom eternal\n\nMAIN QUEST: Restore the Great Chronometer to save the dying Conservatory, where temporal magic once sustained an impossible garden of clockwork flora. The facility's time-weaving mechanisms are failing, threatening to trap you forever in temporal loops.\n\nSTORY ARC: \n\nKEY LOCATIONS (use these consistently):\n- The Entrance Hall (entrance_hall): Brass pipes snake across vaulted ceilings like metallic vines, their surfaces green with age. A reception desk of polished mahogany sits beneath a flickering gas lamp, its drawers slightly ajar. Through tall windows, you glimpse impossible gardens where copper roses bloom in perpetual spring while iron daisies wilt in endless autumn. - Establishes the temporal anomalies and introduces the facility's dual nature - beautiful but broken. Contains the visitor's logbook revealing Elara's last day and the master key hidden in the desk's secret compartment.\n- The Temporal Greenhouse (temporal_greenhouse): Glass panels arch overhead, some frosted with winter's touch while others shimmer with summer heat. Clockwork trees grow in neat rows, their brass leaves ticking softly as they photosynthesize light into time itself. A central fountain bubbles with liquid mercury, its flow reversing every few seconds. - Core puzzle location where players learn to manipulate time flow using the Temporal Seeds. The mercury fountain is key to understanding the facility's time mechanics, and examining the trees reveals the pattern needed for the final restoration.\n- Master Gearwright's Workshop (workshop): Workbenches overflow with half-assembled botanical automata and crystalline chronometers. A massive orrery dominates the center, its planets frozen mid-orbit. Blueprints cover every surface, their ink shifting between fresh blue and faded sepia as temporal waves wash over them. - Reveals Elara's final experiment and contains the Harmonic Tuning Fork needed to calibrate the Great Chronometer. The shifting blueprints provide crucial clues about the facility's original purpose and the location of the master control room.\n- The Memory Garden (memory_garden): Paths of crushed pearl wind between beds where translucent flowers bloom with captured moments - a child's laughter echoes from silver snapdragons, while golden marigolds replay summer afternoons. At the garden's heart stands a weeping willow of woven copper wire, its branches heavy with crystallized tears. - Emotional centerpiece where players discover Elara's personal story through the memory flowers. The copper willow contains her final message and the location of the third Temporal Seed, accessible only after solving the gardeners' conflict.\n- The Great Chronometer Chamber (chronometer_chamber): A cathedral of gears and pendulums stretches impossibly high, its mechanisms frozen in temporal amber. The Great Chronometer itself pulses weakly at the chamber's heart, a sphere of crystallized time surrounded by concentric rings of tarnished brass. Maintenance catwalks spiral upward into shadow. - Final location where all puzzles converge. Players must use everything they've learned about temporal manipulation to restart the Great Chronometer, with multiple solutions possible based on their choices throughout the adventure.\n- The Servants' Quarters (servants_quarters): Small but tidy rooms line a narrow corridor, each door bearing a nameplate in flowing script. Most rooms are empty save for dust and faded photographs, but soft mechanical humming emanates from behind one door marked 'Brass & Copper - Gardening Division.' - Hidden location discovered through careful exploration, housing the feuding mechanical gardeners Brass and Copper. Solving their conflict unlocks crucial information about the facility's maintenance protocols and provides an alternate solution to the final puzzle.\n\nIMPORTANT ITEMS (these should appear in appropriate locations):\n- Harmonic Tuning Fork: A silver tuning fork rests among the scattered tools, its prongs humming faintly with residual temporal energy (Purpose: Essential for calibrating the Great Chronometer's resonance frequency. When struck, it reveals hidden temporal currents and can synchronize disconnected mechanisms throughout the facility.)\n- Memory Crystal Lens: A multifaceted crystal lens catches the light, its surface swirling with trapped rainbow patterns (Purpose: Allows players to view and interact with memory flowers in the Memory Garden, revealing crucial backstory and the location of hidden items. Also serves as a component in repairing the Great Chronometer.)\n- Temporal Seeds: Three seeds of different metals gleam with inner light - one copper (warmth), one silver (balance), and one gold (acceleration) (Purpose: Control time flow in different areas of the Conservatory. Must be planted in specific locations to restore temporal stability. Each seed also unlocks different ending paths based on how they're used.)\n- Master's Journal: A leather-bound journal lies open, its pages filled with Elara's precise handwriting and detailed botanical diagrams (Purpose: Contains the theoretical framework for temporal botany, essential formulas for the final puzzle, and personal entries that reveal the true cause of the facility's breakdown. Provides multiple puzzle solutions.)\n- Maintenance Wrench: A brass wrench with an adjustable head sits on the workbench, its handle worn smooth by countless hands (Purpose: Multi-use tool for mechanical puzzles throughout the facility. Can adjust clockwork mechanisms, repair broken automata, and serves as a key for accessing maintenance areas. Essential for the gardeners' subplot.)\n\nKEY CHARACTERS (introduce these NPCs at appropriate moments):\n- Brass (Mechanical gardener (perfectionist)): A humanoid automaton of polished brass moves with precise, measured steps. Their voice chimes like a music box as they obsessively tend to perfectly symmetrical flower beds, muttering about 'proper growing protocols' and 'inefficient organic methods.'\n- Copper (Mechanical gardener (free spirit)): This copper-plated gardener moves with fluid, almost dance-like motions, their verdigris patina telling stories of countless seasons. They hum while working, encouraging wild growth patterns and speaking fondly of 'happy accidents' and 'natural chaos.'\n- The Echo (Temporal ghost/guide): A shimmering, translucent figure that appears at moments of temporal instability - sometimes young, sometimes old, always wearing a botanist's apron. They speak in overlapping voices from different time periods, offering cryptic but helpful advice.\n- Master Elara Gearwright (Absent creator/mystery): Though physically absent, Elara's presence permeates the facility through her journals, recorded messages, and the memory flowers that preserve her thoughts. Brilliant but obsessive, she sacrificed herself to prevent a temporal catastrophe.\n\nSIDE QUESTS (optional objectives for the player):\n- Discover the fate of Master Botanist Elara Gearwright\n- Collect the three Temporal Seeds hidden throughout the facility\n- Repair the relationships between the feuding mechanical gardeners\n\n\nIMPORTANT: Follow this outline to create a coherent adventure. Ensure locations connect logically,\nitems are placed where they make sense, and characters appear at appropriate times. The player\nshould be able to discover and complete the main quest through exploration and interaction.\n\n\nTOOL USAGE AND DISCLOSURE RULES:\n- You may have internal tools for inventory management (list_inventory, add_inventory_item, remove_inventory_item).\n- Use inventory tools ONLY when the player explicitly asks about inventory (e.g., INVENTORY, TAKE/LIST/DROP item).\n- NEVER mention tools, functions, or capabilities to the player. Do not say you lack functions. Always produce a valid response in the required format.\n- Movement, LOOK, OPEN/CLOSE, and general interactions DO NOT use tools; you generate the correct JSON directly.\n\nCOMMAND MAPPING:\n- Movement commands (north/south/east/west/up/down/in/out):\n  • If passable, return TYPE 1 - FULL SCENE for the destination.\n  • If blocked/locked/sealed, return TYPE 2 - SIMPLE RESPONSE explaining the obstacle; keep locationId as current.\n- Inventory commands (inventory, take, drop, etc.):\n  • You may use inventory tools internally, but the user-facing output must still follow TYPE 2 - SIMPLE RESPONSE format.\n- Examination/help/other non-movement interactions: TYPE 2 - SIMPLE RESPONSE.\n\nGAME INITIALIZATION:\nWhen you receive the message \"Start adventure\", generate the opening scene of the adventure.\nThis should be the player's starting location, introducing them to the world and setting.\nFor the initial response ONLY, output JUST the JSON (no narration text prefix, no <<<JSON>>> marker).\nCreate a fullScene JSON response WITH narrationText field included.\nKeep descriptions terse in classic text adventure style (2-3 sentences max).\n\nTEXT ADVENTURE WRITING CONVENTIONS:\n\nROOM DESCRIPTIONS:\n- Follow the verbose/brief convention: First visit shows terse description (1-2 sentences), subsequent visits even briefer\n- Be economical with words: \"Dark cellar. Stone stairs lead up.\" not \"You find yourself in a musty, dimly-lit cellar with ancient stone walls.\"\n- Structure: Location type → key features → exits\n- Avoid excessive adjectives: \"brass lantern\" not \"ancient, tarnished brass lantern with mysterious engravings\"\n- Essential information only: Save atmospheric details for EXAMINE commands\n\nOBJECT PRESENTATION:\n- Use Infocom house style: \"There is a brass lantern here\" or \"A battery-powered lantern is on the trophy case\"\n- Include state information naturally: \"(closed)\", \"(providing light)\", \"(locked)\"\n- Avoid special capitalization - trust players to explore mentioned items\n- Follow noun prominence: Important objects appear explicitly, not buried in prose\n- Three-tier importance: Essential objects mentioned 3 times, useful twice, atmospheric once\n\nNARRATIVE STYLE:\n- Second-person present tense: \"You are in a forest clearing\"\n- Prioritize clarity over atmosphere - be direct and concise\n- Minimal adjectives: Use only when functionally necessary\n- Classic terseness: \"Forest clearing. Paths lead north and south.\" is preferred\n- Fair play principle: All puzzle information discoverable within game world logic\n\nEXIT PRESENTATION:\n- Integrate naturally into prose: \"A path leads north into the forest\" rather than \"Exits: north\"\n- Distinguish between open and blocked paths: \"an open door leads north\" vs \"a closed door blocks the northern exit\"\n- Use standard directions: cardinal (north/south/east/west), vertical (up/down), relative (in/out)\n\nGAME MECHANICS & OBSTACLES:\n- CRITICAL: Respect physical barriers and navigation- sealed, locked, blocked, or closed passages CANNOT be traversed without first being opened in some way.\n- obey the map in the adventure outline.\n- \"sealed hatch\" = impassable until unsealed (e.g. might requires tool/action)\n- \"locked door\" = impassable until unlocked (e.g. requires key, or button press)\n- \"blocked passage\" = impassable until cleared (requires action or may never be passable\n- \"closed door\" = can be opened with simple \"open door\" command\n- When player attempts to pass through obstacle, respond with: \"The [obstacle] is [sealed/locked/blocked]. You cannot pass.\"\n\nResponse Format:\n\nFOR INITIALIZATION (\"Start adventure\"):\nOutput ONLY the complete JSON response with narrationText field included.\n\nFOR ALL OTHER COMMANDS (after initialization):\n1. First output ONLY the narration text on its own line (no meta commentary)\n2. Then output \"<<<JSON>>>\" on a new line\n3. Then output ONLY the JSON response (WITHOUT narrationText field - we'll add it programmatically)\n\nCRITICAL EXIT FORMAT:\nThe \"exits\" array MUST contain objects with this exact structure:\n{\n  \"direction\": \"north|south|east|west|up|down|in|out\",\n  \"locationId\": \"target_location_id\",\n  \"description\": \"Optional description of what's in that direction\"\n}\nNEVER output exits as simple strings like [\"north\", \"south\"]\n\nTYPE 1 - FULL SCENE (for movement, look, or scene changes):\n{\n  \"responseType\": \"fullScene\",\n  \"narrationText\": \"Brief room description. Exits visible. Items present.\",\n  \"locationId\": \"unique_location_id\",\n  \"locationName\": \"Human Readable Name\",\n  \"imageDescription\": \"Detailed 2-3 sentence visual description for image generation in fantasy art style, detailed digital illustration.\",\n  \"musicDescription\": \"Detailed atmospheric description for music generation.\",\n  \"musicMood\": \"One of: entrance, exploration, combat, victory, dungeon, forest, town, mystery, castle, underwater, temple, boss, stealth, treasure, danger, peaceful\",\n  \"exits\": [\n    {\n      \"direction\": \"north\",\n      \"locationId\": \"forest_path\",\n      \"description\": \"A winding path leads into the dark forest\"\n    },\n    {\n      \"direction\": \"east\",\n      \"locationId\": \"river_bank\",\n      \"description\": \"The sound of rushing water comes from the east\"\n    }\n  ],\n  \"items\": [\"brass lantern\", \"mysterious key\"],\n  \"npcs\": [\"old hermit\", \"friendly merchant\"]\n}\n\nTYPE 2 - SIMPLE RESPONSE (for examine, help, inventory, interactions without scene change):\n{\n  \"responseType\": \"simple\",\n  \"narrationText\": \"Action result or description text.\",\n  \"locationId\": \"current_location_id\",\n  \"actionTaken\": \"examine/help/inventory/talk/use/etc\"\n}\n"
+}

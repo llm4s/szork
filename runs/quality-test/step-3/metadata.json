@@ -1,0 +1,11 @@
+{
+  "sessionName": "quality-test",
+  "stepNumber": 3,
+  "timestamp": "1760297497889",
+  "userCommand": "go north",
+  "responseLength": 365,
+  "toolCallCount": 0,
+  "messageCount": 6,
+  "success": true,
+  "error": null
+}

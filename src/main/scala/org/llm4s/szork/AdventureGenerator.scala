@@ -63,8 +63,20 @@ object AdventureGenerator {
         |    {
         |      "id": "location_id",
         |      "name": "Location Name",
-        |      "description": "First-visit description (2-3 sentences establishing atmosphere and key interactive elements)",
-        |      "significance": "How this location advances the story and what makes it memorable"
+        |      "description": "First-visit description (2-3 sentences establishing atmosphere and key interactive elements). CRITICAL: Must integrate ALL exits naturally into prose using classic IF patterns: 'To the north, a wooden door stands closed', 'Stone stairs descend into darkness below', 'An archway opens to the west'. Never rely on separate exit lists.",
+        |      "exits": [
+        |        {
+        |          "direction": "north/south/east/west/up/down/in/out",
+        |          "targetId": "destination_location_id",
+        |          "description": "Natural prose: 'An iron door leads north' or 'Stone stairs climb upward'",
+        |          "state": "open/closed/locked/sealed/hidden",
+        |          "obstacle": "What blocks passage if not open (e.g., 'locked with brass padlock', 'sealed with wax', 'rusted shut')"
+        |        }
+        |      ],
+        |      "interactables": ["Explicit list of examinable objects: furniture (desk, cabinet, chest), mechanisms (lever, button, wheel), containers (drawer, box, safe), decorations (painting, statue, tapestry)"],
+        |      "puzzles": "Specific puzzle elements: locked containers needing keys, hidden compartments revealed by examination, mechanisms requiring tools, combination locks with clues nearby",
+        |      "secrets": "Hidden elements discoverable through careful examination (e.g., 'examining the bookshelf reveals a hidden switch', 'the desk drawer is locked but the key is under the lamp')",
+        |      "significance": "How this location advances the story, what puzzles it contains, and what makes it memorable"
         |    }
         |  ],
         |  "importantItems": [
@@ -127,6 +139,15 @@ object AdventureGenerator {
         |- Include environmental storytelling in every location
         |- Add at least one "wow moment" that surprises players
         |- Hide 2-3 easter eggs or secrets for observant players
+        |
+        |INTERACTIVITY REQUIREMENTS (Classic Text Adventure Style):
+        |- At least 2-3 locked/blocked passages requiring keys or tools to open
+        |- At least 3-4 containers (chests, drawers, cabinets, safes) that can be opened
+        |- At least 2-3 simple mechanical puzzles (levers, buttons, wheels, dials)
+        |- At least 1-2 "fetch quest" puzzles (bring item X to location Y)
+        |- Every location should have 3-5 examinable objects beyond takeable items
+        |- At least 1 hidden passage or secret compartment discoverable by examination
+        |- Clear progression: starting area → obstacles requiring items → goal achievement
         |
         |DESIGN PHILOSOPHY:
         |- Every detail serves atmosphere OR gameplay, ideally both

@@ -1,0 +1,25 @@
+=== CONVERSATION HISTORY ===
+
+[Message 1] USER:
+Start adventure
+
+[Message 2] ASSISTANT:
+{
+  "responseType": "fullScene",
+  "narrationText": "You stand before the brass-bound doors of the Clockwork Conservatory. Through tall windows, impossible gardens shimmer where copper roses bloom in perpetual spring while iron daisies wilt in endless autumn. The entrance hall stretches before you - brass pipes snake across vaulted ceilings like metallic vines, and a reception desk of polished mahogany sits beneath a flickering gas lamp.",
+  "locationId": "entrance_hall",
+  "locationName": "The Entrance Hall",
+  "imageDescription": "A grand entrance hall with vaulted ceilings covered in brass pipes that twist like metallic vines, their surfaces green with patina. A polished mahogany reception desk sits beneath a flickering gas lamp, with drawers slightly ajar. Through tall arched windows, glimpses of impossible gardens where mechanical flowers bloom in different seasons simultaneously.",
+  "musicDescription": "Mysterious and atmospheric music with subtle mechanical ticking sounds, brass instrument undertones, and an air of faded grandeur mixed with temporal distortion.",
+  "musicMood": "mystery",
+  "exits": [
+    {
+      "direction": "north",
+      "locationId": "temporal_greenhouse",
+      "description": "Glass doors lead to a greenhouse where clockwork trees tick softly"
+    }
+  ],
+  "items": ["visitor's logbook", "flickering gas lamp"],
+  "npcs": []
+}
+

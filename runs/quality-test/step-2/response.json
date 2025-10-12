@@ -1,0 +1,23 @@
+{
+  "text": "You examine the entrance hall more carefully. Brass pipes snake across the vaulted ceiling, their aged surfaces telling stories of countless seasons. The mahogany reception desk dominates the space, its drawers slightly ajar as if recently searched. A visitor's logbook lies open on the desk's surface, and the flickering gas lamp casts dancing shadows across faded wallpaper.",
+  "scene": {
+    "locationId": "entrance_hall",
+    "locationName": "The Entrance Hall",
+    "narrationText": "You examine the entrance hall more carefully. Brass pipes snake across the vaulted ceiling, their aged surfaces telling stories of countless seasons. The mahogany reception desk dominates the space, its drawers slightly ajar as if recently searched. A visitor's logbook lies open on the desk's surface, and the flickering gas lamp casts dancing shadows across faded wallpaper.",
+    "imageDescription": "A detailed view of the entrance hall showing the intricate brass pipe network across the ceiling, the mahogany reception desk with partially opened drawers, an open visitor's logbook, and flickering gas lamp casting warm light and shadows across faded Victorian wallpaper.",
+    "musicDescription": "Mysterious and atmospheric music with subtle mechanical ticking sounds, brass instrument undertones, and an air of faded grandeur mixed with temporal distortion.",
+    "musicMood": "mystery",
+    "exits": [
+      {
+        "direction": "north",
+        "locationId": "temporal_greenhouse",
+        "description": "Glass doors lead to a greenhouse where clockwork trees tick softly"
+      }
+    ],
+    "items": [
+      "visitor's logbook",
+      "flickering gas lamp"
+    ],
+    "npcs": []
+  }
+}

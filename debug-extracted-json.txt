@@ -1,125 +1,115 @@
 {
-  "title": "The Blackwood Inheritance",
-  "tagline": "Some legacies are better left unclaimed",
-  "mainQuest": "You've inherited your great-aunt Cordelia's mansion, but to claim it legally, you must spend one night inside and solve the mystery of her disappearance. The house itself seems determined to prevent you from succeeding.",
+  "title": "The Cartographer's Last Map",
+  "tagline": "A forgotten dungeon holds the secret to a mapmaker's final masterpiece",
+  "mainQuest": "Discover why master cartographer Aldric Thornwick disappeared into these ruins, and uncover the truth behind his legendary final map that was said to chart 'places that exist only when observed.'",
   "subQuests": [
-    "Restore power to the mansion by repairing the generator",
-    "Uncover the truth about the previous caretaker's fate",
-    "Locate Cordelia's hidden will and testament"
+    "Restore the ancient lighthouse mechanism to reveal hidden passages",
+    "Piece together Aldric's scattered journal entries to understand his obsession",
+    "Locate and activate the three Observation Stones to unlock the Map Chamber"
   ],
   "keyLocations": [
     {
-      "id": "foyer",
-      "name": "Grand Foyer",
-      "description": "Moonlight filters through grimy stained glass, casting colored shadows across a once-magnificent entrance hall. A crystal chandelier hangs dark and silent overhead, while dust motes dance in the pale beams. An ornate mahogany desk sits against the east wall, its brass lamp unlit but promising. To the north, double doors of dark oak stand slightly ajar, revealing glimpses of a shadowy parlor beyond. A narrow servants' staircase climbs upward along the west wall, and to the south, the heavy front door remains your only certain escape.",
+      "id": "entrance_hall",
+      "name": "Crumbling Entrance Hall",
+      "description": "Pale daylight filters through gaps in the collapsed ceiling, illuminating a once-grand hall now thick with dust and debris. A brass compass lies abandoned on a weathered wooden table near the center of the room, its needle spinning wildly as if confused by some magnetic disturbance. To the north, an ornate archway opens into deeper shadows, while stone steps descend westward into what might once have been cellars.",
       "exits": [
         {
           "direction": "north",
-          "targetId": "parlor",
-          "description": "Double doors of dark oak stand slightly ajar",
+          "targetId": "map_room",
+          "description": "An ornate archway opens to the north",
           "state": "open",
-          "obstacle": ""
-        },
-        {
-          "direction": "up",
-          "targetId": "upstairs_hall",
-          "description": "A narrow servants' staircase climbs upward along the west wall",
-          "state": "open",
-          "obstacle": ""
-        },
-        {
-          "direction": "south",
-          "targetId": "outside",
-          "description": "The heavy front door leads back to the world beyond",
-          "state": "open",
-          "obstacle": ""
-        }
-      ],
-      "interactables": ["mahogany desk", "brass lamp", "crystal chandelier", "stained glass windows", "dust patterns on floor"],
-      "puzzles": "The desk drawer is locked, but examining the lamp base reveals a hidden key. The chandelier can be lowered by pulling a concealed chain, revealing a message etched in the crystal.",
-      "secrets": "Examining the dust patterns on the floor reveals recent footprints leading to the desk - someone else has been here recently. The lamp, when examined, has a key taped to its base.",
-      "significance": "Tutorial area that teaches basic interactions and introduces the mystery. The desk contains Cordelia's journal with the first clues about her research into the house's history."
-    },
-    {
-      "id": "parlor",
-      "name": "Moonlit Parlor",
-      "description": "Heavy velvet drapes frame tall windows that let in pools of silver light, illuminating a room frozen in time. Leather-bound books line the walls from floor to ceiling, while a marble fireplace dominates the north wall, cold ashes scattered on its hearth. A grandfather clock stands silent in the corner, its pendulum still, hands pointing to midnight. To the east, a narrow door marked 'STUDY' bears a heavy brass lock, while westward, an archway opens into what appears to be a dining room shrouded in darkness.",
-      "exits": [
-        {
-          "direction": "south",
-          "targetId": "foyer",
-          "description": "The double doors lead back to the foyer",
-          "state": "open",
-          "obstacle": ""
-        },
-        {
-          "direction": "east",
-          "targetId": "study",
-          "description": "A narrow door marked 'STUDY' bears a heavy brass lock",
-          "state": "locked",
-          "obstacle": "locked with an ornate brass lock requiring an old-fashioned skeleton key"
+          "obstacle": null
         },
         {
           "direction": "west",
-          "targetId": "dining_room",
-          "description": "An archway opens westward into shadowy darkness",
+          "targetId": "lower_chambers",
+          "description": "Stone steps descend westward into darkness",
           "state": "open",
-          "obstacle": ""
+          "obstacle": null
         }
       ],
-      "interactables": ["bookshelf", "grandfather clock", "marble fireplace", "velvet drapes", "scattered ashes", "leather-bound books"],
-      "puzzles": "The grandfather clock can be wound with a key found elsewhere, revealing a hidden compartment. Certain books can be pulled to activate a mechanism. The fireplace has a loose brick hiding a skeleton key.",
-      "secrets": "Examining the bookshelf reveals that several volumes are actually false fronts. Pulling 'Mysteries of Architecture' causes the fireplace to swing inward slightly. The ashes in the fireplace, when examined closely, contain fragments of burned letters.",
-      "significance": "Central hub connecting multiple areas. Contains the skeleton key needed for the study and introduces the house's mechanical secrets through the bookshelf puzzle."
+      "interactables": ["compass", "table", "debris", "ceiling", "archway"],
+      "puzzles": "The compass provides the first clue to the magnetic anomalies affecting the dungeon, and examining it reveals it points toward hidden passages rather than true north.",
+      "secrets": "The table has a hidden drawer containing Aldric's entry key, revealed by examining the compass's mounting - the brass base unscrews to reveal a small compartment.",
+      "significance": "Establishes the mystery of Aldric's disappearance and introduces the theme of distorted navigation and observation that runs throughout the adventure."
     },
     {
-      "id": "study",
-      "name": "Cordelia's Study",
-      "description": "This intimate chamber feels like the heart of the house's mysteries, lined with arcane texts and scientific instruments that gleam in the lamplight. A massive oak desk dominates the center, its surface covered with charts, calculations, and what appears to be architectural blueprints of the mansion itself. Strange symbols are chalked on a blackboard mounted on the east wall, while to the north, a heavy wooden door bears multiple locks and warning signs. The only other exit leads south, back to the parlor through the door you entered.",
+      "id": "map_room",
+      "name": "The Cartographer's Study",
+      "description": "This circular chamber was clearly Aldric's workshop, its walls covered in half-finished maps and astronomical charts. A large drafting table dominates the center, scattered with brass instruments and bottles of faded ink. Most intriguingly, an enormous map covers the eastern wall - but its surface appears completely blank, as if waiting for something to bring it to life. A narrow spiral staircase winds upward through an opening in the ceiling, while the southern archway leads back toward the entrance.",
       "exits": [
         {
           "direction": "south",
-          "targetId": "parlor",
-          "description": "The door leads back to the parlor",
+          "targetId": "entrance_hall",
+          "description": "The southern archway leads back to the entrance hall",
           "state": "open",
-          "obstacle": ""
-        },
-        {
-          "direction": "north",
-          "targetId": "basement_stairs",
-          "description": "A heavy wooden door bears three different locks and warning signs",
-          "state": "sealed",
-          "obstacle": "sealed with three different locks: brass, iron, and silver, each requiring a different key"
-        }
-      ],
-      "interactables": ["oak desk", "architectural blueprints", "blackboard", "strange symbols", "scientific instruments", "arcane texts", "warning signs"],
-      "puzzles": "The blueprints reveal the location of hidden passages. The symbols on the blackboard form a cipher that, when decoded, gives the combination to a safe. The desk has a secret compartment activated by pressing certain points on the blueprints.",
-      "secrets": "The blueprints show rooms that don't appear to exist, including a chamber directly beneath the study. Examining the scientific instruments reveals they're designed to measure electromagnetic fields. The desk's secret compartment contains Cordelia's research notes about 'temporal anomalies' in the basement.",
-      "significance": "Key story location revealing Cordelia's research into the house's supernatural properties. Contains crucial information needed to understand the basement mystery and provides tools for the final confrontation."
-    },
-    {
-      "id": "dining_room",
-      "name": "Abandoned Dining Room",
-      "description": "A long mahogany table stretches the length of this formal dining room, set for twelve but covered in decades of dust and neglect. Tarnished silver candlesticks stand like sentinels down its center, while portraits of stern-faced ancestors gaze down from the walls with disapproving eyes. A crystal chandelier hangs precariously overhead, several chains broken and crystals scattered on the floor below. To the north, a swinging door leads toward what must be the kitchen, while an elegant staircase curves upward to the east, its bannister carved with intricate roses.",
-      "exits": [
-        {
-          "direction": "east",
-          "targetId": "parlor",
-          "description": "The archway leads back to the parlor",
-          "state": "open",
-          "obstacle": ""
-        },
-        {
-          "direction": "north",
-          "targetId": "kitchen",
-          "description": "A swinging door leads toward the kitchen",
-          "state": "open",
-          "obstacle": ""
+          "obstacle": null
         },
         {
           "direction": "up",
-          "targetId": "upstairs_hall",
-          "description": "An elegant staircase curves upward, its bannister carved with roses",
+          "targetId": "lighthouse_chamber",
+          "description": "A narrow spiral staircase winds upward through the ceiling",
           "state": "open",
-          "obstacle": ""
+          "obstacle": null
+        }
+      ],
+      "interactables": ["drafting table", "blank map", "charts", "instruments", "ink bottles", "scattered papers"],
+      "puzzles": "The blank map is the adventure's central mystery - it only reveals its contents when all three Observation Stones are activated. The drafting table contains a locked drawer requiring Aldric's key.",
+      "secrets": "Examining the astronomical charts reveals they track celestial bodies that don't exist in normal star catalogs. The ink bottles, when examined closely, contain liquid that glows faintly in darkness.",
+      "significance": "The heart of the mystery - this room contains Aldric's greatest work and the tools needed to understand his final discovery about the nature of reality and observation."
+    },
+    {
+      "id": "lighthouse_chamber",
+      "name": "Ancient Lighthouse Mechanism",
+      "description": "You stand within the mechanical heart of what was once a lighthouse, though no sea is visible through the narrow windows. Massive bronze gears and crystal lenses fill the circular chamber, all focused around a central beacon that sits dark and cold. The entire mechanism appears to be waiting for something - perhaps the three colored crystals that fit into obvious sockets around the beacon's base. A maintenance ladder leads down through a hatch in the floor.",
+      "exits": [
+        {
+          "direction": "down",
+          "targetId": "map_room",
+          "description": "A maintenance ladder leads down through a hatch in the floor",
+          "state": "open",
+          "obstacle": null
+        }
+      ],
+      "interactables": ["beacon", "gears", "crystal lenses", "windows", "crystal sockets", "maintenance tools"],
+      "puzzles": "The lighthouse requires three colored crystals (Observation Stones) to function. When activated, its light reveals hidden passages and causes the blank map below to display its contents.",
+      "secrets": "The crystal lenses can be adjusted to focus the beacon's light in different directions, revealing secret messages carved into the chamber walls when the mechanism is active.",
+      "significance": "The key to unlocking the dungeon's secrets - this mechanism transforms observation into revelation, literally illuminating the truth of Aldric's discoveries."
+    },
+    {
+      "id": "lower_chambers",
+      "name": "Flooded Archive Chambers",
+      "description": "These lower chambers are partially flooded with dark, still water that reflects the light from your lantern like black glass. Stone shelves line the walls, holding waterlogged books and scrolls in various states of decay. A peculiar sight draws your eye: a red crystal glows softly from within a glass case mounted on the eastern wall, somehow untouched by the water damage. To the north, a heavy wooden door bears an intricate lock, while narrow stairs climb back east to the entrance hall.",
+      "exits": [
+        {
+          "direction": "east",
+          "targetId": "entrance_hall",
+          "description": "Narrow stairs climb back east toward the entrance hall",
+          "state": "open",
+          "obstacle": null
+        },
+        {
+          "direction": "north",
+          "targetId": "hidden_laboratory",
+          "description": "A heavy wooden door leads north",
+          "state": "locked",
+          "obstacle": "secured with an intricate brass lock that requires a specific key"
+        }
+      ],
+      "interactables": ["water", "stone shelves", "waterlogged books", "glass case", "red crystal", "brass lock"],
+      "puzzles": "The glass case containing the red crystal opens with a mechanism hidden in one of the readable books. The brass lock requires Aldric's key from the entrance hall table.",
+      "secrets": "Some of the waterlogged books are still readable and contain fragments of Aldric's research notes about 'reality anchors' and 'observation paradoxes.'",
+      "significance": "Contains the first Observation Stone and crucial backstory about Aldric's theories, while the flood damage suggests some catastrophic event occurred here."
+    },
+    {
+      "id": "hidden_laboratory",
+      "name": "Aldric's Secret Laboratory",
+      "description": "Behind the locked door lies Aldric's true workshop - a pristine laboratory untouched by the decay affecting the rest of the dungeon. Alchemical apparatus lines marble workbenches, and strange diagrams cover every surface. Most remarkably, a blue crystal hovers freely in the center of the room, rotating slowly above a complex array of mirrors and lenses. The only exit is the wooden door leading south, but something about this room suggests it exists somehow outside normal space.",
+      "exits": [
+        {
+          "direction": "south",
+          "targetId": "lower_chambers",
+          "description": "The wooden door leads south back to the flooded chambers",
+          "state": "open",
+          "obstacle": null
         }]]}}

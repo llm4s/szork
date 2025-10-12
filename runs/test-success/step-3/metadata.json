@@ -1,0 +1,11 @@
+{
+  "sessionName": "test-success",
+  "stepNumber": 3,
+  "timestamp": "1760221685731",
+  "userCommand": "'take",
+  "responseLength": 42,
+  "toolCallCount": 0,
+  "messageCount": 6,
+  "success": true,
+  "error": null
+}

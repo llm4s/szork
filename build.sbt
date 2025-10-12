@@ -43,7 +43,7 @@ lazy val root = (project in file("."))
     // Dependencies
     libraryDependencies ++= Seq(
       // Core LLM4S library
-      "org.llm4s" %% "llm4s" % "0.1.12",
+      "org.llm4s" %% "core" % "0.1.14",
       
       // Cask for web server
       "com.lihaoyi" %% "cask" % "0.10.2",

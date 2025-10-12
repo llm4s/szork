@@ -6,19 +6,20 @@ import org.llm4s.config.EnvLoader
 import org.slf4j.LoggerFactory
 import scala.util.{Try, Success, Failure}
 
-/** Debug script to execute a user command on an existing adventure session.
+/** Debug script to execute a user command on an existing adventure.
   *
-  * Usage: sbt "runMain org.llm4s.szork.debug.RunUserStep <session-name> <step> <command>"
+  * Usage: sbt "runMain org.llm4s.szork.debug.RunUserStep <game-id> <previous-step> <command>"
   *
-  * Example: sbt "runMain org.llm4s.szork.debug.RunUserStep test-session-1 1 'look around'" sbt "runMain
-  * org.llm4s.szork.debug.RunUserStep test-session-1 2 'go north'" sbt "runMain org.llm4s.szork.debug.RunUserStep
-  * test-session-1 3 'take lantern'"
+  * Example:
+  *   sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 1 'look around'"
+  *   sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 2 'go north'"
+  *   sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 3 'take lantern'"
   */
 object RunUserStep {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   case class Config(
-    sessionName: String,
+    gameId: String,
     previousStep: Int,
     command: String
   )
@@ -35,16 +36,24 @@ object RunUserStep {
 
     val nextStep = config.previousStep + 1
 
-    println(s"\n=== Running Step $nextStep: ${config.sessionName} ===")
+    println(s"\n=== Running Step $nextStep: ${config.gameId} ===")
     println(s"Command: ${config.command}")
     println()
 
     try {
       // Load previous game state
       println(s"Loading game state from step ${config.previousStep}...")
-      val previousStepDir = DebugHelpers.getStepDir(config.sessionName, config.previousStep)
-      val gameStateJson = DebugHelpers.loadJson(previousStepDir.resolve("game-state.json"))
-      val gameState = GameStateCodec.fromJson(gameStateJson)
+      val previousStepData = StepPersistence.loadStep(config.gameId, config.previousStep) match {
+        case Right(data) =>
+          println(s"✓ Step ${config.previousStep} loaded")
+          data
+        case Left(error) =>
+          println(s"ERROR: Failed to load step ${config.previousStep}: ${error.message}")
+          System.exit(1)
+          return
+      }
+
+      val gameState = previousStepData.gameState
       println(s"✓ Game state loaded (${gameState.agentMessages.length} messages)")
 
       // Initialize LLM client
@@ -78,8 +87,9 @@ object RunUserStep {
         musicClient = musicClient
       )
 
-      // Restore the saved state
+      // Restore the saved state and step number
       engine.restoreGameState(gameState)
+      engine.setStepNumber(nextStep)
       println(s"✓ Game engine restored (${engine.getMessageCount} messages)")
 
       // Process the user command
@@ -94,32 +104,32 @@ object RunUserStep {
           println(s"ERROR: Failed to process command: ${error.message}")
           error.cause.foreach(ex => logger.error("Command processing error", ex))
 
-          // Save error state anyway
-          val errorStepDir = DebugHelpers.createStepDir(config.sessionName, nextStep)
-          val errorMetadata = DebugHelpers.StepMetadata(
-            sessionName = config.sessionName,
+          // Save error state
+          val executionTime = System.currentTimeMillis() - startTime
+          val errorStepData = StepData.commandStep(
+            gameId = config.gameId,
             stepNumber = nextStep,
-            timestamp = System.currentTimeMillis(),
-            userCommand = Some(config.command),
-            responseLength = 0,
-            toolCallCount = 0,
-            messageCount = engine.getMessageCount,
+            gameState = engine.getGameState(config.gameId, gameState.theme, gameState.artStyle),
+            userCommand = config.command,
+            narrationText = s"ERROR: ${error.message}",
+            response = None,
+            toolCalls = Nil,
+            agentMessages = engine.getState.conversation.messages.toList,
+            executionTimeMs = executionTime,
             success = false,
-            error = Some(error.message) // error is already typed as SzorkError from the match
+            error = Some(error.message)
           )
 
-          val updatedGameState = engine.getGameState(gameState.gameId, gameState.theme, gameState.artStyle)
-          DebugHelpers.saveStepData(
-            stepDir = errorStepDir,
-            metadata = errorMetadata,
-            gameState = updatedGameState,
-            userCommand = Some(config.command),
-            agentMessages = Some(engine.getState.conversation.messages)
-          )
+          StepPersistence.saveStep(errorStepData) match {
+            case Right(_) => println(s"✓ Error state saved to step $nextStep")
+            case Left(saveError) => println(s"ERROR: Failed to save error state: ${saveError.message}")
+          }
 
           System.exit(1)
           return
       }
+
+      val executionTime = System.currentTimeMillis() - startTime
 
       // Extract tool calls from the agent conversation
       val allMessages = engine.getState.conversation.messages
@@ -128,65 +138,49 @@ object RunUserStep {
         println(s"✓ Detected ${toolCalls.length} tool call(s)")
       }
 
-      // Check if media generation prompts would be created (but don't actually generate)
-      val musicPrompt = if (engine.shouldGenerateBackgroundMusic(response.text)) {
-        val scene = engine.getCurrentScene
-        val mood = scene.map(_.musicMood).getOrElse(MediaPlanner.detectMoodFromText(response.text))
-        val description = scene.map(_.musicDescription).getOrElse(response.text)
-        Some(s"Mood: $mood\nDescription: $description")
-      } else None
+      // Convert engine GameResponse to StepData GameResponse
+      val gameResponse: Option[org.llm4s.szork.GameResponse] = response.scene.map(SceneResponse)
 
-      val imagePrompt = if (engine.shouldGenerateSceneImage(response.text)) {
-        val scene = engine.getCurrentScene
-        scene.map(_.imageDescription)
-      } else None
-
-      // Get updated game state
-      val updatedGameState = engine.getGameState(gameState.gameId, gameState.theme, gameState.artStyle)
-
-      // Create next step directory and save all data
-      println(s"\nSaving step data...")
-      val stepDir = DebugHelpers.createStepDir(config.sessionName, nextStep)
-
-      val metadata = DebugHelpers.StepMetadata(
-        sessionName = config.sessionName,
+      // Create step data
+      val stepData = StepData.commandStep(
+        gameId = config.gameId,
         stepNumber = nextStep,
-        timestamp = System.currentTimeMillis(),
-        userCommand = Some(config.command),
-        responseLength = response.text.length,
-        toolCallCount = toolCalls.length,
-        messageCount = engine.getMessageCount,
-        success = true
-      )
-
-      DebugHelpers.saveStepData(
-        stepDir = stepDir,
-        metadata = metadata,
-        gameState = updatedGameState,
-        response = Some(response),
-        userCommand = Some(config.command),
+        gameState = engine.getGameState(config.gameId, gameState.theme, gameState.artStyle),
+        userCommand = config.command,
+        narrationText = response.text,
+        response = gameResponse,
         toolCalls = toolCalls,
-        agentMessages = Some(allMessages)
+        agentMessages = allMessages.toList,
+        executionTimeMs = executionTime
       )
 
-      // Save media generation prompts if any
-      musicPrompt.foreach { prompt =>
-        DebugHelpers.saveText(stepDir.resolve("music-prompt.txt"), prompt)
-        println("  ✓ Music generation prompt saved")
+      // Save step data
+      println(s"\nSaving step $nextStep...")
+      StepPersistence.saveStep(stepData) match {
+        case Right(_) => println(s"✓ Step $nextStep saved")
+        case Left(error) =>
+          println(s"ERROR: Failed to save step: ${error.message}")
+          System.exit(1)
+          return
       }
 
-      imagePrompt.foreach { prompt =>
-        DebugHelpers.saveText(stepDir.resolve("image-prompt.txt"), prompt)
-        println("  ✓ Image generation prompt saved")
+      // Update game metadata
+      StepPersistence.loadGameMetadata(config.gameId) match {
+        case Right(metadata) =>
+          val updated = GameMetadataHelper.afterStep(metadata, nextStep, executionTime)
+          StepPersistence.saveGameMetadata(updated) match {
+            case Right(_) => println("✓ Game metadata updated")
+            case Left(error) => println(s"WARNING: Failed to update metadata: ${error.message}")
+          }
+        case Left(error) =>
+          println(s"WARNING: Failed to load metadata for update: ${error.message}")
       }
-
-      println(s"✓ Step data saved to: ${stepDir.toAbsolutePath}")
 
       // Print summary
-      DebugHelpers.printStepSummary(nextStep, Some(config.command), response, toolCalls, metadata)
+      DebugHelpers.printStepSummary(stepData)
 
       println("SUCCESS: Step completed!")
-      println(s"""Next step: sbt "runMain org.llm4s.szork.debug.RunUserStep ${config.sessionName} $nextStep '<next-command>'" """)
+      println(s"""Next step: sbt "runMain org.llm4s.szork.debug.RunUserStep ${config.gameId} $nextStep '<next-command>'" """)
 
     } catch {
       case ex: Exception =>
@@ -198,44 +192,42 @@ object RunUserStep {
 
   private def parseArgs(args: Array[String]): Try[Config] = Try {
     if (args.length < 3) {
-      throw new IllegalArgumentException("Session name, step number, and command are required")
+      throw new IllegalArgumentException("Game ID, step number, and command are required")
     }
 
-    val sessionName = args(0)
+    val gameId = args(0)
     val step = Try(args(1).toInt).getOrElse(
       throw new IllegalArgumentException(s"Invalid step number: ${args(1)}")
     )
     val command = args(2)
 
-    Config(sessionName, step, command)
+    Config(gameId, step, command)
   }
 
   private def printUsage(): Unit = {
     println("""
-      |Usage: sbt "runMain org.llm4s.szork.debug.RunUserStep <session-name> <previous-step> <command>"
+      |Usage: sbt "runMain org.llm4s.szork.debug.RunUserStep <game-id> <previous-step> <command>"
       |
       |Arguments:
-      |  <session-name>      Name of the debug session (required)
+      |  <game-id>           Game identifier (required)
       |  <previous-step>     Previous step number to load from (required)
       |  <command>           User command to execute (required, must be quoted)
       |
       |Examples:
-      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-session-1 1 'look around'"
-      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-session-1 2 'go north'"
-      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-session-1 3 'take lantern'"
-      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-session-1 4 'inventory'"
+      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 1 'look around'"
+      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 2 'go north'"
+      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 3 'take lantern'"
+      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 4 'inventory'"
       |
       |Output:
-      |  Creates runs/<session-name>/step-<N+1>/ with:
-      |    - user-command.txt       : The command that was executed
-      |    - response.json          : Game response
-      |    - game-state.json        : Updated game state
-      |    - agent-messages.json    : Updated LLM conversation
-      |    - conversation.txt       : Human-readable conversation log
-      |    - tool-calls.json        : Tool execution details (if any)
-      |    - music-prompt.txt       : Music generation prompt (if applicable)
-      |    - image-prompt.txt       : Image generation prompt (if applicable)
+      |  Creates szork-saves/<game-id>/step-<N+1>/ with:
       |    - metadata.json          : Step metadata
+      |    - state.json             : Updated game state
+      |    - command.txt            : User command
+      |    - response.txt           : Narration text
+      |    - response.json          : Structured response
+      |    - messages.json          : Agent messages
+      |    - tool-calls.json        : Tool calls (if any)
       |""".stripMargin)
   }
 }

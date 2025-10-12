@@ -8,16 +8,17 @@ import scala.util.{Try, Success, Failure}
 
 /** Debug script to create a new adventure and save the initial state.
   *
-  * Usage: sbt "runMain org.llm4s.szork.debug.CreateAdventure <session-name> [--theme <theme>] [--art-style <style>]"
+  * Usage: sbt "runMain org.llm4s.szork.debug.CreateAdventure <game-id> [--theme <theme>] [--art-style <style>]"
   *
-  * Example: sbt "runMain org.llm4s.szork.debug.CreateAdventure test-session-1" sbt "runMain
-  * org.llm4s.szork.debug.CreateAdventure fantasy-quest --theme 'medieval fantasy' --art-style illustration"
+  * Example:
+  *   sbt "runMain org.llm4s.szork.debug.CreateAdventure test-game-1"
+  *   sbt "runMain org.llm4s.szork.debug.CreateAdventure fantasy-quest --theme 'medieval fantasy' --art-style illustration"
   */
 object CreateAdventure {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   case class Config(
-    sessionName: String,
+    gameId: String,
     theme: String = "classic fantasy adventure",
     artStyle: String = "fantasy"
   )
@@ -37,7 +38,7 @@ object CreateAdventure {
         return
     }
 
-    println(s"\n=== Creating Adventure: ${config.sessionName} ===")
+    println(s"\n=== Creating Adventure: ${config.gameId} ===")
     println(s"Theme: ${config.theme}")
     println(s"Art Style: ${config.artStyle}")
     println()
@@ -56,6 +57,7 @@ object CreateAdventure {
 
       // Generate adventure outline
       println(s"\nGenerating adventure outline for theme: '${config.theme}'...")
+      val startTime = System.currentTimeMillis()
       val outline = AdventureGenerator.generateAdventureOutline(config.theme, config.artStyle) match {
         case Right(o) =>
           println(s"✓ Adventure outline generated: ${o.title}")
@@ -69,7 +71,6 @@ object CreateAdventure {
       // Create game engine with the outline
       println("\nInitializing game engine...")
       val sessionId = IdGenerator.sessionId()
-      val gameId = IdGenerator.gameId()
 
       // Create SPI clients (optional, not used in debug mode)
       val ttsClient = DefaultClients.createTTSClient(EnvLoader)
@@ -100,7 +101,9 @@ object CreateAdventure {
           return
       }
 
-      // Get the initial scene and game state
+      val executionTime = System.currentTimeMillis() - startTime
+
+      // Get the initial scene
       val initialScene: GameScene = engine.getCurrentScene match {
         case Some(scene) => scene
         case None =>
@@ -111,39 +114,53 @@ object CreateAdventure {
 
       val gameTheme = Some(GameTheme(id = config.artStyle, name = config.theme, prompt = config.theme))
       val gameArtStyle = Some(ArtStyle(id = config.artStyle, name = config.artStyle))
-      val gameState = engine.getGameState(gameId, gameTheme, gameArtStyle)
+      val gameState = engine.getGameState(config.gameId, gameTheme, gameArtStyle)
 
-      // Create step-1 directory and save all data
+      // Create game metadata
       println("\nSaving adventure data...")
-      val stepDir = DebugHelpers.createStepDir(config.sessionName, 1)
-
-      val metadata = DebugHelpers.StepMetadata(
-        sessionName = config.sessionName,
-        stepNumber = 1,
-        timestamp = System.currentTimeMillis(),
-        userCommand = None,
-        responseLength = initialText.length,
-        toolCallCount = 0,
-        messageCount = engine.getMessageCount,
-        success = true
+      val createdAt = System.currentTimeMillis()
+      val metadata = GameMetadataHelper.initial(
+        gameId = config.gameId,
+        adventureTitle = outline.title,
+        theme = config.theme,
+        artStyle = config.artStyle,
+        createdAt = createdAt
       )
 
-      DebugHelpers.saveStepData(
-        stepDir = stepDir,
-        metadata = metadata,
+      // Create step data for step 1
+      val stepData = StepData.initialStep(
+        gameId = config.gameId,
         gameState = gameState,
+        narrationText = initialText,
+        scene = Some(initialScene),
         outline = Some(outline),
-        agentMessages = Some(engine.getState.conversation.messages)
+        agentMessages = engine.getState.conversation.messages.toList,
+        executionTimeMs = executionTime
       )
 
-      println(s"✓ Adventure data saved to: ${stepDir.toAbsolutePath}")
+      // Save using unified persistence
+      StepPersistence.saveGameMetadata(metadata) match {
+        case Right(_) => println("✓ Game metadata saved")
+        case Left(error) =>
+          println(s"ERROR: Failed to save game metadata: ${error.message}")
+          System.exit(1)
+          return
+      }
+
+      StepPersistence.saveStep(stepData) match {
+        case Right(_) => println("✓ Step 1 saved")
+        case Left(error) =>
+          println(s"ERROR: Failed to save step: ${error.message}")
+          System.exit(1)
+          return
+      }
 
       // Print summary
-      DebugHelpers.printAdventureSummary(config.sessionName, outline, initialScene)
+      DebugHelpers.printAdventureSummary(config.gameId, outline, initialScene)
 
       println("SUCCESS: Adventure created and ready for play!")
       println(s"Next step: Run user commands with RunUserStep")
-      println(s"""Example: sbt "runMain org.llm4s.szork.debug.RunUserStep ${config.sessionName} 1 'look around'" """)
+      println(s"""Example: sbt "runMain org.llm4s.szork.debug.RunUserStep ${config.gameId} 1 'look around'" """)
 
     } catch {
       case ex: Exception =>
@@ -155,10 +172,10 @@ object CreateAdventure {
 
   private def parseArgs(args: Array[String]): Try[Config] = Try {
     if (args.isEmpty) {
-      throw new IllegalArgumentException("Session name is required")
+      throw new IllegalArgumentException("Game ID is required")
     }
 
-    val sessionName = args(0)
+    val gameId = args(0)
     var theme = "classic fantasy adventure"
     var artStyle = "fantasy"
 
@@ -178,31 +195,33 @@ object CreateAdventure {
       }
     }
 
-    Config(sessionName, theme, artStyle)
+    Config(gameId, theme, artStyle)
   }
 
   private def printUsage(): Unit = {
     println("""
-      |Usage: sbt "runMain org.llm4s.szork.debug.CreateAdventure <session-name> [OPTIONS]"
+      |Usage: sbt "runMain org.llm4s.szork.debug.CreateAdventure <game-id> [OPTIONS]"
       |
       |Arguments:
-      |  <session-name>      Name for this debug session (required)
+      |  <game-id>           Unique game identifier (required)
       |
       |Options:
       |  --theme <theme>     Adventure theme (default: "classic fantasy adventure")
       |  --art-style <style> Art style: fantasy|pixel|illustration|painting|comic (default: "fantasy")
       |
       |Examples:
-      |  sbt "runMain org.llm4s.szork.debug.CreateAdventure test-session-1"
+      |  sbt "runMain org.llm4s.szork.debug.CreateAdventure test-game-1"
       |  sbt "runMain org.llm4s.szork.debug.CreateAdventure space-quest --theme 'sci-fi space adventure' --art-style comic"
       |
       |Output:
-      |  Creates runs/<session-name>/step-1/ with:
-      |    - adventure-outline.json  : Generated adventure design
-      |    - game-state.json        : Complete game state
-      |    - agent-messages.json    : Full LLM conversation
-      |    - conversation.txt       : Human-readable conversation log
-      |    - metadata.json          : Session metadata
+      |  Creates szork-saves/<game-id>/step-0001/ with:
+      |    - game.json              : Game metadata
+      |    - metadata.json          : Step metadata
+      |    - state.json             : Complete game state
+      |    - response.txt           : Narration text
+      |    - response.json          : Structured response (scene)
+      |    - messages.json          : Agent messages
+      |    - outline.json           : Adventure outline
       |""".stripMargin)
   }
 }

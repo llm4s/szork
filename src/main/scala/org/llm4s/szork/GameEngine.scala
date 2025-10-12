@@ -9,6 +9,7 @@ import org.llm4s.szork.core.{CoreEngine, CoreState}
 import org.llm4s.szork.spi.{Clock, SystemClock, TTSClient, ImageClient, MusicClient}
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.debug.DebugHelpers
 
 class GameEngine(
   sessionId: String = "",
@@ -24,8 +25,6 @@ class GameEngine(
 
   private val themeDescription = PromptBuilder.themeDescription(theme)
   private val artStyleDescription = PromptBuilder.artStyleDescription(artStyle)
-  private val adventureOutlinePrompt = PromptBuilder.outlinePrompt(adventureOutline)
-
   private val completeSystemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, adventureOutline)
   private val client: LLMClient = llmClient
   private val toolRegistry = new ToolRegistry(GameTools.allTools)
@@ -41,6 +40,7 @@ class GameEngine(
 
   // Enhanced state tracking
   private var mediaCache: Map[String, MediaCacheEntry] = Map.empty
+  private var currentStepNumber: Int = 1 // Current step number for persistence
 
   def initialize(): SzorkResult[String] = {
     logger.info(s"[$sessionId] Initializing game with theme: $themeDescription")
@@ -343,23 +343,6 @@ class GameEngine(
     v
   }
 
-  // Helper to extract just narrationText from JSON when full parsing fails
-  private def extractNarrationTextFromJson(response: String): Option[String] =
-    try
-      if (response.trim.startsWith("{") && response.contains("narrationText")) {
-        // Try to parse with ujson
-        val json = ujson.read(response)
-        json.obj.get("narrationText").map(_.str)
-      } else {
-        None
-      }
-    catch {
-      case _: Exception =>
-        // If ujson parsing fails, try a simple regex extraction
-        val pattern = """"narrationText"\s*:\s*"([^"]+(?:\\.[^"]+)*)"""".r
-        pattern.findFirstMatchIn(response).map(_.group(1).replace("\\\"", "\"").replace("\\n", "\n"))
-    }
-
   def shouldGenerateSceneImage(responseText: String): Boolean = CoreEngine.shouldGenerateSceneImage(core, responseText)
 
   def generateSceneImage(responseText: String, gameId: Option[String] = None): Option[String] = {
@@ -585,6 +568,7 @@ class GameEngine(
     sessionStartTime = clock.now() // Reset session timer when restoring
     adventureTitle = state.adventureTitle
     mediaCache = state.mediaCache // Restore media cache
+    // Note: currentStepNumber should be restored from GameMetadata by the caller
 
     // Restore complete agent state if available
     if (state.agentMessages.nonEmpty) {
@@ -646,6 +630,78 @@ class GameEngine(
 
   def setAdventureTitle(title: String): Unit =
     adventureTitle = Some(title)
+
+  // Step tracking methods for persistence
+
+  /** Get current step number. */
+  def getCurrentStepNumber: Int = currentStepNumber
+
+  /** Increment step number and return the new value. */
+  def incrementStepNumber(): Int = {
+    currentStepNumber += 1
+    currentStepNumber
+  }
+
+  /** Set step number (for restoration from saved games). */
+  def setStepNumber(stepNumber: Int): Unit =
+    currentStepNumber = stepNumber
+
+  /** Create StepData from current engine state.
+    *
+    * This method extracts all necessary data for step-based persistence.
+    * The caller is responsible for saving via StepPersistence.
+    *
+    * @param gameId Game identifier
+    * @param gameTheme Optional game theme
+    * @param gameArtStyle Optional art style
+    * @param userCommand Optional user command that triggered this step
+    * @param narrationText Narration text from the response
+    * @param response Optional game response (scene or action)
+    * @param executionTimeMs Time taken to execute the step
+    * @return Complete step data ready for persistence
+    */
+  def createStepData(
+    gameId: String,
+    gameTheme: Option[GameTheme],
+    gameArtStyle: Option[ArtStyle],
+    userCommand: Option[String],
+    narrationText: String,
+    response: Option[GameResponse],
+    executionTimeMs: Long
+  ): StepData = {
+    // Extract tool calls from agent messages
+    val toolCalls = DebugHelpers.extractToolCalls(currentState.conversation.messages)
+
+    // Convert response to GameResponse sealed trait
+    val gameResponseOpt: Option[org.llm4s.szork.GameResponse] = response.flatMap { resp =>
+      resp.scene.map(SceneResponse)
+    }
+
+    val metadata = StepMetadata(
+      gameId = gameId,
+      stepNumber = currentStepNumber,
+      timestamp = clock.now(),
+      userCommand = userCommand,
+      responseLength = narrationText.length,
+      toolCallCount = toolCalls.length,
+      messageCount = currentState.conversation.messages.length,
+      success = true,
+      executionTimeMs = executionTimeMs
+    )
+
+    val gameState = getGameState(gameId, gameTheme, gameArtStyle)
+
+    StepData(
+      metadata = metadata,
+      gameState = gameState,
+      userCommand = userCommand,
+      narrationText = narrationText,
+      response = gameResponseOpt,
+      toolCalls = toolCalls,
+      agentMessages = currentState.conversation.messages.toList,
+      outline = if (currentStepNumber == 1) adventureOutline else None
+    )
+  }
 
 }
 

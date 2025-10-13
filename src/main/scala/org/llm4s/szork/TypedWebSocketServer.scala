@@ -377,7 +377,46 @@ class TypedWebSocketServer(
         }
 
         // Persist initial game state so load screen shows correct title/createdAt immediately
-        saveGameAsync(session)
+        Future {
+          try {
+            // Create initial metadata
+            val currentTime = System.currentTimeMillis()
+            val metadata = GameMetadataHelper.initial(
+              gameId = gameId,
+              adventureTitle = adventureOutline.map(_.title).getOrElse("Untitled Adventure"),
+              theme = themeObj.map(_.id).getOrElse("default"),
+              artStyle = artStyleObj.map(_.id).getOrElse("default"),
+              createdAt = currentTime
+            )
+
+            StepPersistence.saveGameMetadata(metadata) match {
+              case Right(_) =>
+                // Create initial step data
+                val initialScene = engine.getCurrentScene
+                val stepData = StepData.initialStep(
+                  gameId = gameId,
+                  gameState = engine.getGameState(gameId, themeObj, artStyleObj),
+                  narrationText = initialMessage,
+                  scene = initialScene,
+                  outline = adventureOutline,
+                  agentMessages = engine.getState.conversation.messages.toList,
+                  executionTimeMs = 0L
+                )
+
+                StepPersistence.saveStep(stepData) match {
+                  case Right(_) =>
+                    logger.debug(s"Saved initial step for game $gameId")
+                  case Left(error) =>
+                    logger.warn(s"Failed to save initial step for game $gameId: ${error.message}")
+                }
+              case Left(error) =>
+                logger.warn(s"Failed to save initial metadata for game $gameId: ${error.message}")
+            }
+          } catch {
+            case e: Exception =>
+              logger.error(s"Error saving initial game state for $gameId", e)
+          }
+        }
 
       case Left(error) =>
         logger.error(s"Failed to initialize game: $error")
@@ -389,8 +428,17 @@ class TypedWebSocketServer(
   private def handleLoadGame(conn: WebSocket, request: LoadGameRequest): Unit = {
     logger.info(s"Loading game: ${request.gameId}")
 
+    // Load game from step-based persistence
     GamePersistence.loadGame(request.gameId) match {
       case Right(gameState) =>
+        // Load metadata to get current step
+        val metadata = StepPersistence.loadGameMetadata(request.gameId) match {
+          case Right(meta) => Some(meta)
+          case Left(error) =>
+            logger.warn(s"Could not load metadata for ${request.gameId}: ${error.message}")
+            None
+        }
+
         val sessionId = IdGenerator.sessionId()
         val llmClientResult = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader)
         implicit val llmClient: org.llm4s.llmconnect.LLMClient = llmClientResult match {
@@ -433,6 +481,12 @@ class TypedWebSocketServer(
         // Restore game state
         engine.restoreGameState(gameState)
 
+        // Restore step number from metadata
+        metadata.foreach { meta =>
+          engine.setStepNumber(meta.currentStep)
+          logger.debug(s"Restored game at step ${meta.currentStep}")
+        }
+
         val session = GameSession(
           id = sessionId,
           gameId = request.gameId,
@@ -468,8 +522,11 @@ class TypedWebSocketServer(
           case Some(session) =>
             logger.info(s"Processing command for session $sid: '${request.command}'")
 
+            val startTime = System.currentTimeMillis()
             val response =
               session.engine.processCommand(request.command, generateAudio = session.ttsEnabled && openAIKeyPresent)
+            val executionTime = System.currentTimeMillis() - startTime
+
             response match {
               case Right(gameResponse) =>
                 val message = CommandResponseMessage(
@@ -503,9 +560,10 @@ class TypedWebSocketServer(
                   generateMusicAsync(session, gameResponse.text, message.messageIndex, conn)
                 }
 
-                // Auto-save
+                // Auto-save with step tracking
                 if (session.autoSaveEnabled) {
-                  saveGameAsync(session)
+                  session.engine.incrementStepNumber()
+                  saveGameAsync(session, Some(request.command), gameResponse.text, Some(gameResponse), executionTime)
                 }
 
               case Left(error) =>
@@ -583,9 +641,10 @@ class TypedWebSocketServer(
                     generateMusicAsync(session, response.text, message.messageIndex, conn)
                   }
 
-                  // Auto-save
+                  // Auto-save with step tracking
                   if (session.autoSaveEnabled) {
-                    saveGameAsync(session)
+                    session.engine.incrementStepNumber()
+                    saveGameAsync(session, Some(request.command), response.text, Some(response), duration)
                   }
 
                 case Left(error) =>
@@ -807,14 +866,41 @@ class TypedWebSocketServer(
     }
 
   // Save game asynchronously
-  private def saveGameAsync(session: GameSession): Unit =
+  private def saveGameAsync(session: GameSession, userCommand: Option[String], narrationText: String, response: Option[GameEngine#GameResponse], executionTimeMs: Long): Unit =
     Future {
-      val gameState = session.engine.getGameState(session.gameId, session.theme, session.artStyle)
-      GamePersistence.saveGame(gameState) match {
-        case Right(_) =>
-          logger.debug(s"Auto-saved game ${session.gameId}")
-        case Left(error) =>
-          logger.warn(s"Auto-save failed for game ${session.gameId}: $error")
+      try {
+        val stepNumber = session.engine.getCurrentStepNumber
+        val stepData = session.engine.createStepData(
+          gameId = session.gameId,
+          gameTheme = session.theme,
+          gameArtStyle = session.artStyle,
+          userCommand = userCommand,
+          narrationText = narrationText,
+          response = response.asInstanceOf[Option[session.engine.GameResponse]],
+          executionTimeMs = executionTimeMs
+        )
+
+        StepPersistence.saveStep(stepData) match {
+          case Right(_) =>
+            // Update game metadata
+            StepPersistence.loadGameMetadata(session.gameId) match {
+              case Right(metadata) =>
+                val updated = GameMetadataHelper.afterStep(metadata, stepNumber, executionTimeMs)
+                StepPersistence.saveGameMetadata(updated) match {
+                  case Right(_) =>
+                    logger.debug(s"Auto-saved step $stepNumber for game ${session.gameId}")
+                  case Left(error) =>
+                    logger.warn(s"Failed to update metadata for game ${session.gameId}: ${error.message}")
+                }
+              case Left(error) =>
+                logger.warn(s"Failed to load metadata for game ${session.gameId}: ${error.message}")
+            }
+          case Left(error) =>
+            logger.warn(s"Auto-save failed for game ${session.gameId}: ${error.message}")
+        }
+      } catch {
+        case e: Exception =>
+          logger.error(s"Error during auto-save for game ${session.gameId}", e)
       }
     }
 

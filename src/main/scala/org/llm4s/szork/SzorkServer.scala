@@ -1,7 +1,6 @@
 package org.llm4s.szork
 
 import cask._
-import scala.collection.mutable
 import scala.collection.concurrent.TrieMap
 import org.slf4j.LoggerFactory
 import org.llm4s.config.EnvLoader
@@ -429,19 +428,61 @@ object SzorkServer extends cask.Main with cask.Routes {
 
     sessionManager.getSession(sessionId) match {
       case Some(session) =>
-        val gameState = session.engine.getGameState(session.gameId, session.theme, session.artStyle)
-        GamePersistence.saveGame(gameState) match {
-          case Right(_) =>
-            logger.info(s"Game saved successfully: ${session.gameId}")
-            ujson.Obj(
-              "status" -> "success",
-              "gameId" -> session.gameId
-            )
-          case Left(error) =>
-            logger.error(s"Failed to save game: $error")
+        try {
+          // Increment step number for manual save
+          val stepNumber = session.engine.incrementStepNumber()
+
+          // Create step data for manual save
+          val stepData = session.engine.createStepData(
+            gameId = session.gameId,
+            gameTheme = session.theme,
+            gameArtStyle = session.artStyle,
+            userCommand = Some("[manual save]"),
+            narrationText = "",
+            response = None,
+            executionTimeMs = 0L
+          )
+
+          StepPersistence.saveStep(stepData) match {
+            case Right(_) =>
+              // Update game metadata
+              StepPersistence.loadGameMetadata(session.gameId) match {
+                case Right(metadata) =>
+                  val updated = GameMetadataHelper.afterStep(metadata, stepNumber, 0L)
+                  StepPersistence.saveGameMetadata(updated) match {
+                    case Right(_) =>
+                      logger.info(s"Game saved successfully: ${session.gameId} (step $stepNumber)")
+                      ujson.Obj(
+                        "status" -> "success",
+                        "gameId" -> session.gameId
+                      )
+                    case Left(error) =>
+                      logger.error(s"Failed to update metadata: ${error.message}")
+                      ujson.Obj(
+                        "status" -> "error",
+                        "error" -> error.userMessage
+                      )
+                  }
+                case Left(error) =>
+                  logger.error(s"Failed to load metadata: ${error.message}")
+                  ujson.Obj(
+                    "status" -> "error",
+                    "error" -> error.userMessage
+                  )
+              }
+            case Left(error) =>
+              logger.error(s"Failed to save game: ${error.message}")
+              ujson.Obj(
+                "status" -> "error",
+                "error" -> error.userMessage
+              )
+          }
+        } catch {
+          case e: Exception =>
+            logger.error(s"Error saving game", e)
             ujson.Obj(
               "status" -> "error",
-              "error" -> error.userMessage
+              "error" -> s"Save failed: ${e.getMessage}"
             )
         }
       case None =>
@@ -457,8 +498,17 @@ object SzorkServer extends cask.Main with cask.Routes {
   def loadGame(gameId: String): ujson.Value = {
     logger.info(s"Loading game: $gameId")
 
+    // Load game from step-based persistence
     GamePersistence.loadGame(gameId) match {
       case Right(gameState) =>
+        // Load metadata to get current step
+        val metadata = StepPersistence.loadGameMetadata(gameId) match {
+          case Right(meta) => Some(meta)
+          case Left(error) =>
+            logger.warn(s"Could not load metadata for $gameId: ${error.message}")
+            None
+        }
+
         // Create new session for loaded game
         val sessionId = IdGenerator.sessionId()
         val llmClientResult = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader)
@@ -476,6 +526,12 @@ object SzorkServer extends cask.Main with cask.Routes {
 
         // Restore the game state
         engine.restoreGameState(gameState)
+
+        // Restore step number from metadata
+        metadata.foreach { meta =>
+          engine.setStepNumber(meta.currentStep)
+          logger.debug(s"Restored game at step ${meta.currentStep}")
+        }
 
         val session = GameSession(
           id = sessionId,
@@ -546,7 +602,7 @@ object SzorkServer extends cask.Main with cask.Routes {
   @get("/api/game/list")
   def listGames(): ujson.Value = {
     logger.debug("Listing saved games")
-    
+
     val games = GamePersistence.listGames()
     ujson.Obj(
       "status" -> "success",
@@ -555,8 +611,13 @@ object SzorkServer extends cask.Main with cask.Routes {
           "gameId" -> game.gameId,
           "theme" -> game.theme,
           "artStyle" -> game.artStyle,
+          "adventureTitle" -> game.adventureTitle,
           "createdAt" -> game.createdAt,
-          "lastSaved" -> game.lastSaved
+          "lastSaved" -> game.lastSaved,
+          "lastPlayed" -> game.lastPlayed,
+          "totalPlayTime" -> game.totalPlayTime,
+          "currentStep" -> game.currentStep,
+          "totalSteps" -> game.totalSteps
         )
       }
     )

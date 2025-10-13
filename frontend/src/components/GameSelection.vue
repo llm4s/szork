@@ -94,6 +94,10 @@
                   <v-icon small>mdi-timer</v-icon>
                   <span>Play Time: {{ formatPlayTime(game.totalPlayTime) }}</span>
                 </div>
+                <div v-if="isDebugMode" class="stat debug-stat">
+                  <v-icon small>mdi-debug-step-over</v-icon>
+                  <span>Step: {{ game.currentStep }} / {{ game.totalSteps }}</span>
+                </div>
               </div>
             </v-card-text>
             <v-card-actions>
@@ -156,6 +160,8 @@ interface SavedGame {
   createdAt: number;
   lastPlayed: number;
   totalPlayTime: number;
+  currentStep: number;
+  totalSteps: number;
 }
 
 export default defineComponent({
@@ -175,13 +181,18 @@ export default defineComponent({
     });
     const deleteDialog = ref(false);
     const gameToDelete = ref<SavedGame | null>(null);
+    const isDebugMode = import.meta.env.DEV; // Show step numbers in development mode
     
     const loadSavedGames = async () => {
       try {
         loading.value = true;
         const response = await axios.get('/api/games');
         if (response.data.status === 'success') {
-          savedGames.value = response.data.games;
+          // Map adventureTitle from API to title field
+          savedGames.value = response.data.games.map((game: any) => ({
+            ...game,
+            title: game.adventureTitle || 'Untitled Adventure'
+          }));
         }
       } catch (error) {
         console.error('Error loading saved games:', error);
@@ -285,7 +296,8 @@ export default defineComponent({
       selectGame,
       loadGame,
       confirmDelete,
-      deleteGame
+      deleteGame,
+      isDebugMode
     };
   }
 });
@@ -418,6 +430,17 @@ export default defineComponent({
 
 .stat .v-icon {
   color: #777;
+}
+
+.debug-stat {
+  color: #ff9800;
+  border-top: 1px solid #333;
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.debug-stat .v-icon {
+  color: #ff9800;
 }
 
 .no-games {

@@ -9,7 +9,7 @@ lazy val root = (project in file("."))
     fork := true,
     
     // Revolver settings for hot reloading
-    reStart / mainClass := Some("org.llm4s.szork.SzorkServer"),
+    reStart / mainClass := Some("org.llm4s.szork.api.SzorkServer"),
     reStart / javaOptions ++= Seq(
       "-Xmx1g",
       "-XX:MaxMetaspaceSize=512m"

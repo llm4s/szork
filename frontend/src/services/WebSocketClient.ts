@@ -1,9 +1,12 @@
 /**
- * WebSocket client for game communication
+ * WebSocket client for real-time game communication.
+ *
+ * Manages connection lifecycle, message routing, and automatic reconnection
+ * to the game server. Provides type-safe message handling with callbacks.
  */
 
-import type { 
-  ClientMessage, 
+import type {
+  ClientMessage,
   ServerMessage,
   NewGameRequest,
   ConnectedMessage,
@@ -19,8 +22,13 @@ import type {
   ErrorMessage
 } from '@/types/WebSocketProtocol';
 
+/** Callback handler for server messages of a specific type. */
 export type MessageHandler<T extends ServerMessage> = (message: T) => void;
 
+/**
+ * Derives the WebSocket URL based on environment and location.
+ * Checks VITE_WS_URL env var, then dev proxy, then defaults to port 9002.
+ */
 function deriveWsUrl(): string {
   // 1) Explicit override via env
   const envWs = (import.meta as any)?.env?.VITE_WS_URL as string | undefined;
@@ -42,6 +50,10 @@ function deriveWsUrl(): string {
   }
 }
 
+/**
+ * WebSocket client managing real-time communication with the game server.
+ * Handles connection lifecycle, automatic reconnection, and message routing.
+ */
 export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
@@ -55,15 +67,20 @@ export class WebSocketClient {
   private pingInterval: NodeJS.Timeout | null = null;
   private serverInstanceId: string | null = null;
   private serverAvailable = false;
-  
+
   private debug = (import.meta as any)?.env?.MODE !== 'production';
 
+  /**
+   * Creates a new WebSocket client.
+   * @param url Optional WebSocket URL (auto-detected if not provided)
+   */
   constructor(url?: string) {
     this.url = url ?? deriveWsUrl();
   }
-  
+
   /**
-   * Connect to the WebSocket server
+   * Connect to the WebSocket server with automatic reconnection.
+   * Queued messages are sent upon successful connection.
    */
   async connect(): Promise<void> {
     if (this.isConnected || this.isConnecting) {
@@ -133,7 +150,7 @@ export class WebSocketClient {
   }
   
   /**
-   * Disconnect from the server
+   * Disconnect from the server and clean up resources.
    */
   disconnect(): void {
     if (this.ws) {
@@ -145,7 +162,8 @@ export class WebSocketClient {
   }
   
   /**
-   * Send a message to the server
+   * Send a message to the server. Queues message if not connected.
+   * @param message The client message to send
    */
   send(message: ClientMessage): void {
     if (!this.isConnected || !this.ws) {
@@ -197,7 +215,9 @@ export class WebSocketClient {
   }
   
   /**
-   * Register a handler for a specific message type
+   * Register a callback handler for a specific server message type.
+   * @param type The message type to listen for
+   * @param handler The callback function to invoke when the message is received
    */
   on<T extends ServerMessage>(type: T['type'], handler: MessageHandler<T>): void {
     if (!this.messageHandlers.has(type)) {
@@ -207,7 +227,9 @@ export class WebSocketClient {
   }
   
   /**
-   * Remove a handler for a specific message type
+   * Remove a registered callback handler for a message type.
+   * @param type The message type to stop listening for
+   * @param handler The callback function to remove
    */
   off<T extends ServerMessage>(type: T['type'], handler: MessageHandler<T>): void {
     this.messageHandlers.get(type)?.delete(handler);
@@ -348,28 +370,30 @@ export class WebSocketClient {
   }
   
   /**
-   * Check if connected
+   * Returns true if currently connected to the server.
    */
   get connected(): boolean {
     return this.isConnected;
   }
-  
+
   /**
-   * Check if server is available
+   * Returns true if the server is available and has responded.
    */
   get isServerAvailable(): boolean {
     return this.serverAvailable;
   }
-  
+
   /**
-   * Get the current server instance ID
+   * Returns the current server instance ID, or null if not connected.
    */
   getServerInstanceId(): string | null {
     return this.serverInstanceId;
   }
-  
+
   /**
-   * Check server availability with timeout
+   * Checks server availability with a timeout.
+   * @param timeout Maximum wait time in milliseconds (default: 3000)
+   * @returns Promise resolving to true if server is available
    */
   async checkServerAvailability(timeout = 3000): Promise<boolean> {
     return new Promise((resolve) => {
@@ -392,9 +416,14 @@ export class WebSocketClient {
   }
   
   // ============= Convenience methods for common operations =============
-  
+
   /**
-   * Start a new game
+   * Start a new game session with optional configuration.
+   * @param theme Optional game theme (e.g., "fantasy", "sci-fi")
+   * @param artStyle Optional art style for generated images
+   * @param imageGeneration Whether to enable image generation (default: true)
+   * @param adventureOutline Optional pre-defined adventure structure
+   * @param opts Optional feature flags for TTS, STT, music, and images
    */
   newGame(theme?: string, artStyle?: string, imageGeneration = true, adventureOutline?: any, opts?: { tts?: boolean; stt?: boolean; music?: boolean; image?: boolean }): void {
     this.send({
@@ -411,7 +440,8 @@ export class WebSocketClient {
   }
   
   /**
-   * Load an existing game
+   * Load an existing game by ID.
+   * @param gameId The unique game identifier
    */
   loadGame(gameId: string): void {
     this.send({
@@ -419,9 +449,10 @@ export class WebSocketClient {
       gameId
     });
   }
-  
+
   /**
-   * Send a regular command
+   * Send a non-streaming game command.
+   * @param command The command text to execute
    */
   sendCommand(command: string): void {
     this.send({
@@ -429,9 +460,11 @@ export class WebSocketClient {
       command
     });
   }
-  
+
   /**
-   * Send a streaming command
+   * Send a streaming game command with optional image generation.
+   * @param command The command text to execute
+   * @param imageGeneration Whether to generate scene images
    */
   sendStreamCommand(command: string, imageGeneration?: boolean): void {
     this.send({
@@ -440,9 +473,10 @@ export class WebSocketClient {
       imageGeneration
     });
   }
-  
+
   /**
-   * Send audio for transcription and processing
+   * Send audio for transcription and command processing.
+   * @param audioBase64 Base64-encoded audio data
    */
   sendAudio(audioBase64: string): void {
     this.send({
@@ -450,18 +484,19 @@ export class WebSocketClient {
       audio: audioBase64
     });
   }
-  
+
   /**
-   * Request list of saved games
+   * Request the list of saved games.
    */
   listGames(): void {
     this.send({
       type: 'listGames'
     });
   }
-  
+
   /**
-   * Request image for a specific message
+   * Request the generated image for a specific message.
+   * @param messageIndex The message index to retrieve the image for
    */
   getImage(messageIndex: number): void {
     this.send({
@@ -469,9 +504,10 @@ export class WebSocketClient {
       messageIndex
     });
   }
-  
+
   /**
-   * Request music for a specific message
+   * Request the generated music for a specific message.
+   * @param messageIndex The message index to retrieve the music for
    */
   getMusic(messageIndex: number): void {
     this.send({

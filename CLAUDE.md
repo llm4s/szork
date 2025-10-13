@@ -62,7 +62,8 @@ Copy `.env` file with required API keys:
 - Streaming and non-streaming text generation
 - Scene parsing and game state management
 - Audio/image generation coordination
-- Complete game state persistence and restoration
+- Step-based persistence with complete conversation history tracking
+- Integration with CoreEngine for pure functional state management
 
 **TypedWebSocketServer.scala** - Type-safe WebSocket communication
 - Protocol-based message handling using case classes
@@ -83,6 +84,17 @@ Copy `.env` file with required API keys:
 - `Exit` - Navigation between locations
 - Streaming response parsing for real-time gameplay
 
+**StepPersistence.scala** - Step-based persistence system
+- Records each user interaction as a discrete step
+- Stores conversation history, media cache, and game state
+- Enables save/load at any point with full state restoration
+- Step replay capability for debugging and analysis
+
+**CoreState.scala** - Pure functional game state
+- Immutable core game state representation
+- Separates business logic from side effects
+- Enables deterministic state transitions
+
 ### Key Features
 
 **Streaming Architecture** - Text responses stream in real-time via WebSocket, with JSON parsing to extract narrative text separately from structured game data.
@@ -91,7 +103,11 @@ Copy `.env` file with required API keys:
 
 **Multi-modal Generation** - Coordinates text, audio, and image generation asynchronously with caching to improve performance.
 
-**Game Persistence** - Complete agent state serialization including conversation history, tool calls, and media cache.
+**Game Persistence** - Step-based persistence system that records each interaction as a discrete step, enabling:
+- Save/load at any point with full conversation history
+- Media cache preservation (images, music, audio)
+- Step replay for debugging and analysis
+- Backwards-compatible state restoration
 
 ## Development Patterns
 

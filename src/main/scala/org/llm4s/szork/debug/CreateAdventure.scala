@@ -1,6 +1,8 @@
 package org.llm4s.szork.debug
 
-import org.llm4s.szork._
+import org.llm4s.szork.game._
+import org.llm4s.szork.api.{GameTheme, ArtStyle}
+import org.llm4s.szork.persistence.{GameMetadataHelper, StepData, StepPersistence}
 import org.llm4s.szork.adapters.DefaultClients
 import org.llm4s.config.EnvLoader
 import org.slf4j.LoggerFactory
@@ -73,9 +75,9 @@ object CreateAdventure {
       val sessionId = IdGenerator.sessionId()
 
       // Create SPI clients (optional, not used in debug mode)
-      val ttsClient = DefaultClients.createTTSClient(EnvLoader)
-      val imageClient = DefaultClients.createImageClient(EnvLoader)
-      val musicClient = DefaultClients.createMusicClient(EnvLoader)
+      val ttsClient = DefaultClients.createTTSClient()
+      val imageClient = DefaultClients.createImageClient()
+      val musicClient = DefaultClients.createMusicClient()
 
       val engine = GameEngine.create(
         llmClient = llmClient,

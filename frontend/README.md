@@ -41,19 +41,34 @@ npm run format
 
 ## API Integration
 
-The frontend is configured to proxy API requests to `http://localhost:8080/api` for backend communication.
+The frontend communicates with the backend via:
+- **WebSocket** (primary): Real-time game communication on port 9002
+- **REST API**: Feature flags and capability discovery
 
-## TODO
+## Current Features
 
- - [ ] Connect to backend WebSocket/API for real-time game communication
+✅ **Implemented:**
+- Real-time WebSocket communication with backend
+- Streaming text responses with visual feedback
+- Image generation with loading states
+- Background music generation and playback
+- Voice narration (TTS) with playback controls
+- Speech-to-text command input
+- Game save/load functionality
+- Feature flag discovery and capability checks
+- Adventure theme and art style selection
+- Per-session feature overrides (TTS, STT, music, images)
+
+🚧 **Potential Future Enhancements:**
+- Command history navigation (up/down arrows)
+- Advanced game settings panel
+- Multiple voice options for narration
+- Ambient sound effects
+- Save game management UI
 
 ## Configuration
 
-- WebSocket URL can be configured via `VITE_WS_URL` (e.g. `ws://localhost:9002`).
-- In dev, the app connects to `ws://localhost:3090/ws`, which Vite proxies to `ws://localhost:9002`.
-- If neither is set, it defaults to `ws://<host>:9002`.
-- [ ] Add game state management with Pinia
-- [ ] Implement command history (up/down arrows)
-- [ ] Add sound effects and music
-- [ ] Create game settings panel
-- [ ] Add save/load game functionality
+- WebSocket URL can be configured via `VITE_WS_URL` (e.g. `ws://localhost:9002`)
+- In dev, the app connects to `ws://localhost:3090/ws`, which Vite proxies to `ws://localhost:9002`
+- If neither is set, it defaults to `ws://<host>:9002`
+- Feature flags are fetched from `/api/feature-flags` on startup

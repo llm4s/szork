@@ -1,6 +1,7 @@
 package org.llm4s.szork.debug
 
-import org.llm4s.szork._
+import org.llm4s.szork.game._
+import org.llm4s.szork.persistence.{StepData, StepPersistence, GameMetadataHelper, SceneResponse, GameResponse}
 import org.llm4s.szork.adapters.DefaultClients
 import org.llm4s.config.EnvLoader
 import org.slf4j.LoggerFactory
@@ -72,9 +73,9 @@ object RunUserStep {
       val sessionId = IdGenerator.sessionId()
 
       // Create SPI clients (optional, not used in debug mode)
-      val ttsClient = DefaultClients.createTTSClient(EnvLoader)
-      val imageClient = DefaultClients.createImageClient(EnvLoader)
-      val musicClient = DefaultClients.createMusicClient(EnvLoader)
+      val ttsClient = DefaultClients.createTTSClient()
+      val imageClient = DefaultClients.createImageClient()
+      val musicClient = DefaultClients.createMusicClient()
 
       val engine = GameEngine.create(
         llmClient = llmClient,
@@ -139,7 +140,7 @@ object RunUserStep {
       }
 
       // Convert engine GameResponse to StepData GameResponse
-      val gameResponse: Option[org.llm4s.szork.GameResponse] = response.scene.map(SceneResponse)
+      val gameResponse: Option[GameResponse] = response.scene.map(SceneResponse)
 
       // Create step data
       val stepData = StepData.commandStep(

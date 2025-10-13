@@ -17,8 +17,11 @@ project/project/
 .env
 *.env.local
 
-# Logs
+# Logs and debug files
 *.log
+debug-*.txt
+backend.log
+frontend.log
 
 # OS
 .DS_Store
@@ -32,6 +35,7 @@ frontend/.vite/
 # Cache and saves
 szork-cache/
 szork-saves/
+runs/
 
 # Temporary files
 *.tmp

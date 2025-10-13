@@ -155,11 +155,13 @@ The game supports extensive configuration through environment variables:
 
 ## 📚 Documentation
 
-- [Development Guide](README_DEVELOPMENT.md) - Detailed development setup
-- [SBT Revolver Guide](README_SBT_REVOLVER.md) - Hot reload configuration
-- [Frontend README](frontend/README.md) - Frontend development
+- [Development Guide](docs/README_DEVELOPMENT.md) - Detailed development setup and build instructions
+- [SBT Revolver Guide](docs/README_SBT_REVOLVER.md) - Hot reload configuration with file watching
+- [Frontend README](frontend/README.md) - Frontend development, features, and configuration
+- [Claude Code Guide](CLAUDE.md) - Guide for AI assistants working with this codebase
+- [Documentation Index](docs/README.md) - Complete documentation directory and archive
 
-Note: Older REST endpoints referenced previously (`/api/game/start`, etc.) have been replaced by WebSocket flows.
+For additional design documents and historical information, see the [docs/](docs/) directory.
 
 ## 🎤 About
 

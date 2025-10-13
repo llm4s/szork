@@ -1,8 +1,7 @@
 package org.llm4s.szork.adapters
 
-import org.llm4s.szork.{ImageGeneration, MusicGeneration, TextToSpeech, SpeechToText}
+import org.llm4s.szork.media.{ImageGeneration, MusicGeneration, TextToSpeech, SpeechToText}
 import org.llm4s.szork.spi._
-import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 
 class DefaultTTSClient extends TTSClient {
@@ -42,15 +41,15 @@ class DefaultMusicClient extends MusicClient {
 }
 
 object DefaultClients {
-  def createTTSClient(envLoader: Any): Option[TTSClient] =
+  def createTTSClient(): Option[TTSClient] =
     Some(new DefaultTTSClient())
 
-  def createSTTClient(envLoader: Any): Option[STTClient] =
+  def createSTTClient(): Option[STTClient] =
     Some(new DefaultSTTClient())
 
-  def createImageClient(envLoader: Any): Option[ImageClient] =
+  def createImageClient(): Option[ImageClient] =
     Some(new DefaultImageClient())
 
-  def createMusicClient(envLoader: Any): Option[MusicClient] =
+  def createMusicClient(): Option[MusicClient] =
     Some(new DefaultMusicClient())
 }

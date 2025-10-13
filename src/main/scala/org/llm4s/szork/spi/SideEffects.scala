@@ -1,7 +1,5 @@
 package org.llm4s.szork.spi
 
-import org.llm4s.szork.GameScene
-import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 
 trait Clock {

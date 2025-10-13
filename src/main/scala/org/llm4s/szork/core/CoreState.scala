@@ -1,6 +1,7 @@
 package org.llm4s.szork.core
 
-import org.llm4s.szork.{GameScene, ConversationEntry}
+import org.llm4s.szork.game.GameScene
+import org.llm4s.szork.persistence.ConversationEntry
 
 case class CoreState(
   currentScene: Option[GameScene] = None,

@@ -1,6 +1,7 @@
 package org.llm4s.szork.debug
 
-import org.llm4s.szork._
+import org.llm4s.szork.game._
+import org.llm4s.szork.persistence.{StepData, ToolCallInfo, SceneResponse, ActionResponse}
 import org.llm4s.llmconnect.model._
 
 /** Debugging utilities for game development and testing.

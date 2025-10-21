@@ -6,6 +6,9 @@ import org.scalatest.BeforeAndAfterEach
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters._
 import org.llm4s.llmconnect.model.{UserMessage, AssistantMessage}
+import org.llm4s.szork.api.{ArtStyle, GameTheme}
+import org.llm4s.szork.game.{Exit, GameScene}
+import org.llm4s.szork.persistence.{GameMetadata, GameState, SceneResponse, StepData, StepMetadata, StepPersistence}
 
 class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterEach {
 

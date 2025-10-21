@@ -37,8 +37,8 @@ object GameResponseValidator {
     "back"
   )
   private val idPattern = "^[a-z0-9_-]+$".r
-  private val maxNarrationLenFull = 600  // Increased from 400 to allow for initial scene descriptions
-  private val maxNarrationLenSimple = 400  // Increased from 250 for more detailed responses
+  private val maxNarrationLenFull = 800  // Increased from 600 to allow for detailed opening scenes with multiple exits
+  private val maxNarrationLenSimple = 500  // Increased from 400 for more detailed responses
   private val maxImageDescLen = 600
   private val maxMusicDescLen = 400
 

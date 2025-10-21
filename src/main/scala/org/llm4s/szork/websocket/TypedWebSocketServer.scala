@@ -86,7 +86,7 @@ class TypedWebSocketServer(
       clientMessage match {
         case msg: NewGameRequest =>
           logger.info(s"[WS-IN] Session: $sessionId | Type: NewGameRequest | Theme: ${msg.theme.getOrElse(
-              "default")} | ArtStyle: ${msg.artStyle.getOrElse("default")} | ImageGen: ${msg.imageGeneration}")
+              "default")} | ArtStyle: ${msg.artStyle.getOrElse("default")} | ImageGen: ${msg.imageGeneration} | HasOutline: ${msg.adventureOutline.isDefined}")
           handleNewGame(conn, msg)
         case msg: LoadGameRequest =>
           logger.info(s"[WS-IN] Session: $sessionId | Type: LoadGameRequest | GameId: ${msg.gameId}")
@@ -252,18 +252,24 @@ class TypedWebSocketServer(
     val artStyleObj = request.artStyle.map(a => ArtStyle(a, a))
 
     // Parse adventure outline from JSON if provided
+    logger.debug(s"Adventure outline JSON received: ${request.adventureOutline.isDefined}")
     val adventureOutline = request.adventureOutline.flatMap { json =>
-      try
-        Some(parseAdventureOutlineFromJson(json))
-      catch {
+      try {
+        logger.debug(s"Parsing adventure outline JSON: ${json}")
+        val parsed = parseAdventureOutlineFromJson(json)
+        logger.info(s"Successfully parsed adventure outline: ${parsed.title}")
+        Some(parsed)
+      } catch {
         case e: Exception =>
-          logger.error("Failed to parse adventure outline from request", e)
+          logger.error(s"Failed to parse adventure outline from request: ${e.getMessage}", e)
           None
       }
     }
 
     if (adventureOutline.isDefined) {
       logger.info(s"Using adventure outline: ${adventureOutline.get.title}")
+    } else {
+      logger.warn("No adventure outline provided or parsing failed - will use default title")
     }
 
     // Create GameEngine with proper parameters
@@ -389,20 +395,26 @@ class TypedWebSocketServer(
         }
 
         // Persist initial game state so load screen shows correct title/createdAt immediately
+        logger.info(s"About to save initial game state for $gameId (adventureOutline defined: ${adventureOutline.isDefined})")
         Future {
           try {
+            logger.info(s"[SAVE-START] Starting metadata save for game $gameId")
             // Create initial metadata
             val currentTime = System.currentTimeMillis()
+            val titleToSave = adventureOutline.map(_.title).getOrElse("Untitled Adventure")
+            logger.info(s"[SAVE-TITLE] Saving game metadata with title: '$titleToSave' (adventureOutline.isDefined: ${adventureOutline.isDefined})")
             val metadata = GameMetadataHelper.initial(
               gameId = gameId,
-              adventureTitle = adventureOutline.map(_.title).getOrElse("Untitled Adventure"),
+              adventureTitle = titleToSave,
               theme = themeObj.map(_.id).getOrElse("default"),
               artStyle = artStyleObj.map(_.id).getOrElse("default"),
               createdAt = currentTime
             )
+            logger.info(s"[SAVE-METADATA] Created metadata object: gameId=$gameId, title=${metadata.adventureTitle}, theme=${metadata.theme}")
 
             StepPersistence.saveGameMetadata(metadata) match {
               case Right(_) =>
+                logger.info(s"[SAVE-SUCCESS] Successfully saved metadata for game $gameId with title '${metadata.adventureTitle}'")
                 // Create initial step data
                 val initialScene = engine.getCurrentScene
                 val stepData = StepData.initialStep(
@@ -414,19 +426,20 @@ class TypedWebSocketServer(
                   agentMessages = engine.getState.conversation.messages.toList,
                   executionTimeMs = 0L
                 )
+                logger.info(s"[SAVE-STEP] Created step data with outline title: ${stepData.outline.map(_.title)}")
 
                 StepPersistence.saveStep(stepData) match {
                   case Right(_) =>
-                    logger.debug(s"Saved initial step for game $gameId")
+                    logger.info(s"[SAVE-STEP-SUCCESS] Saved initial step for game $gameId")
                   case Left(error) =>
-                    logger.warn(s"Failed to save initial step for game $gameId: ${error.message}")
+                    logger.error(s"[SAVE-STEP-ERROR] Failed to save initial step for game $gameId: ${error.message}")
                 }
               case Left(error) =>
-                logger.warn(s"Failed to save initial metadata for game $gameId: ${error.message}")
+                logger.error(s"[SAVE-METADATA-ERROR] Failed to save initial metadata for game $gameId: ${error.message}")
             }
           } catch {
             case e: Exception =>
-              logger.error(s"Error saving initial game state for $gameId", e)
+              logger.error(s"[SAVE-EXCEPTION] Error saving initial game state for $gameId", e)
           }
         }
 
@@ -823,15 +836,21 @@ class TypedWebSocketServer(
 
   // Handle list games request
   private def handleListGames(conn: WebSocket): Unit = {
-    val games = GamePersistence
-      .listGames()
-      .map(g =>
-        GameInfo(
-          gameId = g.gameId,
-          theme = g.theme,
-          timestamp = g.lastPlayed,
-          locationName = g.adventureTitle // Use adventure title as location name
-        ))
+    logger.info(s"[LIST-GAMES] Listing all games")
+    val allGames = GamePersistence.listGames()
+    logger.info(s"[LIST-GAMES] Found ${allGames.length} games")
+
+    allGames.foreach { g =>
+      logger.info(s"[LIST-GAMES] Game ${g.gameId}: title='${g.adventureTitle}', theme=${g.theme}, artStyle=${g.artStyle}")
+    }
+
+    val games = allGames.map(g =>
+      GameInfo(
+        gameId = g.gameId,
+        theme = g.theme,
+        timestamp = g.lastPlayed,
+        locationName = g.adventureTitle // Use adventure title as location name
+      ))
 
     sendMessage(conn, GamesListMessage(games))
   }

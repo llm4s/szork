@@ -3,6 +3,7 @@ package org.llm4s.szork
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.llm4s.szork.stubs.FakeLLMClientInvalid
+import org.llm4s.szork.game.GameEngine
 
 class GameEngineValidationSpec extends AnyFunSuite with Matchers {
   test("engine records validation issues for invalid exit directions") {

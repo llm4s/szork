@@ -2,6 +2,7 @@ package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
+import org.llm4s.szork.media.MediaPlanner
 
 class MediaPlannerSpec extends AnyFunSuite with Matchers {
   test("detectMoodFromText maps common words to moods") {

@@ -63,7 +63,7 @@ object AdventureGenerator {
         |    {
         |      "id": "location_id",
         |      "name": "Location Name",
-        |      "description": "First-visit description (2-3 sentences establishing atmosphere and key interactive elements). CRITICAL: Must integrate ALL exits naturally into prose using classic IF patterns: 'To the north, a wooden door stands closed', 'Stone stairs descend into darkness below', 'An archway opens to the west'. Never rely on separate exit lists.",
+        |      "description": "First-visit description (2-4 concise sentences, aim for 400-600 characters, MAX 750). CRITICAL: Must integrate ALL exits naturally into prose using classic IF patterns: 'To the north, a wooden door stands closed', 'Stone stairs descend into darkness below', 'An archway opens to the west'. Never rely on separate exit lists.",
         |      "exits": [
         |        {
         |          "direction": "north/south/east/west/up/down/in/out",
@@ -186,19 +186,48 @@ object AdventureGenerator {
 
     val messages = Seq(
       SystemMessage(
-        "You are a master interactive fiction designer combining the wit of Infocom classics with modern game design sensibilities. You create text adventures that balance atmospheric prose with clear interactivity, respect player intelligence through fair puzzles, and deliver memorable stories full of personality. Your games are known for clever environmental storytelling, satisfying 'aha!' moments, and descriptions that make players want to examine everything."),
+        """You are a master interactive fiction designer combining the wit of Infocom classics with modern game design sensibilities. You create text adventures that balance atmospheric prose with clear interactivity, respect player intelligence through fair puzzles, and deliver memorable stories full of personality. Your games are known for clever environmental storytelling, satisfying 'aha!' moments, and descriptions that make players want to examine everything.
+          |
+          |CRITICAL: You MUST output valid, complete JSON. Ensure all arrays and objects are properly closed with ] and }. Do not truncate your response - complete the entire JSON structure even if it's long.""".stripMargin),
       UserMessage(prompt)
     )
 
-    client.complete(Conversation(messages)) match {
-      case Right(completion) =>
-        // Completion has a content field directly
-        val content = completion.content
-        parseAdventureOutline(content)
-      case Left(error) =>
-        logger.error(s"Failed to generate adventure outline: $error")
-        Left(LLMError(s"Failed to generate adventure outline: $error", retryable = true))
+    // Retry logic for better reliability
+    val maxRetries = 2
+    var attempt = 0
+    var lastError: Option[SzorkError] = None
+
+    while (attempt <= maxRetries) {
+      attempt += 1
+      logger.info(s"Adventure generation attempt $attempt of ${maxRetries + 1}")
+
+      client.complete(Conversation(messages)) match {
+        case Right(completion) =>
+          val content = completion.content
+          parseAdventureOutline(content) match {
+            case Right(outline) =>
+              logger.info(s"Successfully generated adventure outline on attempt $attempt: ${outline.title}")
+              return Right(outline)
+            case Left(error) =>
+              logger.warn(s"Attempt $attempt failed to parse outline: ${error.message}")
+              lastError = Some(error)
+              if (attempt > maxRetries) {
+                return Left(error)
+              }
+              // Wait a bit before retrying
+              Thread.sleep(500)
+          }
+        case Left(error) =>
+          logger.error(s"Attempt $attempt failed to call LLM: $error")
+          lastError = Some(LLMError(s"Failed to generate adventure outline: $error", retryable = true))
+          if (attempt > maxRetries) {
+            return Left(lastError.get)
+          }
+          Thread.sleep(500)
+      }
     }
+
+    Left(lastError.getOrElse(LLMError("Unknown error during adventure generation", retryable = false)))
   }
 
   private def parseAdventureOutline(response: String): SzorkResult[AdventureOutline] = {

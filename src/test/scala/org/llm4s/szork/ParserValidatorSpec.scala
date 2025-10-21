@@ -2,6 +2,7 @@ package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
+import org.llm4s.szork.game.{GameResponseParser, GameScene, SimpleResponse}
 
 class ParserValidatorSpec extends AnyFunSuite with Matchers {
 

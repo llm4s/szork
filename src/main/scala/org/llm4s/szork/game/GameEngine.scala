@@ -14,6 +14,9 @@ import org.llm4s.szork.api.{GameTheme, ArtStyle}
 import org.llm4s.szork.media.{MediaPlanner, TextToSpeech}
 import org.llm4s.szork.persistence.{StepPersistence, StepData, GameState, MediaCacheEntry, SceneResponse, StepMetadata, GameResponse}
 import org.llm4s.szork.streaming.{StreamingAgent, StreamingTextParser}
+import org.llm4s.trace.{EnhancedTracing, EnhancedNoOpTracing, EnhancedLangfuseTracing, Tracing, TracingMode}
+import org.llm4s.llmconnect.config.{TracingSettings, LangfuseConfig}
+import io.github.cdimascio.dotenv.Dotenv
 
 /** Core game engine managing AI-driven text adventure gameplay.
   *
@@ -41,6 +44,30 @@ class GameEngine(
   musicClient: Option[MusicClient] = None
 )(implicit llmClient: LLMClient) {
   private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+
+  // Initialize Langfuse tracing from environment variables
+  // Fixed in llm4s 0.1.16+088f6b923-SNAPSHOT with correct URL endpoint
+  private val tracer: Tracing = {
+    val langfuseUrl = sys.env.getOrElse("LANGFUSE_HOST", "https://cloud.langfuse.com")
+    val publicKey = sys.env.getOrElse("LANGFUSE_PUBLIC_KEY", "")
+    val secretKey = sys.env.getOrElse("LANGFUSE_SECRET_KEY", "")
+
+    if (publicKey.nonEmpty && secretKey.nonEmpty) {
+      logger.info(s"[$sessionId] Langfuse tracing enabled: $langfuseUrl")
+      val enhancedTracing = new EnhancedLangfuseTracing(
+        langfuseUrl = langfuseUrl,
+        publicKey = publicKey,
+        secretKey = secretKey,
+        environment = "development",
+        release = "1.0.0",
+        version = "1.0.0"
+      )
+      Tracing.createFromEnhanced(enhancedTracing)
+    } else {
+      logger.info(s"[$sessionId] Langfuse keys not found, using no-op tracer")
+      Tracing.createFromEnhanced(new EnhancedNoOpTracing())
+    }
+  }
 
   private val themeDescription = PromptBuilder.themeDescription(theme)
   private val artStyleDescription = PromptBuilder.artStyleDescription(artStyle)
@@ -84,9 +111,11 @@ class GameEngine(
     // This ensures the agent knows to generate the opening scene
 
     // Automatically run the initial scene generation
-    agent.run(currentState) match {
+    agent.run(currentState, maxSteps = None, traceLogPath = None, debug = true) match {
       case Right(newState) =>
         currentState = newState
+        // Trace the agent state to Langfuse
+        tracer.traceAgentState(newState)
         // Extract the last textual response from the agent
         val responseContent = ResponseInterpreter.extractLastAssistantResponse(newState.conversation.messages)
 
@@ -155,8 +184,10 @@ class GameEngine(
     val textStartTime = System.currentTimeMillis()
     logger.debug(s"[$sessionId] Starting text generation for command: $command")
 
-    agent.run(currentState) match {
+    agent.run(currentState, maxSteps = None, traceLogPath = None, debug = true) match {
       case Right(newState) =>
+        // Trace the agent state to Langfuse
+        tracer.traceAgentState(newState)
         // Get only the new messages added by the agent
         val newMessages =
           newState.conversation.messages.drop(previousMessageCount + 1) // +1 to skip the user message we just added

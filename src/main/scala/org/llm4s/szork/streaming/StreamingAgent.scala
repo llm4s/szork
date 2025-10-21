@@ -53,9 +53,9 @@ class StreamingAgent(client: LLMClient) extends Agent(client) {
     var isUserResponse = false
     var hasToolCalls = false
 
-    // Request streaming completion from LLM
+    // Request streaming completion from LLM (use toApiConversation to include system message)
     client.streamComplete(
-      state.conversation,
+      state.toApiConversation,
       options,
       chunk =>
         detector.processChunk(chunk) match {
@@ -83,6 +83,14 @@ class StreamingAgent(client: LLMClient) extends Agent(client) {
         logger.debug(
           s"LLM stream completion content (truncated): ${Option(completion.message.content).map(_.take(200))}")
         logger.debug(s"LLM tool calls: ${completion.message.toolCalls.map(_.name)}")
+
+        // Log detailed tool call information including arguments
+        completion.message.toolCalls.foreach { toolCall =>
+          logger.info(s"Tool call details - name: ${toolCall.name}, id: ${toolCall.id}")
+          logger.info(s"Tool call arguments (raw): ${toolCall.arguments}")
+          logger.info(s"Tool call arguments type: ${Option(toolCall.arguments).map(_.getClass.getName).getOrElse("null")}")
+        }
+
         logger.debug(s"Token usage: prompt=${completion.usage.map(_.promptTokens)}, completion=${completion.usage.map(
             _.completionTokens)}, total=${completion.usage.map(_.totalTokens)}")
 

@@ -1,6 +1,7 @@
 package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
+import org.llm4s.szork.game.IdGenerator
 
 class IdGeneratorTest extends AnyFunSuite {
 

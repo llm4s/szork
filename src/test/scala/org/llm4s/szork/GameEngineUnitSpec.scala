@@ -3,6 +3,7 @@ package org.llm4s.szork
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.llm4s.szork.stubs.FakeLLMClient
+import org.llm4s.szork.game.GameEngine
 
 class GameEngineUnitSpec extends AnyFunSuite with Matchers {
 

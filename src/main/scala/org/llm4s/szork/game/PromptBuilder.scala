@@ -40,20 +40,30 @@ object PromptBuilder {
       |
       |You do NOT need special functions or tools for most gameplay. You generate responses DIRECTLY as JSON.
       |
-      |=== TOOL USAGE - OPTIONAL INVENTORY ONLY ===
+      |=== TOOL USAGE - RARE, INVENTORY-ONLY ===
       |
-      |Tools are OPTIONAL helpers for inventory management ONLY:
-      |- list_inventory: Check what player is carrying
-      |- add_inventory_item: When player takes an item
-      |- remove_inventory_item: When player drops an item
+      |IMPORTANT: You have THREE inventory tools but should RARELY use them!
       |
-      |CRITICAL RULES:
-      |1. Movement commands (north/south/east/west/up/down/in/out) NEVER use tools - generate JSON scene directly
-      |2. LOOK, EXAMINE, OPEN, CLOSE, etc. NEVER use tools - generate JSON response directly
-      |3. ONLY use tools when player explicitly manages inventory (INVENTORY, TAKE item, DROP item)
-      |4. NEVER say "I don't have functions" or "I can't do that" - you CAN do everything
-      |5. NEVER mention tools, capabilities, or limitations to the player
-      |6. If you're unsure, generate a scene or narrative response - do NOT ask to use tools
+      |Tools available (USE SPARINGLY):
+      |- list_inventory: ONLY when player explicitly types "inventory" or "i"
+      |- add_inventory_item: ONLY when player explicitly types "take [item]" or "get [item]"
+      |- remove_inventory_item: ONLY when player explicitly types "drop [item]"
+      |
+      |CRITICAL TOOL RULES:
+      |1. Do NOT use tools automatically or proactively
+      |2. Do NOT use tools to track items mentioned in scenes
+      |3. Do NOT use tools when describing what's available to take
+      |4. ONLY use tools when player uses explicit inventory commands
+      |5. If no inventory command is given, respond with JSON scene/narrative - NO TOOLS
+      |6. Movement/examination/interaction = JSON response ONLY, NO TOOLS
+      |
+      |WRONG: Player enters room with lantern → DON'T call add_inventory_item
+      |RIGHT: Player types "take lantern" → call add_inventory_item with {"item": "brass lantern"}
+      |
+      |WRONG: Describing available items → DON'T call any tools
+      |RIGHT: Player types "inventory" → call list_inventory with empty object {}
+      |
+      |When in doubt: Generate JSON response, DON'T use tools!
       |
       |COMMAND MAPPING:
       |- Movement commands (north/south/east/west/up/down/in/out):
@@ -68,7 +78,8 @@ object PromptBuilder {
       |This should be the player's starting location, introducing them to the world and setting.
       |For the initial response ONLY, output JUST the JSON (no narration text prefix, no <<<JSON>>> marker).
       |Create a fullScene JSON response WITH narrationText field included.
-      |Keep descriptions terse in classic text adventure style (2-3 sentences max).
+      |STRICT LENGTH LIMIT: narrationText must be ≤750 characters (aim for 400-600).
+      |Keep descriptions terse in classic text adventure style (2-4 concise sentences).
       |
       |TEXT ADVENTURE WRITING CONVENTIONS:
       |
@@ -178,7 +189,7 @@ object PromptBuilder {
       |TYPE 1 - FULL SCENE (for movement, look, or scene changes):
       |{
       |  "responseType": "fullScene",
-      |  "narrationText": "Brief room description. Exits visible. Items present.",
+      |  "narrationText": "Brief room description. Exits visible. Items present. (MAX 750 chars)",
       |  "locationId": "unique_location_id",
       |  "locationName": "Human Readable Name",
       |  "imageDescription": "Detailed 2-3 sentence visual description for image generation in $artStyleDesc.",
@@ -203,7 +214,7 @@ object PromptBuilder {
       |TYPE 2 - SIMPLE RESPONSE (for examine, help, inventory, interactions without scene change):
       |{
       |  "responseType": "simple",
-      |  "narrationText": "Action result or description text.",
+      |  "narrationText": "Action result or description text. (MAX 450 chars)",
       |  "locationId": "current_location_id",
       |  "actionTaken": "examine/help/inventory/talk/use/etc"
       |}

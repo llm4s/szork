@@ -106,14 +106,17 @@ object StepPersistence {
       val gameDir = ensureGameDir(metadata.gameId)
       val metadataPath = gameDir.resolve("game.json")
 
+      logger.info(s"[PERSIST-SAVE] Saving metadata for ${metadata.gameId}: title='${metadata.adventureTitle}', theme=${metadata.theme}, artStyle=${metadata.artStyle}")
       val json = GameMetadataCodec.toJson(metadata)
+      val jsonStr = json.toString
+      logger.info(s"[PERSIST-SAVE] JSON to write: ${jsonStr.take(500)}")
       saveJson(metadataPath, json)
 
-      logger.debug(s"Saved game metadata: ${metadata.gameId}")
+      logger.info(s"[PERSIST-SAVE] Successfully saved game metadata to ${metadataPath}")
       Right(())
     } catch {
       case e: Exception =>
-        logger.error(s"Failed to save game metadata: ${metadata.gameId}", e)
+        logger.error(s"[PERSIST-SAVE] Failed to save game metadata: ${metadata.gameId}", e)
         Left(PersistenceError(s"Failed to save game metadata: ${e.getMessage}", Some(e), operation = "save"))
     }
   }
@@ -124,13 +127,16 @@ object StepPersistence {
       val metadataPath = getGameDir(gameId).resolve("game.json")
 
       if (!Files.exists(metadataPath)) {
+        logger.warn(s"[PERSIST-LOAD] Game metadata not found: $gameId at $metadataPath")
         return Left(NotFoundError(s"Game not found: $gameId"))
       }
 
       val json = loadJson(metadataPath)
+      val jsonStr = json.toString
+      logger.info(s"[PERSIST-LOAD] Loaded JSON from $metadataPath: ${jsonStr.take(500)}")
       val metadata = GameMetadataCodec.fromJson(json)
 
-      logger.debug(s"Loaded game metadata: $gameId")
+      logger.info(s"[PERSIST-LOAD] Loaded game metadata: $gameId, title='${metadata.adventureTitle}', theme=${metadata.theme}, artStyle=${metadata.artStyle}")
       Right(metadata)
     } catch {
       case e: Exception =>

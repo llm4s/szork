@@ -67,10 +67,10 @@ object GameTools {
     */
   val addInventorySchema: ObjectSchema[Map[String, Any]] = Schema
     .`object`[Map[String, Any]]("Add inventory item parameters")
-    .withProperty(
+    .withRequiredProperty(
       Schema.property(
         "item",
-        Schema.string("The name of the item to add to inventory")
+        Schema.string("The name of the item to add to inventory (REQUIRED)")
       )
     )
 
@@ -108,10 +108,10 @@ object GameTools {
     */
   val removeInventorySchema: ObjectSchema[Map[String, Any]] = Schema
     .`object`[Map[String, Any]]("Remove inventory item parameters")
-    .withProperty(
+    .withRequiredProperty(
       Schema.property(
         "item",
-        Schema.string("The name of the item to remove from inventory")
+        Schema.string("The name of the item to remove from inventory (REQUIRED)")
       )
     )
 

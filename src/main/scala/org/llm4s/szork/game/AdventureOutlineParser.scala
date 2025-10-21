@@ -8,26 +8,43 @@ import org.slf4j.LoggerFactory
 object AdventureOutlineParser {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
-  /** Fix incomplete JSON by adding missing closing brackets and braces */
+  /** Fix incomplete JSON by intelligently closing nested structures */
   private def fixIncompleteJson(json: String): String = {
-    // Count open vs close braces to determine how many we need
-    val openBraces = json.count(_ == '{')
-    val closeBraces = json.count(_ == '}')
-    val openBrackets = json.count(_ == '[')
-    val closeBrackets = json.count(_ == ']')
+    // Track open brackets and braces in order to close them properly
+    val stack = scala.collection.mutable.Stack[Char]()
+    var inString = false
+    var escaping = false
 
-    val needCloseBrackets = openBrackets - closeBrackets
-    val needCloseBraces = openBraces - closeBraces
-
-    if (needCloseBrackets > 0 || needCloseBraces > 0) {
-      logger.warn(s"JSON appears incomplete, adding $needCloseBrackets ] and $needCloseBraces }")
-      val fixed = json +
-        ("]" * needCloseBrackets) +
-        ("}" * needCloseBraces)
-      return fixed
+    // Parse to find what's still open
+    for (c <- json) {
+      if (escaping) {
+        escaping = false
+      } else if (c == '\\') {
+        escaping = true
+      } else if (c == '"' && !escaping) {
+        inString = !inString
+      } else if (!inString) {
+        c match {
+          case '{' | '[' => stack.push(c)
+          case '}' if stack.nonEmpty && stack.top == '{' => stack.pop()
+          case ']' if stack.nonEmpty && stack.top == '[' => stack.pop()
+          case _ => // ignore
+        }
+      }
     }
 
-    json
+    // Close in reverse order
+    if (stack.nonEmpty) {
+      val closing = stack.map {
+        case '{' => '}'
+        case '[' => ']'
+        case c => c
+      }.mkString
+      logger.warn(s"JSON appears incomplete, adding: $closing")
+      json + closing
+    } else {
+      json
+    }
   }
 
   /** Extract JSON from LLM response handling various formats (markdown blocks, plain JSON, etc.) */
@@ -57,6 +74,29 @@ object AdventureOutlineParser {
 
     // Always validate and fix incomplete JSON
     Some(fixIncompleteJson(extracted))
+  }
+
+  /** Try to extract just the title and mainQuest from malformed JSON */
+  private def extractCriticalFields(jsonStr: String): Option[(String, String)] = {
+    try {
+      // Use regex to extract title and mainQuest even if the rest is broken
+      val titlePattern = """"title"\s*:\s*"([^"]+)"""".r
+      val mainQuestPattern = """"mainQuest"\s*:\s*"([^"]+)"""".r
+
+      val title = titlePattern.findFirstMatchIn(jsonStr).map(_.group(1))
+      val mainQuest = mainQuestPattern.findFirstMatchIn(jsonStr).map(_.group(1))
+
+      (title, mainQuest) match {
+        case (Some(t), Some(m)) =>
+          logger.info(s"Extracted critical fields: title='$t', mainQuest='${m.take(100)}'")
+          Some((t, m))
+        case _ => None
+      }
+    } catch {
+      case e: Exception =>
+        logger.warn(s"Failed to extract critical fields: ${e.getMessage}")
+        None
+    }
   }
 
   def parse(response: String): SzorkResult[AdventureOutline] = {
@@ -149,8 +189,16 @@ object AdventureOutlineParser {
       Right(outline)
     } catch {
       case e: ujson.ParseException =>
-        val preview = if (jsonStr.length > 300) jsonStr.take(300) + "..." else jsonStr
-        Left(ParseError(s"JSON parsing failed: ${e.getMessage}\nJSON preview: $preview", Some(e)))
+        logger.error(s"JSON parsing failed: ${e.getMessage}")
+        // Try one more time with better JSON repair
+        extractCriticalFields(jsonStr) match {
+          case Some((title, mainQuest)) =>
+            logger.warn(s"Fallback extraction found title='$title' but returning error - generation should be retried")
+            Left(ParseError(s"JSON structure is incomplete. Found title='$title' but full structure is corrupted. ${e.getMessage}", Some(e)))
+          case None =>
+            val preview = if (jsonStr.length > 300) jsonStr.take(300) + "..." else jsonStr
+            Left(ParseError(s"JSON parsing failed: ${e.getMessage}\nJSON preview: $preview", Some(e)))
+        }
       case e: NoSuchElementException =>
         Left(ParseError(s"Missing required field in JSON: ${e.getMessage}", Some(e)))
       case e: Throwable =>

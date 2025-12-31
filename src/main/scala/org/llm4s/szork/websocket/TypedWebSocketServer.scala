@@ -15,8 +15,8 @@ import org.llm4s.szork.adapters._
 import org.llm4s.szork.spi.SystemClock
 import org.llm4s.config.EnvLoader
 import org.llm4s.szork.game._
-import org.llm4s.szork.persistence.{ConversationEntry => PersistenceConversationEntry, _}
-import org.llm4s.szork.api.{CommandRequest => ApiCommandRequest, _}
+import org.llm4s.szork.persistence.{ConversationEntry => _, _}
+import org.llm4s.szork.api.{CommandRequest => _, _}
 
 /** Type-safe WebSocket server for real-time game communication.
   *

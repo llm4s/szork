@@ -1,6 +1,6 @@
 package org.llm4s.szork.media
 
-import org.slf4j.LoggerFactory
+import org.slf4j.{Logger, LoggerFactory}
 import requests._
 import org.llm4s.config.EnvLoader
 import java.util.Base64
@@ -8,7 +8,7 @@ import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 
 class TextToSpeech {
-  private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
   private val apiKey = EnvLoader
     .get("OPENAI_API_KEY")
     .getOrElse(

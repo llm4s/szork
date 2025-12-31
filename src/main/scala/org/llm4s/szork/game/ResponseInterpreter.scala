@@ -1,7 +1,6 @@
 package org.llm4s.szork.game
 
-import org.llm4s.szork.error._
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.error.ValidationError
 import org.llm4s.llmconnect.model._
 
 object ResponseInterpreter {

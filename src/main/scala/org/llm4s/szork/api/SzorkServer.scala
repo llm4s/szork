@@ -173,20 +173,12 @@ object SzorkServer extends cask.Main with cask.Routes {
   }
 
   // Verify LLM client can be created; fail fast if unavailable
-  config.llmConfig match {
-    case Some(_) =>
-      try {
-        import org.llm4s.llmconnect.LLMConnect
-        LLMConnect.getClient(EnvLoader)
-        logger.info("LLM client initialized successfully")
-      } catch {
-        case e: Exception =>
-          logger.error(s"Failed to initialize LLM client: ${e.getMessage}")
-          throw new IllegalStateException("LLM initialization failed; refusing to start without a working LLM", e)
-      }
-    case None =>
-      logger.error("No LLM configuration found - text generation will not work")
-      throw new IllegalStateException("No LLM configured; set OPENAI_API_KEY, ANTHROPIC_API_KEY, or LLAMA_BASE_URL")
+  SzorkConfig.getLLMClient() match {
+    case Right(_) =>
+      logger.info("LLM client initialized successfully")
+    case Left(error) =>
+      logger.error(s"Failed to initialize LLM client: $error")
+      throw new IllegalStateException(s"LLM initialization failed: $error")
   }
 
   @post("/api/game/validate-theme")
@@ -197,14 +189,12 @@ object SzorkServer extends cask.Main with cask.Routes {
     logger.info(s"Validating custom theme: ${themeDescription.take(100)}...")
 
     // Use LLM to validate and enhance the theme
-    import org.llm4s.llmconnect.LLMConnect
     import org.llm4s.llmconnect.model.{SystemMessage, UserMessage, Conversation}
 
-    val clientResult = LLMConnect.getClient(EnvLoader)
-    val client = clientResult match {
+    val client = SzorkConfig.getLLMClient() match {
       case Right(c) => c
       case Left(error) =>
-        logger.error(s"Failed to get LLM client: ${error.message}")
+        logger.error(s"Failed to get LLM client: $error")
         return ujson.Obj(
           "valid" -> false,
           "error" -> "LLM service unavailable"
@@ -383,17 +373,16 @@ object SzorkServer extends cask.Main with cask.Routes {
 
     logger.info(s"Generating adventure for theme: ${theme.map(_.name).getOrElse("default")}")
 
-    val llmClientResult = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader)
-    val llmClient = llmClientResult match {
+    implicit val llmClient: org.llm4s.llmconnect.LLMClient = SzorkConfig.getLLMClient() match {
       case Right(c) => c
       case Left(error) =>
-        logger.error(s"Failed to get LLM client: ${error.message}")
+        logger.error(s"Failed to get LLM client: $error")
         return ujson.Obj(
           "success" -> false,
           "error" -> "LLM service unavailable"
         )
     }
-    AdventureGenerator.generateAdventureOutline(themePrompt, artStyleId)(llmClient) match {
+    AdventureGenerator.generateAdventureOutline(themePrompt, artStyleId) match {
       case Right(outline) =>
         logger.info(s"Adventure outline generated: ${outline.title}")
         ujson.Obj(
@@ -549,11 +538,10 @@ object SzorkServer extends cask.Main with cask.Routes {
 
         // Create new session for loaded game
         val sessionId = IdGenerator.sessionId()
-        val llmClientResult = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader)
-        val llmClient = llmClientResult match {
+        implicit val llmClient: org.llm4s.llmconnect.LLMClient = SzorkConfig.getLLMClient() match {
           case Right(c) => c
           case Left(error) =>
-            logger.error(s"Failed to get LLM client: ${error.message}")
+            logger.error(s"Failed to get LLM client: $error")
             return ujson.Obj(
               "status" -> "error",
               "error" -> "LLM service unavailable"

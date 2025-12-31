@@ -1,10 +1,9 @@
 package org.llm4s.szork.debug
 
 import org.llm4s.szork.game._
-import org.llm4s.szork.api.{GameTheme, ArtStyle}
+import org.llm4s.szork.api.{GameTheme, ArtStyle, SzorkConfig}
 import org.llm4s.szork.persistence.{GameMetadataHelper, StepData, StepPersistence}
 import org.llm4s.szork.adapters.DefaultClients
-import org.llm4s.config.EnvLoader
 import org.slf4j.LoggerFactory
 import scala.util.{Try, Success, Failure}
 
@@ -48,10 +47,10 @@ object CreateAdventure {
     try {
       // Initialize LLM client
       println("Initializing LLM client...")
-      implicit val llmClient = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader) match {
+      implicit val llmClient: org.llm4s.llmconnect.LLMClient = SzorkConfig.getLLMClient() match {
         case Right(client) => client
         case Left(error) =>
-          println(s"ERROR: Failed to initialize LLM client: ${error.message}")
+          println(s"ERROR: Failed to initialize LLM client: $error")
           System.exit(1)
           return
       }
@@ -60,7 +59,7 @@ object CreateAdventure {
       // Generate adventure outline
       println(s"\nGenerating adventure outline for theme: '${config.theme}'...")
       val startTime = System.currentTimeMillis()
-      val outline = AdventureGenerator.generateAdventureOutline(config.theme, config.artStyle) match {
+      val outline: AdventureOutline = AdventureGenerator.generateAdventureOutline(config.theme, config.artStyle) match {
         case Right(o) =>
           println(s"✓ Adventure outline generated: ${o.title}")
           o

@@ -285,15 +285,14 @@ class TypedWebSocketServer(
       case ImageProvider.None => false
     }
 
-    val llmClientResult = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader)
-    implicit val llmClient: org.llm4s.llmconnect.LLMClient = llmClientResult match {
+    implicit val llmClient: org.llm4s.llmconnect.LLMClient = SzorkConfig.getLLMClient() match {
       case Right(c) => c
       case Left(error) =>
-        logger.error(s"Failed to get LLM client: ${error.message}")
+        logger.error(s"Failed to get LLM client: $error")
         val errorResponse = ujson.Obj(
           "type" -> "error",
           "errorType" -> "NEW_GAME_ERROR",
-          "message" -> s"Failed to get LLM client: ${error.message}"
+          "message" -> s"Failed to get LLM client: $error"
         )
         conn.send(ujson.write(errorResponse))
         return
@@ -465,15 +464,14 @@ class TypedWebSocketServer(
         }
 
         val sessionId = IdGenerator.sessionId()
-        val llmClientResult = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader)
-        implicit val llmClient: org.llm4s.llmconnect.LLMClient = llmClientResult match {
+        implicit val llmClient: org.llm4s.llmconnect.LLMClient = SzorkConfig.getLLMClient() match {
           case Right(c) => c
           case Left(error) =>
-            logger.error(s"Failed to get LLM client: ${error.message}")
+            logger.error(s"Failed to get LLM client: $error")
             val errorResponse = ujson.Obj(
               "type" -> "error",
               "errorType" -> "LOAD_GAME_ERROR",
-              "message" -> s"Failed to get LLM client: ${error.message}"
+              "message" -> s"Failed to get LLM client: $error"
             )
             conn.send(ujson.write(errorResponse))
             return

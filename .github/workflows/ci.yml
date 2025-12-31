@@ -25,6 +25,8 @@ jobs:
             ~/.ivy2/cache
             ~/.cache/coursier
           key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
+      - name: Compile with fatal warnings
+        run: sbt 'set ThisBuild / scalacOptions += "-Xfatal-warnings"' compile
       - name: Run tests
         run: sbt test
       - name: Check formatting

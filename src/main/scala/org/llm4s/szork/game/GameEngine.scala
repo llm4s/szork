@@ -12,23 +12,40 @@ import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.szork.debug.DebugHelpers
 import org.llm4s.szork.api.{GameTheme, ArtStyle}
 import org.llm4s.szork.media.{MediaPlanner, TextToSpeech}
-import org.llm4s.szork.persistence.{StepPersistence, StepData, GameState, MediaCacheEntry, SceneResponse, StepMetadata, GameResponse}
+import org.llm4s.szork.persistence.{
+  StepPersistence,
+  StepData,
+  GameState,
+  MediaCacheEntry,
+  SceneResponse,
+  StepMetadata,
+  GameResponse
+}
 import org.llm4s.szork.streaming.{StreamingAgent, StreamingTextParser}
 
 /** Core game engine managing AI-driven text adventure gameplay.
   *
-  * Orchestrates LLM agent interactions, game state management, media generation,
-  * and persistence. Handles both streaming and non-streaming gameplay modes.
+  * Orchestrates LLM agent interactions, game state management, media generation, and persistence. Handles both
+  * streaming and non-streaming gameplay modes.
   *
-  * @param sessionId Unique identifier for this game session
-  * @param theme Optional theme name for the adventure (e.g., "fantasy", "sci-fi")
-  * @param artStyle Optional visual art style for generated images
-  * @param adventureOutline Optional pre-generated adventure structure with locations and characters
-  * @param clock Clock implementation for time tracking (defaults to system time)
-  * @param ttsClient Optional text-to-speech client for narration
-  * @param imageClient Optional client for scene image generation
-  * @param musicClient Optional client for background music generation
-  * @param llmClient LLM client for AI narrative generation (implicit)
+  * @param sessionId
+  *   Unique identifier for this game session
+  * @param theme
+  *   Optional theme name for the adventure (e.g., "fantasy", "sci-fi")
+  * @param artStyle
+  *   Optional visual art style for generated images
+  * @param adventureOutline
+  *   Optional pre-generated adventure structure with locations and characters
+  * @param clock
+  *   Clock implementation for time tracking (defaults to system time)
+  * @param ttsClient
+  *   Optional text-to-speech client for narration
+  * @param imageClient
+  *   Optional client for scene image generation
+  * @param musicClient
+  *   Optional client for background music generation
+  * @param llmClient
+  *   LLM client for AI narrative generation (implicit)
   */
 class GameEngine(
   sessionId: String = "",
@@ -65,7 +82,8 @@ class GameEngine(
 
   /** Initializes a new game session with opening scene generation.
     *
-    * @return The opening scene narration text, or an error
+    * @return
+    *   The opening scene narration text, or an error
     */
   def initialize(): SzorkResult[String] = {
     logger.info(s"[$sessionId] Initializing game with theme: $themeDescription")
@@ -118,12 +136,18 @@ class GameEngine(
 
   /** Response containing narrative text and optional generated media.
     *
-    * @param text Narrative response text from the AI
-    * @param audioBase64 Base64-encoded audio narration
-    * @param imageBase64 Base64-encoded scene image
-    * @param backgroundMusicBase64 Base64-encoded background music
-    * @param musicMood Mood descriptor for the music
-    * @param scene Structured scene data if location changed
+    * @param text
+    *   Narrative response text from the AI
+    * @param audioBase64
+    *   Base64-encoded audio narration
+    * @param imageBase64
+    *   Base64-encoded scene image
+    * @param backgroundMusicBase64
+    *   Base64-encoded background music
+    * @param musicMood
+    *   Mood descriptor for the music
+    * @param scene
+    *   Structured scene data if location changed
     */
   case class GameResponse(
     text: String,
@@ -136,9 +160,12 @@ class GameEngine(
 
   /** Processes a player command and generates AI response with optional media.
     *
-    * @param command Player's text command
-    * @param generateAudio Whether to generate TTS narration
-    * @return Game response with text and media, or an error
+    * @param command
+    *   Player's text command
+    * @param generateAudio
+    *   Whether to generate TTS narration
+    * @return
+    *   Game response with text and media, or an error
     */
   def processCommand(command: String, generateAudio: Boolean = true): SzorkResult[GameResponse] = {
     logger.debug(s"[$sessionId] Processing command: $command")
@@ -249,13 +276,17 @@ class GameEngine(
 
   /** Processes a command with real-time streaming of narrative text.
     *
-    * Streams text chunks as they're generated for real-time display.
-    * Final response includes complete text and optional media.
+    * Streams text chunks as they're generated for real-time display. Final response includes complete text and optional
+    * media.
     *
-    * @param command Player's text command
-    * @param onTextChunk Callback for each narrative text chunk
-    * @param generateAudio Whether to generate TTS narration after completion
-    * @return Complete game response, or an error
+    * @param command
+    *   Player's text command
+    * @param onTextChunk
+    *   Callback for each narrative text chunk
+    * @param generateAudio
+    *   Whether to generate TTS narration after completion
+    * @return
+    *   Complete game response, or an error
     */
   def processCommandStreaming(
     command: String,
@@ -391,7 +422,8 @@ class GameEngine(
 
   /** Retrieves and clears any validation issues from the last response parsing.
     *
-    * @return Validation issues if any occurred, None otherwise
+    * @return
+    *   Validation issues if any occurred, None otherwise
     */
   def popValidationIssues(): Option[List[String]] = {
     val v = lastValidationIssues
@@ -401,16 +433,22 @@ class GameEngine(
 
   /** Determines if a scene image should be generated based on response text.
     *
-    * @param responseText The narrative response text
-    * @return true if image generation is appropriate
+    * @param responseText
+    *   The narrative response text
+    * @return
+    *   true if image generation is appropriate
     */
-  def shouldGenerateSceneImage(responseText: String): Boolean = CoreEngine.shouldGenerateSceneImage(coreState, responseText)
+  def shouldGenerateSceneImage(responseText: String): Boolean =
+    CoreEngine.shouldGenerateSceneImage(coreState, responseText)
 
   /** Generates a scene image based on current location or response text.
     *
-    * @param responseText Narrative text describing the scene
-    * @param gameId Optional game ID for caching
-    * @return Base64-encoded image, or None if generation fails
+    * @param responseText
+    *   Narrative text describing the scene
+    * @param gameId
+    *   Optional game ID for caching
+    * @return
+    *   Base64-encoded image, or None if generation fails
     */
   def generateSceneImage(responseText: String, gameId: Option[String] = None): Option[String] = {
     // Use detailed description from current scene if available
@@ -567,13 +605,16 @@ class GameEngine(
 
   /** Extracts complete game state for persistence.
     *
-    * Captures conversation history, inventory, media cache, and agent state
-    * for save/load functionality.
+    * Captures conversation history, inventory, media cache, and agent state for save/load functionality.
     *
-    * @param gameId Unique game identifier
-    * @param gameTheme Theme information for the game
-    * @param gameArtStyle Art style information for the game
-    * @return Complete game state snapshot
+    * @param gameId
+    *   Unique game identifier
+    * @param gameTheme
+    *   Theme information for the game
+    * @param gameArtStyle
+    *   Art style information for the game
+    * @return
+    *   Complete game state snapshot
     */
   def getGameState(gameId: String, gameTheme: Option[GameTheme], gameArtStyle: Option[ArtStyle]): GameState = {
     val currentSessionTime = clock.now() - sessionStartTime
@@ -633,10 +674,10 @@ class GameEngine(
 
   /** Restores game from a saved state snapshot.
     *
-    * Reconstructs conversation history, inventory, and agent state from
-    * a previously saved game state.
+    * Reconstructs conversation history, inventory, and agent state from a previously saved game state.
     *
-    * @param state Saved game state to restore
+    * @param state
+    *   Saved game state to restore
     */
   def restoreGameState(state: GameState): Unit = {
     // Restore simple state
@@ -732,17 +773,25 @@ class GameEngine(
 
   /** Create StepData from current engine state.
     *
-    * This method extracts all necessary data for step-based persistence.
-    * The caller is responsible for saving via StepPersistence.
+    * This method extracts all necessary data for step-based persistence. The caller is responsible for saving via
+    * StepPersistence.
     *
-    * @param gameId Game identifier
-    * @param gameTheme Optional game theme
-    * @param gameArtStyle Optional art style
-    * @param userCommand Optional user command that triggered this step
-    * @param narrationText Narration text from the response
-    * @param response Optional game response (scene or action)
-    * @param executionTimeMs Time taken to execute the step
-    * @return Complete step data ready for persistence
+    * @param gameId
+    *   Game identifier
+    * @param gameTheme
+    *   Optional game theme
+    * @param gameArtStyle
+    *   Optional art style
+    * @param userCommand
+    *   Optional user command that triggered this step
+    * @param narrationText
+    *   Narration text from the response
+    * @param response
+    *   Optional game response (scene or action)
+    * @param executionTimeMs
+    *   Time taken to execute the step
+    * @return
+    *   Complete step data ready for persistence
     */
   def createStepData(
     gameId: String,
@@ -791,18 +840,29 @@ class GameEngine(
 
 /** Factory for creating GameEngine instances. */
 object GameEngine {
+
   /** Creates a new GameEngine with the specified configuration.
     *
-    * @param llmClient LLM client for AI narrative generation
-    * @param sessionId Unique session identifier
-    * @param theme Optional theme for the adventure
-    * @param artStyle Optional art style for images
-    * @param adventureOutline Optional pre-generated adventure structure
-    * @param clock Clock implementation for time tracking
-    * @param ttsClient Optional text-to-speech client
-    * @param imageClient Optional image generation client
-    * @param musicClient Optional music generation client
-    * @return Configured GameEngine instance
+    * @param llmClient
+    *   LLM client for AI narrative generation
+    * @param sessionId
+    *   Unique session identifier
+    * @param theme
+    *   Optional theme for the adventure
+    * @param artStyle
+    *   Optional art style for images
+    * @param adventureOutline
+    *   Optional pre-generated adventure structure
+    * @param clock
+    *   Clock implementation for time tracking
+    * @param ttsClient
+    *   Optional text-to-speech client
+    * @param imageClient
+    *   Optional image generation client
+    * @param musicClient
+    *   Optional music generation client
+    * @return
+    *   Configured GameEngine instance
     */
   def create(
     llmClient: LLMClient,

@@ -231,7 +231,8 @@ object AdventureGenerator {
   }
 
   private def parseAdventureOutline(response: String): SzorkResult[AdventureOutline] = {
-    if (response == null || response.isEmpty) return Left(LLMError("Received empty response from LLM", retryable = true))
+    if (response == null || response.isEmpty)
+      return Left(LLMError("Received empty response from LLM", retryable = true))
     logger.info(s"Parsing adventure outline from response (length: ${response.length} chars)")
     logger.info(s"Response preview: ${response.take(500)}")
     logger.info(s"Response ending: ...${response.takeRight(200)}")

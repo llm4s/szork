@@ -59,33 +59,31 @@ object GameResponseData {
           val exits = parsed.obj
             .get("exits")
             .map { exitsValue =>
-              try {
-                exitsValue.arr
-                  .map { exitJson =>
-                    try {
-                      // Check if it's a string (malformed response)
-                      exitJson match {
-                        case ujson.Str(direction) =>
-                          // Log warning and return error
-                          throw new Exception(
-                            s"Exit malformed: got string '$direction' instead of object. " +
+              try
+                exitsValue.arr.map { exitJson =>
+                  try
+                    // Check if it's a string (malformed response)
+                    exitJson match {
+                      case ujson.Str(direction) =>
+                        // Log warning and return error
+                        throw new Exception(
+                          s"Exit malformed: got string '$direction' instead of object. " +
                             "Exits must be objects with 'direction' and 'locationId' fields."
-                          )
-                        case obj =>
-                          // Parse as proper exit object
-                          Exit(
-                            direction = obj("direction").str,
-                            locationId = obj("locationId").str,
-                            description = obj.obj.get("description").map(_.str)
-                          )
-                      }
-                    } catch {
-                      case e: Exception =>
-                        throw new Exception(s"Failed to parse exit: ${exitJson}. Error: ${e.getMessage}")
+                        )
+                      case obj =>
+                        // Parse as proper exit object
+                        Exit(
+                          direction = obj("direction").str,
+                          locationId = obj("locationId").str,
+                          description = obj.obj.get("description").map(_.str)
+                        )
                     }
+                  catch {
+                    case e: Exception =>
+                      throw new Exception(s"Failed to parse exit: ${exitJson}. Error: ${e.getMessage}")
                   }
-                  .toList
-              } catch {
+                }.toList
+              catch {
                 case e: Exception =>
                   throw new Exception(s"Failed to parse exits array. ${e.getMessage}")
               }

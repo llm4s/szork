@@ -1,7 +1,7 @@
 package org.llm4s.szork.game
 
-/** Constants used throughout the Szork game engine.
-  * Centralizes magic strings and default values for better maintainability.
+/** Constants used throughout the Szork game engine. Centralizes magic strings and default values for better
+  * maintainability.
   */
 object GameConstants {
 

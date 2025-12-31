@@ -1,0 +1,21 @@
+#!/bin/bash
+# Pre-commit hook to check Scala formatting and compilation
+
+set -e
+
+echo "Running scalafmt check..."
+if ! sbt scalafmtCheckAll; then
+    echo ""
+    echo "ERROR: Scala files are not formatted properly."
+    echo "Run 'sbt scalafmtAll' to fix formatting, then try again."
+    exit 1
+fi
+
+echo "Running compile check..."
+if ! sbt compile; then
+    echo ""
+    echo "ERROR: Compilation failed."
+    exit 1
+fi
+
+echo "Pre-commit checks passed!"

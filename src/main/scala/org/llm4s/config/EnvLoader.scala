@@ -7,12 +7,11 @@ trait ConfigReader {
   def get(key: String): Option[String]
   def getOrElse(key: String, default: String): String = get(key).getOrElse(default)
 
-  def require(key: String): Either[ConfigError, String] = {
+  def require(key: String): Either[ConfigError, String] =
     get(key) match {
       case Some(value) => Right(value)
       case None => Left(ConfigError(s"Required configuration key not found: $key"))
     }
-  }
 }
 
 case class ConfigError(message: String)

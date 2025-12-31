@@ -98,22 +98,21 @@ object GamePersistence {
       }
     )
 
-  def listGames(): List[GameMetadata] = {
+  def listGames(): List[GameMetadata] =
     // Delegate to StepPersistence
     StepPersistence.listGames()
-  }
 
-  def deleteGame(gameId: String): SzorkResult[Unit] = {
+  def deleteGame(gameId: String): SzorkResult[Unit] =
     // Delegate to StepPersistence
     StepPersistence.deleteGame(gameId)
-  }
 
   /** Load a game from step-based persistence.
     *
-    * @param gameId Game identifier
-    * @return GameState or error
+    * @param gameId
+    *   Game identifier
+    * @return
+    *   GameState or error
     */
-  def loadGame(gameId: String): SzorkResult[GameState] = {
+  def loadGame(gameId: String): SzorkResult[GameState] =
     StepPersistence.loadLatestStep(gameId).map(_.gameState)
-  }
 }

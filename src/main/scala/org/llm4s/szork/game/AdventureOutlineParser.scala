@@ -16,7 +16,7 @@ object AdventureOutlineParser {
     var escaping = false
 
     // Parse to find what's still open
-    for (c <- json) {
+    for (c <- json)
       if (escaping) {
         escaping = false
       } else if (c == '\\') {
@@ -31,7 +31,6 @@ object AdventureOutlineParser {
           case _ => // ignore
         }
       }
-    }
 
     // Close in reverse order
     if (stack.nonEmpty) {
@@ -77,7 +76,7 @@ object AdventureOutlineParser {
   }
 
   /** Try to extract just the title and mainQuest from malformed JSON */
-  private def extractCriticalFields(jsonStr: String): Option[(String, String)] = {
+  private def extractCriticalFields(jsonStr: String): Option[(String, String)] =
     try {
       // Use regex to extract title and mainQuest even if the rest is broken
       val titlePattern = """"title"\s*:\s*"([^"]+)"""".r
@@ -97,7 +96,6 @@ object AdventureOutlineParser {
         logger.warn(s"Failed to extract critical fields: ${e.getMessage}")
         None
     }
-  }
 
   def parse(response: String): SzorkResult[AdventureOutline] = {
     if (response == null || response.trim.isEmpty) {
@@ -150,34 +148,37 @@ object AdventureOutlineParser {
           case None => List.empty
         },
         keyLocations = json.obj.get("keyLocations") match {
-          case Some(arr) => arr.arr.map { loc =>
-            LocationOutline(
-              id = loc("id").str,
-              name = loc("name").str,
-              description = loc("description").str,
-              significance = loc("significance").str
-            )
-          }.toList
+          case Some(arr) =>
+            arr.arr.map { loc =>
+              LocationOutline(
+                id = loc("id").str,
+                name = loc("name").str,
+                description = loc("description").str,
+                significance = loc("significance").str
+              )
+            }.toList
           case None => List.empty
         },
         importantItems = json.obj.get("importantItems") match {
-          case Some(arr) => arr.arr.map { item =>
-            ItemOutline(
-              name = item("name").str,
-              description = item("description").str,
-              purpose = item("purpose").str
-            )
-          }.toList
+          case Some(arr) =>
+            arr.arr.map { item =>
+              ItemOutline(
+                name = item("name").str,
+                description = item("description").str,
+                purpose = item("purpose").str
+              )
+            }.toList
           case None => List.empty
         },
         keyCharacters = json.obj.get("keyCharacters") match {
-          case Some(arr) => arr.arr.map { ch =>
-            CharacterOutline(
-              name = ch("name").str,
-              role = ch("role").str,
-              description = ch("description").str
-            )
-          }.toList
+          case Some(arr) =>
+            arr.arr.map { ch =>
+              CharacterOutline(
+                name = ch("name").str,
+                role = ch("role").str,
+                description = ch("description").str
+              )
+            }.toList
           case None => List.empty
         },
         adventureArc = json.obj.get("adventureArc").map(_.str).getOrElse(""),
@@ -194,7 +195,10 @@ object AdventureOutlineParser {
         extractCriticalFields(jsonStr) match {
           case Some((title, mainQuest)) =>
             logger.warn(s"Fallback extraction found title='$title' but returning error - generation should be retried")
-            Left(ParseError(s"JSON structure is incomplete. Found title='$title' but full structure is corrupted. ${e.getMessage}", Some(e)))
+            Left(
+              ParseError(
+                s"JSON structure is incomplete. Found title='$title' but full structure is corrupted. ${e.getMessage}",
+                Some(e)))
           case None =>
             val preview = if (jsonStr.length > 300) jsonStr.take(300) + "..." else jsonStr
             Left(ParseError(s"JSON parsing failed: ${e.getMessage}\nJSON preview: $preview", Some(e)))

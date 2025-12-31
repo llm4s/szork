@@ -13,18 +13,30 @@ import org.llm4s.szork.media.MediaCache
 
 /** Active game session with engine and configuration.
   *
-  * @param id Session identifier
-  * @param gameId Unique game ID for persistence
-  * @param engine GameEngine instance managing the game
-  * @param theme Game theme configuration
-  * @param artStyle Visual art style for images
-  * @param pendingImages Images being generated (step number -> base64)
-  * @param pendingMusic Music being generated (step number -> (base64, mood))
-  * @param autoSaveEnabled Whether to auto-save after each command
-  * @param imageGenerationEnabled Whether image generation is enabled
-  * @param ttsEnabled Whether text-to-speech is enabled
-  * @param sttEnabled Whether speech-to-text is enabled
-  * @param musicEnabled Whether music generation is enabled
+  * @param id
+  *   Session identifier
+  * @param gameId
+  *   Unique game ID for persistence
+  * @param engine
+  *   GameEngine instance managing the game
+  * @param theme
+  *   Game theme configuration
+  * @param artStyle
+  *   Visual art style for images
+  * @param pendingImages
+  *   Images being generated (step number -> base64)
+  * @param pendingMusic
+  *   Music being generated (step number -> (base64, mood))
+  * @param autoSaveEnabled
+  *   Whether to auto-save after each command
+  * @param imageGenerationEnabled
+  *   Whether image generation is enabled
+  * @param ttsEnabled
+  *   Whether text-to-speech is enabled
+  * @param sttEnabled
+  *   Whether speech-to-text is enabled
+  * @param musicEnabled
+  *   Whether music generation is enabled
   */
 case class GameSession(
   id: String,
@@ -43,9 +55,12 @@ case class GameSession(
 
 /** Game theme configuration with prompt text.
   *
-  * @param id Theme identifier (e.g., "fantasy", "sci-fi")
-  * @param name Display name
-  * @param prompt Description text for AI generation
+  * @param id
+  *   Theme identifier (e.g., "fantasy", "sci-fi")
+  * @param name
+  *   Display name
+  * @param prompt
+  *   Description text for AI generation
   */
 case class GameTheme(
   id: String,
@@ -55,8 +70,10 @@ case class GameTheme(
 
 /** Visual art style for generated images.
   *
-  * @param id Style identifier (e.g., "pixel", "painting")
-  * @param name Display name
+  * @param id
+  *   Style identifier (e.g., "pixel", "painting")
+  * @param name
+  *   Display name
   */
 case class ArtStyle(
   id: String,
@@ -71,8 +88,8 @@ case class CommandResponse(response: String, sessionId: String)
 
 /** Main HTTP server providing REST API and WebSocket endpoints.
   *
-  * Serves the Szork web interface and manages game sessions. Integrates with
-  * TypedWebSocketServer for real-time gameplay communication.
+  * Serves the Szork web interface and manages game sessions. Integrates with TypedWebSocketServer for real-time
+  * gameplay communication.
   */
 object SzorkServer extends cask.Main with cask.Routes {
 
@@ -219,13 +236,12 @@ object SzorkServer extends cask.Main with cask.Routes {
         |- Interesting locations to visit
         |""".stripMargin
     try {
-      val conversation = Conversation(  // Conversation is used in client.complete below
+      val conversation = Conversation( // Conversation is used in client.complete below
         Seq(
           SystemMessage(
             "You are an expert game designer specializing in text adventure games. Evaluate theme ideas and enhance them."),
           UserMessage(validationPrompt)
-        )
-      )
+        ))
 
       client.complete(conversation) match {
         case Right(response) =>
@@ -652,7 +668,7 @@ object SzorkServer extends cask.Main with cask.Routes {
   @get("/api/game/cache/:gameId")
   def getCacheStats(gameId: String): ujson.Value = {
     logger.debug(s"Getting cache stats for game: $gameId")
-    
+
     val stats = MediaCache.getCacheStats(gameId)
     ujson.Obj(
       "status" -> "success",

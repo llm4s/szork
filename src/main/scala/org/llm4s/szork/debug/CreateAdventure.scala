@@ -11,9 +11,8 @@ import scala.util.{Try, Success, Failure}
   *
   * Usage: sbt "runMain org.llm4s.szork.debug.CreateAdventure <game-id> [--theme <theme>] [--art-style <style>]"
   *
-  * Example:
-  *   sbt "runMain org.llm4s.szork.debug.CreateAdventure test-game-1"
-  *   sbt "runMain org.llm4s.szork.debug.CreateAdventure fantasy-quest --theme 'medieval fantasy' --art-style illustration"
+  * Example: sbt "runMain org.llm4s.szork.debug.CreateAdventure test-game-1" sbt "runMain
+  * org.llm4s.szork.debug.CreateAdventure fantasy-quest --theme 'medieval fantasy' --art-style illustration"
   */
 object CreateAdventure {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
@@ -181,7 +180,7 @@ object CreateAdventure {
     var artStyle = "fantasy"
 
     var i = 1
-    while (i < args.length) {
+    while (i < args.length)
       args(i) match {
         case "--theme" =>
           if (i + 1 >= args.length) throw new IllegalArgumentException("--theme requires a value")
@@ -194,12 +193,11 @@ object CreateAdventure {
         case other =>
           throw new IllegalArgumentException(s"Unknown argument: $other")
       }
-    }
 
     Config(gameId, theme, artStyle)
   }
 
-  private def printUsage(): Unit = {
+  private def printUsage(): Unit =
     println("""
       |Usage: sbt "runMain org.llm4s.szork.debug.CreateAdventure <game-id> [OPTIONS]"
       |
@@ -224,5 +222,4 @@ object CreateAdventure {
       |    - messages.json          : Agent messages
       |    - outline.json           : Adventure outline
       |""".stripMargin)
-  }
 }

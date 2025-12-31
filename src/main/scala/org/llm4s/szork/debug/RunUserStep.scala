@@ -11,10 +11,9 @@ import scala.util.{Try, Success, Failure}
   *
   * Usage: sbt "runMain org.llm4s.szork.debug.RunUserStep <game-id> <previous-step> <command>"
   *
-  * Example:
-  *   sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 1 'look around'"
-  *   sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 2 'go north'"
-  *   sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 3 'take lantern'"
+  * Example: sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 1 'look around'" sbt "runMain
+  * org.llm4s.szork.debug.RunUserStep test-game-1 2 'go north'" sbt "runMain org.llm4s.szork.debug.RunUserStep
+  * test-game-1 3 'take lantern'"
   */
 object RunUserStep {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
@@ -185,7 +184,8 @@ object RunUserStep {
       DebugHelpers.printStepSummary(stepData)
 
       println("SUCCESS: Step completed!")
-      println(s"""Next step: sbt "runMain org.llm4s.szork.debug.RunUserStep ${config.gameId} $nextStep '<next-command>'" """)
+      println(
+        s"""Next step: sbt "runMain org.llm4s.szork.debug.RunUserStep ${config.gameId} $nextStep '<next-command>'" """)
 
     } catch {
       case ex: Exception =>
@@ -209,7 +209,7 @@ object RunUserStep {
     Config(gameId, step, command)
   }
 
-  private def printUsage(): Unit = {
+  private def printUsage(): Unit =
     println("""
       |Usage: sbt "runMain org.llm4s.szork.debug.RunUserStep <game-id> <previous-step> <command>"
       |
@@ -234,5 +234,4 @@ object RunUserStep {
       |    - messages.json          : Agent messages
       |    - tool-calls.json        : Tool calls (if any)
       |""".stripMargin)
-  }
 }

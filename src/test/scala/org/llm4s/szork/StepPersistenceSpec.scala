@@ -55,11 +55,11 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterE
 
     // Save metadata
     val saveResult = StepPersistence.saveGameMetadata(metadata)
-    saveResult shouldBe a [Right[_, _]]
+    saveResult shouldBe a[Right[_, _]]
 
     // Load metadata
     val loadResult = StepPersistence.loadGameMetadata(testGameId)
-    loadResult shouldBe a [Right[_, _]]
+    loadResult shouldBe a[Right[_, _]]
 
     val loaded = loadResult.getOrElse(fail("Failed to load metadata"))
     loaded.gameId shouldBe testGameId
@@ -92,17 +92,18 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterE
       theme = Some(GameTheme("fantasy", "Fantasy", "A fantasy world")),
       artStyle = Some(ArtStyle("illustration", "Illustration")),
       adventureOutline = None,
-      currentScene = Some(GameScene(
-        locationId = "start",
-        locationName = "Starting Location",
-        narrationText = "You find yourself at the beginning.",
-        imageDescription = "A starting area",
-        musicDescription = "Ambient music",
-        musicMood = "calm",
-        exits = List(Exit("north", "next-room", Some("A door to the north"))),
-        items = List("torch"),
-        npcs = List()
-      )),
+      currentScene = Some(
+        GameScene(
+          locationId = "start",
+          locationName = "Starting Location",
+          narrationText = "You find yourself at the beginning.",
+          imageDescription = "A starting area",
+          musicDescription = "Ambient music",
+          musicMood = "calm",
+          exits = List(Exit("north", "next-room", Some("A door to the north"))),
+          items = List("torch"),
+          npcs = List()
+        )),
       visitedLocations = Set("start"),
       conversationHistory = List(),
       inventory = List("torch"),
@@ -142,11 +143,11 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterE
 
     // Save step
     val saveResult = StepPersistence.saveStep(stepData)
-    saveResult shouldBe a [Right[_, _]]
+    saveResult shouldBe a[Right[_, _]]
 
     // Load step
     val loadResult = StepPersistence.loadStep(testGameId, 1)
-    loadResult shouldBe a [Right[_, _]]
+    loadResult shouldBe a[Right[_, _]]
 
     val loaded = loadResult.getOrElse(fail("Failed to load step"))
     loaded.metadata.gameId shouldBe testGameId
@@ -219,7 +220,7 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterE
 
     // Load latest step
     val loadResult = StepPersistence.loadLatestStep(testGameId)
-    loadResult shouldBe a [Right[_, _]]
+    loadResult shouldBe a[Right[_, _]]
 
     val loaded = loadResult.getOrElse(fail("Failed to load latest step"))
     loaded.metadata.stepNumber shouldBe 3
@@ -263,7 +264,7 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterE
     )
 
     // Save steps 1, 2, and 3
-    for (stepNum <- List(1, 3, 2)) {  // Save out of order
+    for (stepNum <- List(1, 3, 2)) { // Save out of order
       val stepData = StepData(
         metadata = StepMetadata(
           gameId = testGameId,
@@ -289,7 +290,7 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterE
 
     // List steps
     val steps = StepPersistence.listSteps(testGameId)
-    steps shouldBe List(1, 2, 3)  // Should be sorted
+    steps shouldBe List(1, 2, 3) // Should be sorted
   }
 
   test("gameExists returns true for existing game") {
@@ -373,7 +374,7 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterE
 
     // Delete game
     val deleteResult = StepPersistence.deleteGame(testGameId)
-    deleteResult shouldBe a [Right[_, _]]
+    deleteResult shouldBe a[Right[_, _]]
 
     // Verify game no longer exists
     StepPersistence.gameExists(testGameId) shouldBe false

@@ -20,13 +20,15 @@ import org.llm4s.szork.api.{CommandRequest => ApiCommandRequest, _}
 
 /** Type-safe WebSocket server for real-time game communication.
   *
-  * Handles client connections and routes messages between frontend and game
-  * engine. Supports streaming text generation, media requests, and game
-  * state management.
+  * Handles client connections and routes messages between frontend and game engine. Supports streaming text generation,
+  * media requests, and game state management.
   *
-  * @param port WebSocket server port (typically 9002)
-  * @param sessionManager Manages active game sessions
-  * @param ec Execution context for async operations
+  * @param port
+  *   WebSocket server port (typically 9002)
+  * @param sessionManager
+  *   Manages active game sessions
+  * @param ec
+  *   Execution context for async operations
   */
 class TypedWebSocketServer(
   port: Int,
@@ -47,9 +49,9 @@ class TypedWebSocketServer(
 
   override def onOpen(conn: WebSocket, handshake: ClientHandshake): Unit = {
     logger.info(s"WebSocket connection opened from: ${conn.getRemoteSocketAddress}")
-    try {
+    try
       logger.info(s"WebSocket resource: ${handshake.getResourceDescriptor}")
-    } catch { case _: Throwable => () }
+    catch { case _: Throwable => () }
     logger.info(s"Server instance ID: $serverInstanceId")
     // Send welcome message with server instance ID
     sendMessage(
@@ -85,8 +87,8 @@ class TypedWebSocketServer(
       // Log received message with key details
       clientMessage match {
         case msg: NewGameRequest =>
-          logger.info(s"[WS-IN] Session: $sessionId | Type: NewGameRequest | Theme: ${msg.theme.getOrElse(
-              "default")} | ArtStyle: ${msg.artStyle.getOrElse("default")} | ImageGen: ${msg.imageGeneration} | HasOutline: ${msg.adventureOutline.isDefined}")
+          logger.info(s"[WS-IN] Session: $sessionId | Type: NewGameRequest | Theme: ${msg.theme.getOrElse("default")} | ArtStyle: ${msg.artStyle
+              .getOrElse("default")} | ImageGen: ${msg.imageGeneration} | HasOutline: ${msg.adventureOutline.isDefined}")
           handleNewGame(conn, msg)
         case msg: LoadGameRequest =>
           logger.info(s"[WS-IN] Session: $sessionId | Type: LoadGameRequest | GameId: ${msg.gameId}")
@@ -394,14 +396,16 @@ class TypedWebSocketServer(
         }
 
         // Persist initial game state so load screen shows correct title/createdAt immediately
-        logger.info(s"About to save initial game state for $gameId (adventureOutline defined: ${adventureOutline.isDefined})")
+        logger.info(
+          s"About to save initial game state for $gameId (adventureOutline defined: ${adventureOutline.isDefined})")
         Future {
           try {
             logger.info(s"[SAVE-START] Starting metadata save for game $gameId")
             // Create initial metadata
             val currentTime = System.currentTimeMillis()
             val titleToSave = adventureOutline.map(_.title).getOrElse("Untitled Adventure")
-            logger.info(s"[SAVE-TITLE] Saving game metadata with title: '$titleToSave' (adventureOutline.isDefined: ${adventureOutline.isDefined})")
+            logger.info(
+              s"[SAVE-TITLE] Saving game metadata with title: '$titleToSave' (adventureOutline.isDefined: ${adventureOutline.isDefined})")
             val metadata = GameMetadataHelper.initial(
               gameId = gameId,
               adventureTitle = titleToSave,
@@ -409,11 +413,13 @@ class TypedWebSocketServer(
               artStyle = artStyleObj.map(_.id).getOrElse("default"),
               createdAt = currentTime
             )
-            logger.info(s"[SAVE-METADATA] Created metadata object: gameId=$gameId, title=${metadata.adventureTitle}, theme=${metadata.theme}")
+            logger.info(
+              s"[SAVE-METADATA] Created metadata object: gameId=$gameId, title=${metadata.adventureTitle}, theme=${metadata.theme}")
 
             StepPersistence.saveGameMetadata(metadata) match {
               case Right(_) =>
-                logger.info(s"[SAVE-SUCCESS] Successfully saved metadata for game $gameId with title '${metadata.adventureTitle}'")
+                logger.info(
+                  s"[SAVE-SUCCESS] Successfully saved metadata for game $gameId with title '${metadata.adventureTitle}'")
                 // Create initial step data
                 val initialScene = engine.getCurrentScene
                 val stepData = StepData.initialStep(
@@ -434,7 +440,8 @@ class TypedWebSocketServer(
                     logger.error(s"[SAVE-STEP-ERROR] Failed to save initial step for game $gameId: ${error.message}")
                 }
               case Left(error) =>
-                logger.error(s"[SAVE-METADATA-ERROR] Failed to save initial metadata for game $gameId: ${error.message}")
+                logger.error(
+                  s"[SAVE-METADATA-ERROR] Failed to save initial metadata for game $gameId: ${error.message}")
             }
           } catch {
             case e: Exception =>
@@ -839,7 +846,8 @@ class TypedWebSocketServer(
     logger.info(s"[LIST-GAMES] Found ${allGames.length} games")
 
     allGames.foreach { g =>
-      logger.info(s"[LIST-GAMES] Game ${g.gameId}: title='${g.adventureTitle}', theme=${g.theme}, artStyle=${g.artStyle}")
+      logger.info(
+        s"[LIST-GAMES] Game ${g.gameId}: title='${g.adventureTitle}', theme=${g.theme}, artStyle=${g.artStyle}")
     }
 
     val games = allGames.map(g =>
@@ -895,7 +903,12 @@ class TypedWebSocketServer(
     }
 
   // Save game asynchronously
-  private def saveGameAsync(session: GameSession, userCommand: Option[String], narrationText: String, response: Option[GameEngine#GameResponse], executionTimeMs: Long): Unit =
+  private def saveGameAsync(
+    session: GameSession,
+    userCommand: Option[String],
+    narrationText: String,
+    response: Option[GameEngine#GameResponse],
+    executionTimeMs: Long): Unit =
     Future {
       try {
         val stepNumber = session.engine.getCurrentStepNumber

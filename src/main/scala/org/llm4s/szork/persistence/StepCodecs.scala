@@ -123,7 +123,7 @@ object MessageCodec {
       )
   }
 
-  def fromJson(json: Value): Message = {
+  def fromJson(json: Value): Message =
     json("type").str match {
       case "user" =>
         UserMessage(content = json("content").str)
@@ -134,13 +134,14 @@ object MessageCodec {
           case s => Some(s.str)
         }
         val toolCalls = json.obj.get("toolCalls") match {
-          case Some(arr) => arr.arr.map { tc =>
-            ToolCall(
-              id = tc("id").str,
-              name = tc("name").str,
-              arguments = tc("arguments")
-            )
-          }.toList
+          case Some(arr) =>
+            arr.arr.map { tc =>
+              ToolCall(
+                id = tc("id").str,
+                name = tc("name").str,
+                arguments = tc("arguments")
+              )
+            }.toList
           case None => List.empty
         }
         AssistantMessage(contentOpt, toolCalls)
@@ -157,5 +158,4 @@ object MessageCodec {
       case other =>
         throw new IllegalArgumentException(s"Unknown message type: $other")
     }
-  }
 }

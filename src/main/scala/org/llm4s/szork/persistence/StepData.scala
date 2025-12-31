@@ -6,8 +6,8 @@ import ujson.Value
 
 /** Unified data models for step-based game persistence.
   *
-  * These models are used by both regular gameplay (UI) and debug sessions,
-  * providing a single source of truth for game state storage.
+  * These models are used by both regular gameplay (UI) and debug sessions, providing a single source of truth for game
+  * state storage.
   */
 
 // Note: GameMetadata is defined in GamePersistence.scala and includes:
@@ -17,16 +17,26 @@ import ujson.Value
 
 /** Metadata for a single step (stored in step-N/metadata.json).
   *
-  * @param gameId Game identifier this step belongs to
-  * @param stepNumber Step number (1-indexed)
-  * @param timestamp Timestamp when step was executed
-  * @param userCommand User command that triggered this step (None for initial step)
-  * @param responseLength Length of narration text response
-  * @param toolCallCount Number of tool calls executed
-  * @param messageCount Total messages in conversation after this step
-  * @param success Whether step executed successfully
-  * @param error Error message if step failed
-  * @param executionTimeMs Time taken to execute step in milliseconds
+  * @param gameId
+  *   Game identifier this step belongs to
+  * @param stepNumber
+  *   Step number (1-indexed)
+  * @param timestamp
+  *   Timestamp when step was executed
+  * @param userCommand
+  *   User command that triggered this step (None for initial step)
+  * @param responseLength
+  *   Length of narration text response
+  * @param toolCallCount
+  *   Number of tool calls executed
+  * @param messageCount
+  *   Total messages in conversation after this step
+  * @param success
+  *   Whether step executed successfully
+  * @param error
+  *   Error message if step failed
+  * @param executionTimeMs
+  *   Time taken to execute step in milliseconds
   */
 case class StepMetadata(
   gameId: String,
@@ -43,17 +53,25 @@ case class StepMetadata(
 
 /** Complete data for a single step.
   *
-  * This is the primary data structure for step-based persistence.
-  * Each step directory contains a complete snapshot of game state.
+  * This is the primary data structure for step-based persistence. Each step directory contains a complete snapshot of
+  * game state.
   *
-  * @param metadata Step-level metadata
-  * @param gameState Complete game state at this step
-  * @param userCommand User command text (for convenience, also in metadata)
-  * @param narrationText Narration text response
-  * @param response Structured response (GameScene or SimpleResponse)
-  * @param toolCalls Tool calls executed during this step
-  * @param agentMessages Complete agent conversation at this step
-  * @param outline Adventure outline (included in step 1 only)
+  * @param metadata
+  *   Step-level metadata
+  * @param gameState
+  *   Complete game state at this step
+  * @param userCommand
+  *   User command text (for convenience, also in metadata)
+  * @param narrationText
+  *   Narration text response
+  * @param response
+  *   Structured response (GameScene or SimpleResponse)
+  * @param toolCalls
+  *   Tool calls executed during this step
+  * @param agentMessages
+  *   Complete agent conversation at this step
+  * @param outline
+  *   Adventure outline (included in step 1 only)
   */
 case class StepData(
   metadata: StepMetadata,
@@ -68,11 +86,16 @@ case class StepData(
 
 /** Information about a tool call executed during a step.
   *
-  * @param id Tool call identifier
-  * @param name Tool name (e.g., "list_inventory")
-  * @param arguments Tool arguments as JSON
-  * @param result Tool result (if available)
-  * @param timestamp Timestamp when tool was called
+  * @param id
+  *   Tool call identifier
+  * @param name
+  *   Tool name (e.g., "list_inventory")
+  * @param arguments
+  *   Tool arguments as JSON
+  * @param result
+  *   Tool result (if available)
+  * @param timestamp
+  *   Timestamp when tool was called
   */
 case class ToolCallInfo(
   id: String,
@@ -85,8 +108,8 @@ case class ToolCallInfo(
 /** Structured game response (scene or simple action result).
   *
   * This can represent either:
-  * - A full scene with location, exits, items, NPCs
-  * - A simple response to an action (examine, inventory, etc.)
+  *   - A full scene with location, exits, items, NPCs
+  *   - A simple response to an action (examine, inventory, etc.)
   */
 sealed trait GameResponse {
   def narrationText: String
@@ -107,6 +130,7 @@ case class ActionResponse(
 ) extends GameResponse
 
 object StepData {
+
   /** Create StepData for initial game creation (step 1). */
   def initialStep(
     gameId: String,
@@ -184,6 +208,7 @@ object StepData {
 }
 
 object GameMetadataHelper {
+
   /** Create initial metadata for a new game. */
   def initial(
     gameId: String,

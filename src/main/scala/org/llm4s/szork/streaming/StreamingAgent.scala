@@ -88,7 +88,8 @@ class StreamingAgent(client: LLMClient) extends Agent(client) {
         completion.message.toolCalls.foreach { toolCall =>
           logger.info(s"Tool call details - name: ${toolCall.name}, id: ${toolCall.id}")
           logger.info(s"Tool call arguments (raw): ${toolCall.arguments}")
-          logger.info(s"Tool call arguments type: ${Option(toolCall.arguments).map(_.getClass.getName).getOrElse("null")}")
+          logger.info(
+            s"Tool call arguments type: ${Option(toolCall.arguments).map(_.getClass.getName).getOrElse("null")}")
         }
 
         logger.debug(s"Token usage: prompt=${completion.usage.map(_.promptTokens)}, completion=${completion.usage.map(

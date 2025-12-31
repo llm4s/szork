@@ -12,8 +12,8 @@ import scala.jdk.CollectionConverters._
 
 /** Step-based game persistence.
   *
-  * Unified persistence layer for both regular gameplay and debug sessions.
-  * Each game is stored as a directory with numbered step subdirectories.
+  * Unified persistence layer for both regular gameplay and debug sessions. Each game is stored as a directory with
+  * numbered step subdirectories.
   *
   * Directory structure:
   * ```
@@ -53,9 +53,8 @@ object StepPersistence {
   }
 
   /** Get the step directory path. */
-  private def getStepDir(gameId: String, stepNumber: Int): Path = {
+  private def getStepDir(gameId: String, stepNumber: Int): Path =
     getGameDir(gameId).resolve(f"step-$stepNumber%04d")
-  }
 
   /** Ensure game directory exists. */
   private def ensureGameDir(gameId: String): Path = {
@@ -85,9 +84,8 @@ object StepPersistence {
   }
 
   /** Save text content. */
-  private def saveText(path: Path, content: String): Unit = {
+  private def saveText(path: Path, content: String): Unit =
     Files.write(path, content.getBytes(StandardCharsets.UTF_8))
-  }
 
   /** Load JSON from file. */
   private def loadJson(path: Path): Value = {
@@ -96,17 +94,17 @@ object StepPersistence {
   }
 
   /** Load text from file. */
-  private def loadText(path: Path): String = {
+  private def loadText(path: Path): String =
     new String(Files.readAllBytes(path), StandardCharsets.UTF_8)
-  }
 
   /** Save game metadata (game.json). */
-  def saveGameMetadata(metadata: GameMetadata): SzorkResult[Unit] = {
+  def saveGameMetadata(metadata: GameMetadata): SzorkResult[Unit] =
     try {
       val gameDir = ensureGameDir(metadata.gameId)
       val metadataPath = gameDir.resolve("game.json")
 
-      logger.info(s"[PERSIST-SAVE] Saving metadata for ${metadata.gameId}: title='${metadata.adventureTitle}', theme=${metadata.theme}, artStyle=${metadata.artStyle}")
+      logger.info(
+        s"[PERSIST-SAVE] Saving metadata for ${metadata.gameId}: title='${metadata.adventureTitle}', theme=${metadata.theme}, artStyle=${metadata.artStyle}")
       val json = GameMetadataCodec.toJson(metadata)
       val jsonStr = json.toString
       logger.info(s"[PERSIST-SAVE] JSON to write: ${jsonStr.take(500)}")
@@ -119,10 +117,9 @@ object StepPersistence {
         logger.error(s"[PERSIST-SAVE] Failed to save game metadata: ${metadata.gameId}", e)
         Left(PersistenceError(s"Failed to save game metadata: ${e.getMessage}", Some(e), operation = "save"))
     }
-  }
 
   /** Load game metadata (game.json). */
-  def loadGameMetadata(gameId: String): SzorkResult[GameMetadata] = {
+  def loadGameMetadata(gameId: String): SzorkResult[GameMetadata] =
     try {
       val metadataPath = getGameDir(gameId).resolve("game.json")
 
@@ -136,17 +133,17 @@ object StepPersistence {
       logger.info(s"[PERSIST-LOAD] Loaded JSON from $metadataPath: ${jsonStr.take(500)}")
       val metadata = GameMetadataCodec.fromJson(json)
 
-      logger.info(s"[PERSIST-LOAD] Loaded game metadata: $gameId, title='${metadata.adventureTitle}', theme=${metadata.theme}, artStyle=${metadata.artStyle}")
+      logger.info(
+        s"[PERSIST-LOAD] Loaded game metadata: $gameId, title='${metadata.adventureTitle}', theme=${metadata.theme}, artStyle=${metadata.artStyle}")
       Right(metadata)
     } catch {
       case e: Exception =>
         logger.error(s"Failed to load game metadata: $gameId", e)
         Left(PersistenceError(s"Failed to load game metadata: ${e.getMessage}", Some(e), operation = "load"))
     }
-  }
 
   /** Save a complete step. */
-  def saveStep(stepData: StepData): SzorkResult[Unit] = {
+  def saveStep(stepData: StepData): SzorkResult[Unit] =
     try {
       val stepDir = ensureStepDir(stepData.metadata.gameId, stepData.metadata.stepNumber)
 
@@ -203,10 +200,9 @@ object StepPersistence {
         logger.error(s"Failed to save step ${stepData.metadata.stepNumber} for game ${stepData.metadata.gameId}", e)
         Left(PersistenceError(s"Failed to save step: ${e.getMessage}", Some(e), operation = "save"))
     }
-  }
 
   /** Load a specific step. */
-  def loadStep(gameId: String, stepNumber: Int): SzorkResult[StepData] = {
+  def loadStep(gameId: String, stepNumber: Int): SzorkResult[StepData] =
     try {
       val stepDir = getStepDir(gameId, stepNumber)
 
@@ -241,11 +237,12 @@ object StepPersistence {
                 None
             }
           case Some("action") =>
-            Some(ActionResponse(
-              narrationText = json("narrationText").str,
-              locationId = json("locationId").str,
-              action = json("action").str
-            ))
+            Some(
+              ActionResponse(
+                narrationText = json("narrationText").str,
+                locationId = json("locationId").str,
+                action = json("action").str
+              ))
           case _ => None
         }
       } else None
@@ -272,17 +269,15 @@ object StepPersistence {
         logger.error(s"Failed to load step $stepNumber for game $gameId", e)
         Left(PersistenceError(s"Failed to load step: ${e.getMessage}", Some(e), operation = "load"))
     }
-  }
 
   /** Load the latest step for a game. */
-  def loadLatestStep(gameId: String): SzorkResult[StepData] = {
+  def loadLatestStep(gameId: String): SzorkResult[StepData] =
     loadGameMetadata(gameId).flatMap { metadata =>
       loadStep(gameId, metadata.currentStep)
     }
-  }
 
   /** List all step numbers for a game. */
-  def listSteps(gameId: String): List[Int] = {
+  def listSteps(gameId: String): List[Int] =
     try {
       val gameDir = getGameDir(gameId)
       if (!Files.exists(gameDir)) {
@@ -290,7 +285,9 @@ object StepPersistence {
       }
 
       Using.resource(Files.newDirectoryStream(gameDir, "step-*")) { stream =>
-        stream.iterator().asScala
+        stream
+          .iterator()
+          .asScala
           .map(_.getFileName.toString)
           .filter(_.startsWith("step-"))
           .flatMap { name =>
@@ -304,15 +301,13 @@ object StepPersistence {
         logger.error(s"Failed to list steps for game $gameId", e)
         Nil
     }
-  }
 
   /** Check if a game exists. */
-  def gameExists(gameId: String): Boolean = {
+  def gameExists(gameId: String): Boolean =
     Files.exists(getGameDir(gameId).resolve("game.json"))
-  }
 
   /** Delete a game and all its steps. */
-  def deleteGame(gameId: String): SzorkResult[Unit] = {
+  def deleteGame(gameId: String): SzorkResult[Unit] =
     try {
       val gameDir = getGameDir(gameId)
       if (!Files.exists(gameDir)) {
@@ -328,7 +323,6 @@ object StepPersistence {
         logger.error(s"Failed to delete game $gameId", e)
         Left(PersistenceError(s"Failed to delete game: ${e.getMessage}", Some(e), operation = "delete"))
     }
-  }
 
   /** Delete a directory recursively. */
   private def deleteRecursively(path: Path): Unit = {
@@ -341,11 +335,13 @@ object StepPersistence {
   }
 
   /** List all games. */
-  def listGames(): List[GameMetadata] = {
+  def listGames(): List[GameMetadata] =
     try {
       val saveDir = ensureSaveDir()
       Using.resource(Files.newDirectoryStream(saveDir)) { stream =>
-        stream.iterator().asScala
+        stream
+          .iterator()
+          .asScala
           .filter(Files.isDirectory(_))
           .flatMap { gameDir =>
             val gameId = gameDir.getFileName.toString
@@ -359,5 +355,4 @@ object StepPersistence {
         logger.error("Failed to list games", e)
         Nil
     }
-  }
 }

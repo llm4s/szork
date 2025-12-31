@@ -6,19 +6,20 @@ import org.llm4s.llmconnect.model._
 
 /** Debugging utilities for game development and testing.
   *
-  * These utilities provide console output and convenience functions
-  * for debugging game sessions. The core persistence logic is now
-  * handled by StepPersistence.
+  * These utilities provide console output and convenience functions for debugging game sessions. The core persistence
+  * logic is now handled by StepPersistence.
   */
 object DebugHelpers {
 
   /** Extract tool calls from agent messages.
     *
-    * Scans through messages to find tool calls and their results,
-    * matching ToolMessages with their corresponding AssistantMessage tool calls.
+    * Scans through messages to find tool calls and their results, matching ToolMessages with their corresponding
+    * AssistantMessage tool calls.
     *
-    * @param messages Sequence of agent messages
-    * @return List of tool call info with results
+    * @param messages
+    *   Sequence of agent messages
+    * @return
+    *   List of tool call info with results
     */
   def extractToolCalls(messages: Seq[Message]): List[ToolCallInfo] = {
     val toolCalls = scala.collection.mutable.ListBuffer[ToolCallInfo]()
@@ -49,11 +50,12 @@ object DebugHelpers {
 
   /** Format conversation as human-readable text.
     *
-    * Produces a formatted text output of the conversation history
-    * suitable for logging or manual review.
+    * Produces a formatted text output of the conversation history suitable for logging or manual review.
     *
-    * @param messages Sequence of agent messages
-    * @return Formatted conversation string
+    * @param messages
+    *   Sequence of agent messages
+    * @return
+    *   Formatted conversation string
     */
   def formatConversation(messages: Seq[Message]): String = {
     val sb = new StringBuilder()
@@ -93,13 +95,14 @@ object DebugHelpers {
   /** Print step summary to console.
     *
     * Displays a formatted summary of a game step including:
-    * - User command
-    * - Narration text
-    * - Scene details (location, exits, items, NPCs)
-    * - Tool calls
-    * - Metadata
+    *   - User command
+    *   - Narration text
+    *   - Scene details (location, exits, items, NPCs)
+    *   - Tool calls
+    *   - Metadata
     *
-    * @param stepData Complete step data to summarize
+    * @param stepData
+    *   Complete step data to summarize
     */
   def printStepSummary(stepData: StepData): Unit = {
     val metadata = stepData.metadata
@@ -150,14 +153,17 @@ object DebugHelpers {
   /** Print adventure creation summary to console.
     *
     * Displays a formatted summary of a newly created adventure including:
-    * - Adventure title and tagline
-    * - Main quest
-    * - Key locations
-    * - Initial scene
+    *   - Adventure title and tagline
+    *   - Main quest
+    *   - Key locations
+    *   - Initial scene
     *
-    * @param gameId Game identifier
-    * @param outline Adventure outline
-    * @param initialScene Initial game scene
+    * @param gameId
+    *   Game identifier
+    * @param outline
+    *   Adventure outline
+    * @param initialScene
+    *   Initial game scene
     */
   def printAdventureSummary(
     gameId: String,

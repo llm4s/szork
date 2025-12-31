@@ -2,8 +2,7 @@ package org.llm4s.szork.error
 
 import org.llm4s.error.{LLMError => LLM4SError}
 
-/** Base trait for all Szork application errors.
-  * Provides consistent error handling across the application.
+/** Base trait for all Szork application errors. Provides consistent error handling across the application.
   */
 sealed trait SzorkError {
   def message: String
@@ -156,6 +155,7 @@ case class SessionError(
 
 // Companion object with factory methods
 object SzorkError {
+
   /** Create an error from a simple string message */
   def fromString(message: String): SzorkError =
     GameStateError(message)

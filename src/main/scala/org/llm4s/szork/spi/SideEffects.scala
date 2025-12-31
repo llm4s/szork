@@ -30,11 +30,7 @@ trait ImageClient {
 
 trait MusicClient {
   def isAvailable: Boolean
-  def generate(
-    mood: String,
-    context: String,
-    gameId: Option[String],
-    locationId: Option[String]): SzorkResult[String]
+  def generate(mood: String, context: String, gameId: Option[String], locationId: Option[String]): SzorkResult[String]
 }
 
 trait GameStore {

@@ -52,6 +52,7 @@ object ErrorHandling {
 
   /** Logging utilities */
   object Logging {
+
     /** Log an error if present, pass through the result unchanged */
     def logError[T](operation: String)(result: SzorkResult[T])(implicit logger: Logger): SzorkResult[T] = {
       result.left.foreach { error =>
@@ -74,28 +75,27 @@ object ErrorHandling {
     }
 
     /** Log error and recover with default value */
-    def logAndRecover[T](operation: String, default: T)(result: SzorkResult[T])(implicit logger: Logger): T = {
+    def logAndRecover[T](operation: String, default: T)(result: SzorkResult[T])(implicit logger: Logger): T =
       result match {
         case Right(value) => value
         case Left(error) =>
           logger.error(s"$operation failed, using default: ${error.message}")
           default
       }
-    }
 
     /** Log error and convert to Option */
-    def logAndOption[T](operation: String)(result: SzorkResult[T])(implicit logger: Logger): Option[T] = {
+    def logAndOption[T](operation: String)(result: SzorkResult[T])(implicit logger: Logger): Option[T] =
       result match {
         case Right(value) => Some(value)
         case Left(error) =>
           logger.error(s"$operation failed: ${error.message}")
           None
       }
-    }
   }
 
   /** Retry logic for operations that might fail transiently */
   object Retry {
+
     /** Retry an operation with exponential backoff */
     def withRetry[T](
       maxAttempts: Int = 3,
@@ -105,7 +105,7 @@ object ErrorHandling {
     )(operation: => SzorkResult[T])(implicit logger: Logger): SzorkResult[T] = {
 
       @annotation.tailrec
-      def attempt(remainingAttempts: Int, currentBackoff: FiniteDuration): SzorkResult[T] = {
+      def attempt(remainingAttempts: Int, currentBackoff: FiniteDuration): SzorkResult[T] =
         operation match {
           case success @ Right(_) =>
             if (remainingAttempts < maxAttempts) {
@@ -131,7 +131,6 @@ object ErrorHandling {
             }
             failure
         }
-      }
 
       attempt(maxAttempts, initialBackoff)
     }
@@ -144,7 +143,7 @@ object ErrorHandling {
       backoffMultiplier: Double = 2.0
     )(operation: => Future[T])(implicit ec: ExecutionContext, logger: Logger): Future[T] = {
 
-      def attempt(remainingAttempts: Int, currentBackoff: FiniteDuration): Future[T] = {
+      def attempt(remainingAttempts: Int, currentBackoff: FiniteDuration): Future[T] =
         operation.recoverWith {
           case error if remainingAttempts > 1 =>
             logger.warn(s"Async operation failed (${error.getMessage}), retrying in ${currentBackoff.toSeconds}s...")
@@ -164,7 +163,6 @@ object ErrorHandling {
             logger.error(s"Async operation failed after retries: ${error.getMessage}")
             Future.failed(error)
         }
-      }
 
       attempt(maxAttempts, initialBackoff)
     }
@@ -172,33 +170,30 @@ object ErrorHandling {
 
   /** Transformation utilities for working with errors */
   object Transform {
+
     /** Chain multiple operations, short-circuiting on first error */
-    def sequence[T](results: List[SzorkResult[T]]): SzorkResult[List[T]] = {
+    def sequence[T](results: List[SzorkResult[T]]): SzorkResult[List[T]] =
       results.foldRight[SzorkResult[List[T]]](Right(Nil)) { (result, acc) =>
         for {
           list <- acc
           value <- result
         } yield value :: list
       }
-    }
 
     /** Collect all successful results, ignoring errors */
-    def collectSuccesses[T](results: List[SzorkResult[T]]): List[T] = {
+    def collectSuccesses[T](results: List[SzorkResult[T]]): List[T] =
       results.collect { case Right(value) => value }
-    }
 
     /** Collect all errors, ignoring successes */
-    def collectErrors[T](results: List[SzorkResult[T]]): List[SzorkError] = {
+    def collectErrors[T](results: List[SzorkResult[T]]): List[SzorkError] =
       results.collect { case Left(error) => error }
-    }
 
     /** Transform error type while preserving success */
-    def mapError[T](result: SzorkResult[T])(f: SzorkError => SzorkError): SzorkResult[T] = {
+    def mapError[T](result: SzorkResult[T])(f: SzorkError => SzorkError): SzorkResult[T] =
       result.left.map(f)
-    }
 
     /** Add context to an error */
-    def withContext[T](context: String)(result: SzorkResult[T]): SzorkResult[T] = {
+    def withContext[T](context: String)(result: SzorkResult[T]): SzorkResult[T] =
       mapError(result) {
         case error: GameStateError =>
           error.copy(message = s"$context: ${error.message}")
@@ -207,16 +202,16 @@ object ErrorHandling {
         case error =>
           GameStateError(s"$context: ${error.message}", error.cause)
       }
-    }
   }
 
   /** Recovery strategies for handling errors gracefully */
   object Recovery {
+
     /** Try primary operation, fall back to secondary on failure */
     def withFallback[T](
       primary: => SzorkResult[T],
       fallback: => SzorkResult[T]
-    )(implicit logger: Logger): SzorkResult[T] = {
+    )(implicit logger: Logger): SzorkResult[T] =
       primary match {
         case success @ Right(_) => success
         case Left(primaryError) =>
@@ -229,54 +224,49 @@ object ErrorHandling {
               Left(primaryError)
           }
       }
-    }
 
     /** Use default value on error */
-    def withDefault[T](result: SzorkResult[T], default: => T)(implicit logger: Logger): T = {
+    def withDefault[T](result: SzorkResult[T], default: => T)(implicit logger: Logger): T =
       result match {
         case Right(value) => value
         case Left(error) =>
           logger.warn(s"Using default value due to error: ${error.message}")
           default
       }
-    }
 
     /** Convert error to Option, logging the error */
-    def toOption[T](result: SzorkResult[T])(implicit logger: Logger): Option[T] = {
+    def toOption[T](result: SzorkResult[T])(implicit logger: Logger): Option[T] =
       result match {
         case Right(value) => Some(value)
         case Left(error) =>
           logger.debug(s"Converting error to None: ${error.message}")
           None
       }
-    }
 
     /** Recover from specific error types */
-    def recover[T](result: SzorkResult[T])(pf: PartialFunction[SzorkError, T]): SzorkResult[T] = {
+    def recover[T](result: SzorkResult[T])(pf: PartialFunction[SzorkError, T]): SzorkResult[T] =
       result match {
         case success @ Right(_) => success
         case Left(error) if pf.isDefinedAt(error) => Right(pf(error))
         case failure => failure
       }
-    }
 
     /** Recover with a new operation for specific error types */
-    def recoverWith[T](result: SzorkResult[T])(pf: PartialFunction[SzorkError, SzorkResult[T]]): SzorkResult[T] = {
+    def recoverWith[T](result: SzorkResult[T])(pf: PartialFunction[SzorkError, SzorkResult[T]]): SzorkResult[T] =
       result match {
         case success @ Right(_) => success
         case Left(error) if pf.isDefinedAt(error) => pf(error)
         case failure => failure
       }
-    }
   }
 
   /** Validation utilities */
   object Validation {
+
     /** Validate a condition, creating an error if false */
-    def require(condition: Boolean, errorMessage: => String): SzorkResult[Unit] = {
+    def require(condition: Boolean, errorMessage: => String): SzorkResult[Unit] =
       if (condition) Right(())
       else Left(ValidationError(List(errorMessage)))
-    }
 
     /** Validate multiple conditions */
     def requireAll(validations: (Boolean, String)*): SzorkResult[Unit] = {
@@ -286,8 +276,7 @@ object ErrorHandling {
     }
 
     /** Validate and transform a value */
-    def validate[T, U](value: T)(validation: T => Either[String, U]): SzorkResult[U] = {
+    def validate[T, U](value: T)(validation: T => Either[String, U]): SzorkResult[U] =
       validation(value).left.map(msg => ValidationError(List(msg)))
-    }
   }
 }

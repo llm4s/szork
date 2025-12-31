@@ -3,13 +3,7 @@ package org.llm4s.szork
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import java.nio.file.Files
-import org.llm4s.szork.media.{
-  ImageEntry,
-  LocationEntries,
-  MediaCacheCodec,
-  MediaIndex,
-  MusicEntry
-}
+import org.llm4s.szork.media.{ImageEntry, LocationEntries, MediaCacheCodec, MediaIndex, MusicEntry}
 
 class MediaCacheCodecSpec extends AnyFunSuite with Matchers {
   test("MediaCacheCodec roundtrip save/load") {

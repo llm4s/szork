@@ -161,14 +161,14 @@ class MusicGeneration {
       temperature = 1.0)
   }
 
-  def generateMusic(mood: MusicMood, context: String = ""): SzorkResult[ String] =
+  def generateMusic(mood: MusicMood, context: String = ""): SzorkResult[String] =
     generateMusicWithCache(mood, context, None, None)
 
   def generateMusicWithCache(
     mood: MusicMood,
     context: String = "",
     gameId: Option[String] = None,
-    locationId: Option[String] = None): SzorkResult[ String] = {
+    locationId: Option[String] = None): SzorkResult[String] = {
     if (!isAvailable) {
       logger.warn("Music generation disabled - REPLICATE_API_KEY not configured")
       return Left(ConfigurationError("Music generation not available - REPLICATE_API_KEY not configured"))
@@ -263,7 +263,7 @@ class MusicGeneration {
     }
   }
 
-  private def pollPrediction(predictionId: String, maxAttempts: Int = 30): SzorkResult[ String] = {
+  private def pollPrediction(predictionId: String, maxAttempts: Int = 30): SzorkResult[String] = {
     if (!isAvailable) {
       return Left(ConfigurationError("Music generation not available - REPLICATE_API_KEY not configured"))
     }
@@ -303,14 +303,18 @@ class MusicGeneration {
             return Left(MusicGenerationError(s"Unknown prediction status: $status", retryable = false))
         }
       } else {
-        return Left(NetworkError(s"Failed to get prediction status: ${response.statusCode}", "replicate", retryable = response.statusCode >= 500))
+        return Left(
+          NetworkError(
+            s"Failed to get prediction status: ${response.statusCode}",
+            "replicate",
+            retryable = response.statusCode >= 500))
       }
     }
 
     Left(MusicGenerationError("Timeout waiting for music generation", retryable = true))
   }
 
-  private def downloadAndEncodeAudio(audioUrl: String): SzorkResult[ String] =
+  private def downloadAndEncodeAudio(audioUrl: String): SzorkResult[String] =
     try {
       logger.info(s"Downloading audio from: $audioUrl")
 

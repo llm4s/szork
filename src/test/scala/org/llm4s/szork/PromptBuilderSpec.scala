@@ -2,13 +2,7 @@ package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
-import org.llm4s.szork.game.{
-  AdventureOutline,
-  CharacterOutline,
-  ItemOutline,
-  LocationOutline,
-  PromptBuilder
-}
+import org.llm4s.szork.game.{AdventureOutline, CharacterOutline, ItemOutline, LocationOutline, PromptBuilder}
 
 class PromptBuilderSpec extends AnyFunSuite with Matchers {
   test("fullSystemPrompt includes theme and art style") {

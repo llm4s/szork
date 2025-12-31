@@ -68,8 +68,9 @@ case class LLMConfig(
   model: Option[String] = None,
   baseUrl: Option[String] = None
 ) {
+
   /** Convert to llm4s ProviderConfig for the new API */
-  def toProviderConfig: org.llm4s.llmconnect.config.ProviderConfig = {
+  def toProviderConfig: org.llm4s.llmconnect.config.ProviderConfig =
     provider.toLowerCase match {
       case "openai" =>
         org.llm4s.llmconnect.config.OpenAIConfig(
@@ -101,25 +102,23 @@ case class LLMConfig(
       case other =>
         throw new IllegalArgumentException(s"Unknown LLM provider: $other")
     }
-  }
 }
 
 object SzorkConfig {
   lazy val instance: SzorkConfig = load()
 
   /** Get an LLM client using the current configuration */
-  def getLLMClient(): Either[String, org.llm4s.llmconnect.LLMClient] = {
+  def getLLMClient(): Either[String, org.llm4s.llmconnect.LLMClient] =
     instance.llmConfig match {
       case Some(config) =>
-        try {
+        try
           org.llm4s.llmconnect.LLMConnect.getClient(config.toProviderConfig).left.map(_.message)
-        } catch {
+        catch {
           case e: Exception => Left(s"Failed to create LLM client: ${e.getMessage}")
         }
       case None =>
         Left("No LLM configuration found")
     }
-  }
 
   private def load(): SzorkConfig = {
     // Load port

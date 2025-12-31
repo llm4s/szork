@@ -43,26 +43,26 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt should include("Process ALL player commands")
   }
 
-  test("fullSystemPrompt clarifies tools are optional and only for inventory") {
+  test("fullSystemPrompt clarifies tools are rare and only for inventory") {
     val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("=== TOOL USAGE - OPTIONAL INVENTORY ONLY ===")
-    prompt should include("Tools are OPTIONAL helpers for inventory management ONLY")
+    prompt should include("=== TOOL USAGE - RARE, INVENTORY-ONLY ===")
+    prompt should include("You have THREE inventory tools but should RARELY use them")
     prompt should include("You do NOT need special functions or tools for most gameplay")
   }
 
-  test("fullSystemPrompt has critical rules for movement commands") {
+  test("fullSystemPrompt has critical rules for tool usage") {
     val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("CRITICAL RULES:")
-    prompt should include("Movement commands (north/south/east/west/up/down/in/out) NEVER use tools")
-    prompt should include("generate JSON scene directly")
-    prompt should include("LOOK, EXAMINE, OPEN, CLOSE, etc. NEVER use tools")
+    prompt should include("CRITICAL TOOL RULES:")
+    prompt should include("Movement commands (north/south/east/west/up/down/in/out)")
+    prompt should include("Movement/examination/interaction = JSON response ONLY, NO TOOLS")
+    prompt should include("When in doubt: Generate JSON response, DON'T use tools!")
   }
 
-  test("fullSystemPrompt emphasizes LLM should never claim lack of functions") {
+  test("fullSystemPrompt establishes LLM as full game engine") {
     val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("NEVER say \"I don't have functions\" or \"I can't do that\"")
-    prompt should include("you CAN do everything")
-    prompt should include("NEVER mention tools, capabilities, or limitations to the player")
+    prompt should include("YOU ARE THE GAME ENGINE. You have FULL capability to:")
+    prompt should include("Generate room descriptions and scenes for ANY location")
+    prompt should include("Process ALL player commands")
   }
 
   test("fullSystemPrompt has movement validation workflow") {

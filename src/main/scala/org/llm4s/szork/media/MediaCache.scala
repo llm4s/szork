@@ -2,11 +2,10 @@ package org.llm4s.szork.media
 
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
-import ujson._
 import java.nio.file.{Files, Path, Paths}
 import java.nio.charset.StandardCharsets
 import java.util.Base64
-import org.slf4j.LoggerFactory
+import org.slf4j.{Logger, LoggerFactory}
 import org.llm4s.config.EnvLoader
 import java.security.MessageDigest
 import scala.jdk.CollectionConverters._
@@ -29,7 +28,7 @@ case class CachedAsset(
 )
 
 object MediaCache {
-  private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
   private val CACHE_DIR = "szork-cache"
   private val DEFAULT_TTL_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
   private val DEFAULT_MAX_BYTES = 500L * 1024 * 1024 // 500MB
@@ -238,66 +237,6 @@ object MediaCache {
         logger.error(s"Failed to get cache stats for game: $gameId", e)
         Map("gameId" -> gameId, "exists" -> false, "error" -> e.getMessage)
     }
-
-  // Helper Methods
-  private def updateMetadata(metadataPath: Path, locationId: String)(update: Obj => Unit): Unit = {
-    val metadataValue = if (Files.exists(metadataPath)) {
-      val jsonString = new String(Files.readAllBytes(metadataPath), StandardCharsets.UTF_8)
-      read(jsonString)
-    } else {
-      Obj()
-    }
-
-    val metadataObj = metadataValue.obj
-    val locationDataValue = metadataObj.getOrElse(locationId, Obj())
-    val locationData = Obj(locationDataValue.obj)
-
-    update(locationData)
-    metadataObj(locationId) = locationData
-
-    Files.write(metadataPath, Obj(metadataObj).toString().getBytes(StandardCharsets.UTF_8))
-  }
-
-  private def isSimilarDescription(cached: String, current: String): Boolean =
-    // Simple similarity check - could be enhanced with fuzzy matching
-    if (cached == current) {
-      true
-    } else {
-      // Allow for minor differences (e.g., punctuation, case)
-      val cachedClean = cached.toLowerCase.replaceAll("[^a-z0-9 ]", "")
-      val currentClean = current.toLowerCase.replaceAll("[^a-z0-9 ]", "")
-      val similarity = calculateSimilarity(cachedClean, currentClean)
-      similarity > 0.8 // 80% similarity threshold
-    }
-
-  private def calculateSimilarity(str1: String, str2: String): Double = {
-    val longer = if (str1.length > str2.length) str1 else str2
-    val shorter = if (str1.length > str2.length) str2 else str1
-
-    if (longer.length == 0) 1.0
-    else {
-      val editDistance = levenshteinDistance(longer, shorter)
-      (longer.length - editDistance) / longer.length.toDouble
-    }
-  }
-
-  private def levenshteinDistance(str1: String, str2: String): Int = {
-    val dp = Array.ofDim[Int](str1.length + 1, str2.length + 1)
-
-    for (i <- 0 to str1.length) dp(i)(0) = i
-    for (j <- 0 to str2.length) dp(0)(j) = j
-
-    for (i <- 1 to str1.length)
-      for (j <- 1 to str2.length) {
-        val cost = if (str1(i - 1) == str2(j - 1)) 0 else 1
-        dp(i)(j) = math.min(
-          math.min(dp(i - 1)(j) + 1, dp(i)(j - 1) + 1),
-          dp(i - 1)(j - 1) + cost
-        )
-      }
-
-    dp(str1.length)(str2.length)
-  }
 
   private def deleteDirectoryRecursively(path: Path): Unit = {
     if (Files.isDirectory(path)) {

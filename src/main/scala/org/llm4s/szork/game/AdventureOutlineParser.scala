@@ -193,7 +193,7 @@ object AdventureOutlineParser {
         logger.error(s"JSON parsing failed: ${e.getMessage}")
         // Try one more time with better JSON repair
         extractCriticalFields(jsonStr) match {
-          case Some((title, mainQuest)) =>
+          case Some((title, _)) =>
             logger.warn(s"Fallback extraction found title='$title' but returning error - generation should be retried")
             Left(
               ParseError(

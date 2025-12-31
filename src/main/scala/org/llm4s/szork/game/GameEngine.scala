@@ -12,15 +12,7 @@ import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.szork.debug.DebugHelpers
 import org.llm4s.szork.api.{GameTheme, ArtStyle}
 import org.llm4s.szork.media.{MediaPlanner, TextToSpeech}
-import org.llm4s.szork.persistence.{
-  StepPersistence,
-  StepData,
-  GameState,
-  MediaCacheEntry,
-  SceneResponse,
-  StepMetadata,
-  GameResponse
-}
+import org.llm4s.szork.persistence.{StepData, GameState, MediaCacheEntry, StepMetadata}
 import org.llm4s.szork.streaming.{StreamingAgent, StreamingTextParser}
 
 /** Core game engine managing AI-driven text adventure gameplay.

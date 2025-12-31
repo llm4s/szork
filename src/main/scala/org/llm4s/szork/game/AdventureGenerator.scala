@@ -4,7 +4,7 @@ import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model._
-import org.slf4j.LoggerFactory
+import org.slf4j.{Logger, LoggerFactory}
 import ujson._
 
 case class AdventureOutline(
@@ -39,7 +39,7 @@ case class CharacterOutline(
 )
 
 object AdventureGenerator {
-  private implicit val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   def generateAdventureOutline(theme: String, artStyle: String)(implicit
     client: LLMClient): SzorkResult[AdventureOutline] = {

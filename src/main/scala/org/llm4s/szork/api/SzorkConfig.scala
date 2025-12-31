@@ -67,10 +67,59 @@ case class LLMConfig(
   apiKey: String,
   model: Option[String] = None,
   baseUrl: Option[String] = None
-)
+) {
+  /** Convert to llm4s ProviderConfig for the new API */
+  def toProviderConfig: org.llm4s.llmconnect.config.ProviderConfig = {
+    provider.toLowerCase match {
+      case "openai" =>
+        org.llm4s.llmconnect.config.OpenAIConfig(
+          apiKey = apiKey,
+          model = model.getOrElse("gpt-4o"),
+          organization = None,
+          baseUrl = baseUrl.getOrElse("https://api.openai.com/v1"),
+          contextWindow = 128000,
+          reserveCompletion = 4096
+        )
+      case "anthropic" =>
+        org.llm4s.llmconnect.config.AnthropicConfig(
+          apiKey = apiKey,
+          model = model.getOrElse("claude-3-opus-20240229"),
+          baseUrl = baseUrl.getOrElse("https://api.anthropic.com"),
+          contextWindow = 200000,
+          reserveCompletion = 4096
+        )
+      case "llama" | "local" =>
+        // Use OpenAI-compatible config for local LLaMA servers
+        org.llm4s.llmconnect.config.OpenAIConfig(
+          apiKey = if (apiKey == "not-required") "sk-no-key-required" else apiKey,
+          model = model.getOrElse("llama2"),
+          organization = None,
+          baseUrl = baseUrl.getOrElse("http://localhost:11434/v1"),
+          contextWindow = 8192,
+          reserveCompletion = 2048
+        )
+      case other =>
+        throw new IllegalArgumentException(s"Unknown LLM provider: $other")
+    }
+  }
+}
 
 object SzorkConfig {
   lazy val instance: SzorkConfig = load()
+
+  /** Get an LLM client using the current configuration */
+  def getLLMClient(): Either[String, org.llm4s.llmconnect.LLMClient] = {
+    instance.llmConfig match {
+      case Some(config) =>
+        try {
+          org.llm4s.llmconnect.LLMConnect.getClient(config.toProviderConfig).left.map(_.message)
+        } catch {
+          case e: Exception => Left(s"Failed to create LLM client: ${e.getMessage}")
+        }
+      case None =>
+        Left("No LLM configuration found")
+    }
+  }
 
   private def load(): SzorkConfig = {
     // Load port

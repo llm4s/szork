@@ -3,7 +3,7 @@ package org.llm4s.szork.debug
 import org.llm4s.szork.game._
 import org.llm4s.szork.persistence.{StepData, StepPersistence, GameMetadataHelper, SceneResponse, GameResponse}
 import org.llm4s.szork.adapters.DefaultClients
-import org.llm4s.config.EnvLoader
+import org.llm4s.szork.api.SzorkConfig
 import org.slf4j.LoggerFactory
 import scala.util.{Try, Success, Failure}
 
@@ -59,10 +59,10 @@ object RunUserStep {
 
       // Initialize LLM client
       println("\nInitializing LLM client...")
-      implicit val llmClient = org.llm4s.llmconnect.LLMConnect.getClient(EnvLoader) match {
+      implicit val llmClient: org.llm4s.llmconnect.LLMClient = SzorkConfig.getLLMClient() match {
         case Right(client) => client
         case Left(error) =>
-          println(s"ERROR: Failed to initialize LLM client: ${error.message}")
+          println(s"ERROR: Failed to initialize LLM client: $error")
           System.exit(1)
           return
       }

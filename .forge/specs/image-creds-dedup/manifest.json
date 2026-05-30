@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "featureId": "image-creds-dedup",
+  "title": "Deduplicate image-credential check",
+  "baseBranch": "main",
+  "branchPrefix": "forge",
+  "mode": "claude-driver",
+  "designPr": null,
+  "pieces": [
+    {
+      "id": "p1",
+      "order": 1,
+      "title": "Extract shared image-credential check",
+      "summary": "Add ImageProvider.imageCredsAvailable + huggingFaceKey and route all six duplicated image-credential sites through them.",
+      "specPath": "pieces/p1.md",
+      "acceptanceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "status": "pending",
+      "baseSha": null,
+      "prNumber": null,
+      "mergeCommit": null,
+      "mergedAt": null,
+      "attempts": 0
+    }
+  ]
+}

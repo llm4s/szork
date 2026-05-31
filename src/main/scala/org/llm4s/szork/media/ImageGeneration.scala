@@ -24,10 +24,8 @@ class ImageGeneration {
           (None, "None")
 
         case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
-          val hfKey = EnvLoader
-            .get("HUGGINGFACE_API_KEY")
-            .orElse(EnvLoader.get("HF_API_KEY"))
-            .orElse(EnvLoader.get("HUGGINGFACE_TOKEN"))
+          val hfKey = ImageProvider
+            .huggingFaceKey()
             .getOrElse(
               throw new IllegalStateException(
                 s"Image provider set to ${ImageProvider.toString(config.imageProvider)} but no HuggingFace API key found. " +

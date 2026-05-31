@@ -2,7 +2,7 @@ package org.llm4s.szork.api
 
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
-import org.llm4s.config.EnvLoader
+import org.llm4s.config.{ConfigReader, EnvLoader}
 import org.slf4j.Logger
 
 /** Image generation provider options
@@ -34,6 +34,23 @@ object ImageProvider {
     case OpenAIDalle3 => "OpenAI DALL-E 3"
     case LocalStableDiffusion => "Local Stable Diffusion"
   }
+
+  /** Resolve the HuggingFace API key from the supported env keys, in priority order. */
+  def huggingFaceKey(reader: ConfigReader = EnvLoader): Option[String] =
+    reader
+      .get("HUGGINGFACE_API_KEY")
+      .filter(_.nonEmpty)
+      .orElse(reader.get("HF_API_KEY").filter(_.nonEmpty))
+      .orElse(reader.get("HUGGINGFACE_TOKEN").filter(_.nonEmpty))
+
+  /** Whether the credentials required by the given image provider are available. */
+  def imageCredsAvailable(provider: ImageProvider, reader: ConfigReader = EnvLoader): Boolean =
+    provider match {
+      case HuggingFace | HuggingFaceSDXL => huggingFaceKey(reader).exists(_.nonEmpty)
+      case OpenAIDalle2 | OpenAIDalle3 => reader.get("OPENAI_API_KEY").exists(_.nonEmpty)
+      case LocalStableDiffusion => true
+      case None => false
+    }
 }
 
 /** Configuration for the Szork game server
@@ -258,23 +275,13 @@ object SzorkConfig {
       }
 
       // Validate image provider configuration
-      if (config.imageGenerationEnabled && config.imageProvider != ImageProvider.None) {
+      if (config.imageGenerationEnabled && config.imageProvider != ImageProvider.None
+        && !ImageProvider.imageCredsAvailable(config.imageProvider)) {
         config.imageProvider match {
           case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
-            if (EnvLoader.get("HUGGINGFACE_API_KEY").isEmpty &&
-              EnvLoader.get("HF_API_KEY").isEmpty &&
-              EnvLoader.get("HUGGINGFACE_TOKEN").isEmpty) {
-              errors += "HuggingFace image provider selected but no API key found"
-            }
-
+            errors += "HuggingFace image provider selected but no API key found"
           case ImageProvider.OpenAIDalle2 | ImageProvider.OpenAIDalle3 =>
-            if (EnvLoader.get("OPENAI_API_KEY").isEmpty) {
-              errors += "OpenAI DALL-E provider selected but OPENAI_API_KEY not found"
-            }
-
-          case ImageProvider.LocalStableDiffusion =>
-            // No API key required; ensure a base URL is configured or default applies
-            ()
+            errors += "OpenAI DALL-E provider selected but OPENAI_API_KEY not found"
           case _ => ()
         }
       }

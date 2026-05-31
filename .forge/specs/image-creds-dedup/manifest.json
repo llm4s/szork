@@ -5,7 +5,7 @@
   "baseBranch": "main",
   "branchPrefix": "forge",
   "mode": "claude-driver",
-  "designPr": null,
+  "designPr": 9,
   "pieces": [
     {
       "id": "p1",
@@ -14,12 +14,12 @@
       "summary": "Add ImageProvider.imageCredsAvailable + huggingFaceKey and route all six duplicated image-credential sites through them.",
       "specPath": "pieces/p1.md",
       "acceptanceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-      "status": "pending",
-      "baseSha": null,
-      "prNumber": null,
+      "status": "in_progress",
+      "baseSha": "4c2bab11204c24de4bb456345baf02c14394003e",
+      "prNumber": 10,
       "mergeCommit": null,
       "mergedAt": null,
-      "attempts": 0
+      "attempts": 2
     }
   ]
 }

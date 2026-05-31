@@ -2,6 +2,7 @@
 
 > Feature **image-creds-dedup** — base branch `main`,
 > branch prefix `forge`.
+> Design PR: #9
 
 ## Pieces
 
@@ -10,7 +11,7 @@
    <!-- forge:editable-summary p1 -->
    Add ImageProvider.imageCredsAvailable + huggingFaceKey and route all six duplicated image-credential sites through them.
    <!-- /forge:editable-summary -->
-   <!-- forge:status p1 -->`pending`<!-- /forge:status -->
+   <!-- forge:status p1 -->`in progress`<!-- /forge:status -->
 
 <!-- forge:order-end -->
 

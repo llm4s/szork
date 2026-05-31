@@ -13,7 +13,6 @@ import org.llm4s.szork.websocket.{protocol => proto}
 import proto._
 import org.llm4s.szork.adapters._
 import org.llm4s.szork.spi.SystemClock
-import org.llm4s.config.EnvLoader
 import org.llm4s.szork.game._
 import org.llm4s.szork.persistence.{ConversationEntry => _, _}
 import org.llm4s.szork.api.{CommandRequest => _, _}
@@ -275,17 +274,7 @@ class TypedWebSocketServer(
     }
 
     // Create GameEngine with proper parameters
-    def imageCredsAvailable: Boolean = config.imageProvider match {
-      case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
-        EnvLoader
-          .get("HUGGINGFACE_API_KEY")
-          .orElse(EnvLoader.get("HF_API_KEY"))
-          .orElse(EnvLoader.get("HUGGINGFACE_TOKEN"))
-          .exists(_.nonEmpty)
-      case ImageProvider.OpenAIDalle2 | ImageProvider.OpenAIDalle3 => openAIKeyPresent
-      case ImageProvider.LocalStableDiffusion => true
-      case ImageProvider.None => false
-    }
+    val imageCredsAvailable: Boolean = ImageProvider.imageCredsAvailable(config.imageProvider)
 
     implicit val llmClient: org.llm4s.llmconnect.LLMClient = SzorkConfig.getLLMClient() match {
       case Right(c) => c
@@ -483,17 +472,7 @@ class TypedWebSocketServer(
             conn.send(ujson.write(errorResponse))
             return
         }
-        def imageCredsAvailable: Boolean = config.imageProvider match {
-          case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
-            EnvLoader
-              .get("HUGGINGFACE_API_KEY")
-              .orElse(EnvLoader.get("HF_API_KEY"))
-              .orElse(EnvLoader.get("HUGGINGFACE_TOKEN"))
-              .exists(_.nonEmpty)
-          case ImageProvider.OpenAIDalle2 | ImageProvider.OpenAIDalle3 => openAIKeyPresent
-          case ImageProvider.LocalStableDiffusion => true
-          case ImageProvider.None => false
-        }
+        val imageCredsAvailable: Boolean = ImageProvider.imageCredsAvailable(config.imageProvider)
         val engine = new GameEngine(
           sessionId = sessionId,
           theme = gameState.theme.map(_.prompt),

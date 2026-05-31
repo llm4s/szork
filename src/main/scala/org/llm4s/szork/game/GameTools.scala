@@ -11,6 +11,13 @@ object GameTools {
   // Mutable inventory storage (in a real app, this would be persisted)
   private val playerInventory = mutable.ListBuffer[String]()
 
+  // Unwrap a tool built via buildSafe(); a Left here is a static definition error.
+  private def orThrow[T, R](result: org.llm4s.types.Result[ToolFunction[T, R]]): ToolFunction[T, R] =
+    result match {
+      case Right(tool) => tool
+      case Left(error) => throw new IllegalStateException(s"Failed to build tool: ${error.message}")
+    }
+
   // Define result types
   case class InventoryListResult(
     inventory: List[String],
@@ -55,11 +62,12 @@ object GameTools {
     Right(result)
   }
 
-  val listInventoryTool = ToolBuilder[Map[String, Any], InventoryListResult](
-    "list_inventory",
-    "List all items currently in the player's inventory",
-    listInventorySchema
-  ).withHandler(listInventoryHandler).build()
+  val listInventoryTool = orThrow(
+    ToolBuilder[Map[String, Any], InventoryListResult](
+      "list_inventory",
+      "List all items currently in the player's inventory",
+      listInventorySchema
+    ).withHandler(listInventoryHandler).buildSafe())
 
   /** Tool to add an item to the player's inventory
     */
@@ -96,11 +104,12 @@ object GameTools {
       }
     }
 
-  val addInventoryItemTool = ToolBuilder[Map[String, Any], InventoryModifyResult](
-    "add_inventory_item",
-    "Add a new item to the player's inventory",
-    addInventorySchema
-  ).withHandler(addInventoryHandler).build()
+  val addInventoryItemTool = orThrow(
+    ToolBuilder[Map[String, Any], InventoryModifyResult](
+      "add_inventory_item",
+      "Add a new item to the player's inventory",
+      addInventorySchema
+    ).withHandler(addInventoryHandler).buildSafe())
 
   /** Tool to remove an item from the player's inventory
     */
@@ -137,11 +146,12 @@ object GameTools {
       }
     }
 
-  val removeInventoryItemTool = ToolBuilder[Map[String, Any], InventoryModifyResult](
-    "remove_inventory_item",
-    "Remove an item from the player's inventory",
-    removeInventorySchema
-  ).withHandler(removeInventoryHandler).build()
+  val removeInventoryItemTool = orThrow(
+    ToolBuilder[Map[String, Any], InventoryModifyResult](
+      "remove_inventory_item",
+      "Remove an item from the player's inventory",
+      removeInventorySchema
+    ).withHandler(removeInventoryHandler).buildSafe())
 
   /** Get all game tools for the ToolRegistry
     */

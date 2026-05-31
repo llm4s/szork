@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "featureId": "readme-quickstart",
+  "title": "README Quick Start corrections",
+  "baseBranch": "main",
+  "branchPrefix": "forge",
+  "mode": "claude-driver",
+  "designPr": null,
+  "pieces": [
+    {
+      "id": "p1",
+      "order": 1,
+      "title": "Correct and tighten the README Quick Start",
+      "summary": "Fix the Scala version and verify the README Quick Start steps so a new user can get running first try.",
+      "specPath": "pieces/p1.md",
+      "acceptanceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "status": "pending",
+      "baseSha": null,
+      "prNumber": null,
+      "mergeCommit": null,
+      "mergedAt": null,
+      "attempts": 0
+    }
+  ]
+}

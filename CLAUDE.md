@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Szork is an AI-powered text adventure game built with Scala 2.13 and the LLM4S library. It combines classic text adventure gameplay with modern AI features including:
+Szork is an AI-powered text adventure game built with Scala 3 and the LLM4S library. It combines classic text adventure gameplay with modern AI features including:
 
 - AI Dungeon Master using GPT-4/Claude for dynamic narratives
 - Voice control (Speech-to-Text) and narrated responses (Text-to-Speech) 
@@ -158,7 +158,7 @@ sbt "testOnly * -- -z inventory"  # Run tests matching pattern
 
 ## Code Style
 
-- Follow Scala 2.13 conventions
+- Follow Scala 3 conventions
 - Use consistent error handling with `Either[String, T]` 
 - Comprehensive logging with structured messages
 - Immutable data structures where possible

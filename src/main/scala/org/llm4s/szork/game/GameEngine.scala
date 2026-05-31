@@ -1,6 +1,6 @@
 package org.llm4s.szork.game
 
-import org.llm4s.agent.{Agent, AgentState, AgentStatus}
+import org.llm4s.agent.{Agent, AgentContext, AgentState, AgentStatus}
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{Message, UserMessage, AssistantMessage, SystemMessage, ToolMessage, ToolCall}
 import org.llm4s.toolapi.ToolRegistry
@@ -87,17 +87,23 @@ class GameEngine(
     val initPrompt = GameConstants.Prompts.INIT_ADVENTURE
 
     // Initialize the agent with the complete system prompt including adventure outline
-    currentState = agent.initialize(
+    currentState = agent.initializeSafe(
       initPrompt,
       toolRegistry,
       systemPromptAddition = Some(completeSystemPrompt)
-    )
+    ) match {
+      case Right(state) => state
+      case Left(error) =>
+        val szorkError = AIError(s"Failed to initialize game: ${error.message}", llmError = Some(error))
+        Logging.logError(s"[$sessionId] Initialize game")(Left(szorkError))
+        return Left(szorkError)
+    }
 
     // Track the initialization message (but don't show to user)
     // This ensures the agent knows to generate the opening scene
 
     // Automatically run the initial scene generation
-    agent.run(currentState, maxSteps = None, traceLogPath = None, debug = true) match {
+    agent.run(currentState, maxSteps = None, AgentContext(debug = true)) match {
       case Right(newState) =>
         currentState = newState
         // Extract the last textual response from the agent
@@ -177,7 +183,7 @@ class GameEngine(
     val textStartTime = System.currentTimeMillis()
     logger.debug(s"[$sessionId] Starting text generation for command: $command")
 
-    agent.run(currentState, maxSteps = None, traceLogPath = None, debug = true) match {
+    agent.run(currentState, maxSteps = None, AgentContext(debug = true)) match {
       case Right(newState) =>
         // Get only the new messages added by the agent
         val newMessages =
@@ -699,11 +705,15 @@ class GameEngine(
         case _ => "Start adventure" // Fallback
       }
 
-      currentState = agent.initialize(
+      currentState = agent.initializeSafe(
         firstMessage,
         toolRegistry,
         systemPromptAddition = Some(systemPrompt)
-      )
+      ) match {
+        case Right(state) => state
+        case Left(error) =>
+          throw new IllegalStateException(s"Failed to restore agent state: ${error.message}")
+      }
 
       // Add all the remaining messages to fully restore the conversation
       messages.tail.foreach { msg =>
@@ -722,11 +732,15 @@ class GameEngine(
       }
 
       if (messages.nonEmpty) {
-        currentState = agent.initialize(
+        currentState = agent.initializeSafe(
           messages.head.content,
           toolRegistry,
           systemPromptAddition = Some(completeSystemPrompt)
-        )
+        ) match {
+          case Right(state) => state
+          case Left(error) =>
+            throw new IllegalStateException(s"Failed to restore agent state: ${error.message}")
+        }
 
         messages.tail.foreach { msg =>
           currentState = currentState.addMessage(msg)

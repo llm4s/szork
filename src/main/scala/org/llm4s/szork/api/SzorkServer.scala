@@ -115,19 +115,26 @@ object SzorkServer extends cask.Main with cask.Routes {
 
   logger.info("=== Feature Availability ===")
   logger.info(s"LLM Text Generation: ${config.llmConfig.map(_.provider).getOrElse("Unavailable")}")
-  logger.info(
-    s"Images: ${if (imageRequested && imageKeysPresent) s"Enabled (${ImageProvider.toString(config.imageProvider)})"
+  logger.info(s"Images: ${
+      if (imageRequested && imageKeysPresent) s"Enabled (${ImageProvider.toString(config.imageProvider)})"
       else if (imageRequested) s"Disabled (missing credentials for ${ImageProvider.toString(config.imageProvider)})"
-      else "Disabled"}")
-  logger.info(s"Music: ${if (musicRequested && replicateKeyPresent) "Enabled (Replicate)"
-    else if (musicRequested) "Disabled (REPLICATE_API_KEY not set)"
-    else "Disabled (by config)"}")
-  logger.info(s"Speech-to-Text: ${if (sttRequested && openAIKeyPresent) "Enabled (OpenAI Whisper)"
-    else if (sttRequested) "Disabled (OPENAI_API_KEY not set)"
-    else "Disabled (by config)"}")
-  logger.info(s"Text-to-Speech: ${if (ttsRequested && openAIKeyPresent) "Enabled (OpenAI TTS)"
-    else if (ttsRequested) "Disabled (OPENAI_API_KEY not set)"
-    else "Disabled (by config)"}")
+      else "Disabled"
+    }")
+  logger.info(s"Music: ${
+      if (musicRequested && replicateKeyPresent) "Enabled (Replicate)"
+      else if (musicRequested) "Disabled (REPLICATE_API_KEY not set)"
+      else "Disabled (by config)"
+    }")
+  logger.info(s"Speech-to-Text: ${
+      if (sttRequested && openAIKeyPresent) "Enabled (OpenAI Whisper)"
+      else if (sttRequested) "Disabled (OPENAI_API_KEY not set)"
+      else "Disabled (by config)"
+    }")
+  logger.info(s"Text-to-Speech: ${
+      if (ttsRequested && openAIKeyPresent) "Enabled (OpenAI TTS)"
+      else if (ttsRequested) "Disabled (OPENAI_API_KEY not set)"
+      else "Disabled (by config)"
+    }")
   logger.info("===========================")
 
   @get("/api/feature-flags")

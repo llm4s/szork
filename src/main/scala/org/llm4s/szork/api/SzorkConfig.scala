@@ -129,7 +129,10 @@ object SzorkConfig {
     instance.llmConfig match {
       case Some(config) =>
         try
-          org.llm4s.llmconnect.LLMConnect.getClient(config.toProviderConfig).left.map(_.message)
+          org.llm4s.model.ModelRegistryService.default().left.map(_.message).flatMap { registry =>
+            given org.llm4s.model.ModelRegistryService = registry
+            org.llm4s.llmconnect.LLMConnect.getClient(config.toProviderConfig).left.map(_.message)
+          }
         catch {
           case e: Exception => Left(s"Failed to create LLM client: ${e.getMessage}")
         }
@@ -301,9 +304,10 @@ object SzorkConfig {
     def logConfiguration(logger: Logger): Unit = {
       logger.info("=== Szork Configuration ===")
       logger.info(s"Server: ${config.host}:${config.port}")
-      logger.info(
-        s"Image Generation: ${if (config.imageGenerationEnabled) s"Enabled (${ImageProvider.toString(config.imageProvider)})"
-          else "Disabled"}")
+      logger.info(s"Image Generation: ${
+          if (config.imageGenerationEnabled) s"Enabled (${ImageProvider.toString(config.imageProvider)})"
+          else "Disabled"
+        }")
       logger.info(s"LLM Provider: ${config.llmConfig.map(_.provider).getOrElse("Not configured")}")
       logger.info(s"TTS: ${if (config.ttsEnabled) "Enabled" else "Disabled"}")
       logger.info(s"STT: ${if (config.sttEnabled) "Enabled" else "Disabled"}")

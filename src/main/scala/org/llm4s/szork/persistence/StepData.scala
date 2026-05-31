@@ -153,7 +153,7 @@ object StepData {
       executionTimeMs = executionTimeMs
     )
 
-    val response = scene.map(SceneResponse)
+    val response = scene.map(SceneResponse.apply)
 
     StepData(
       metadata = metadata,

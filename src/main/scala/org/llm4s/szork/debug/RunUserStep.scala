@@ -143,7 +143,7 @@ object RunUserStep {
       }
 
       // Convert engine GameResponse to StepData GameResponse
-      val gameResponse: Option[GameResponse] = response.scene.map(SceneResponse)
+      val gameResponse: Option[GameResponse] = response.scene.map(SceneResponse.apply)
 
       // Create step data
       val stepData = StepData.commandStep(

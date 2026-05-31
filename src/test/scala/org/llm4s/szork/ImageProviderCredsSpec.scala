@@ -58,15 +58,13 @@ class ImageProviderCredsSpec extends AnyFunSuite with Matchers {
   }
 
   test("imageCredsAvailable is true for HuggingFace providers when any HF key is present") {
-    for (provider <- Seq(ImageProvider.HuggingFace, ImageProvider.HuggingFaceSDXL)) {
+    for (provider <- Seq(ImageProvider.HuggingFace, ImageProvider.HuggingFaceSDXL))
       ImageProvider.imageCredsAvailable(provider, FakeReader(Map("HF_API_KEY" -> "k"))) shouldBe true
-    }
   }
 
   test("imageCredsAvailable is false for HuggingFace providers when all HF keys are absent") {
-    for (provider <- Seq(ImageProvider.HuggingFace, ImageProvider.HuggingFaceSDXL)) {
+    for (provider <- Seq(ImageProvider.HuggingFace, ImageProvider.HuggingFaceSDXL))
       ImageProvider.imageCredsAvailable(provider, emptyReader) shouldBe false
-    }
   }
 
   test("imageCredsAvailable is false for HuggingFace providers when all HF keys are empty strings") {
@@ -76,9 +74,8 @@ class ImageProviderCredsSpec extends AnyFunSuite with Matchers {
         "HF_API_KEY" -> "",
         "HUGGINGFACE_TOKEN" -> ""
       ))
-    for (provider <- Seq(ImageProvider.HuggingFace, ImageProvider.HuggingFaceSDXL)) {
+    for (provider <- Seq(ImageProvider.HuggingFace, ImageProvider.HuggingFaceSDXL))
       ImageProvider.imageCredsAvailable(provider, reader) shouldBe false
-    }
   }
 
   test("imageCredsAvailable for OpenAI DALL-E providers is true iff OPENAI_API_KEY is non-empty") {

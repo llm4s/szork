@@ -47,9 +47,9 @@ object ImageProvider {
   def imageCredsAvailable(provider: ImageProvider, reader: ConfigReader = EnvLoader): Boolean =
     provider match {
       case HuggingFace | HuggingFaceSDXL => huggingFaceKey(reader).exists(_.nonEmpty)
-      case OpenAIDalle2 | OpenAIDalle3   => reader.get("OPENAI_API_KEY").exists(_.nonEmpty)
-      case LocalStableDiffusion          => true
-      case None                          => false
+      case OpenAIDalle2 | OpenAIDalle3 => reader.get("OPENAI_API_KEY").exists(_.nonEmpty)
+      case LocalStableDiffusion => true
+      case None => false
     }
 }
 
@@ -275,10 +275,8 @@ object SzorkConfig {
       }
 
       // Validate image provider configuration
-      if (
-        config.imageGenerationEnabled && config.imageProvider != ImageProvider.None
-        && !ImageProvider.imageCredsAvailable(config.imageProvider)
-      ) {
+      if (config.imageGenerationEnabled && config.imageProvider != ImageProvider.None
+        && !ImageProvider.imageCredsAvailable(config.imageProvider)) {
         config.imageProvider match {
           case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
             errors += "HuggingFace image provider selected but no API key found"

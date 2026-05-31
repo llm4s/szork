@@ -1,4 +1,4 @@
-ThisBuild / scalaVersion := "2.13.16"
+ThisBuild / scalaVersion := "3.7.1"
 ThisBuild / organization := "org.llm4s"
 ThisBuild / organizationName := "llm4s"
 
@@ -24,26 +24,20 @@ lazy val root = (project in file("."))
     reStartArgs := Seq(),
     Global / cancelable := true,
     
-    // Compiler options for Scala 2.13
+    // Compiler options for Scala 3
     scalacOptions ++= Seq(
       "-feature",
       "-unchecked",
       "-deprecation",
-      "-Wunused:nowarn",
-      "-Wunused:imports",
-      "-Wunused:privates",
-      "-Wunused:locals",
-      "-Wunused:patvars",
-      "-Wunused:params",
-      "-Wunused:linted",
+      "-source:3.3",
       // Suppress exhaustiveness warnings that are false positives with cask annotations
       "-Wconf:msg=match may not be exhaustive:s"
     ),
     
     // Dependencies
     libraryDependencies ++= Seq(
-      // Core LLM4S library
-      "org.llm4s" %% "core" % "0.2.5",
+      // Core LLM4S library (Scala 3 default build)
+      "org.llm4s" %% "core" % "0.3.2",
       
       // Cask for web server
       "com.lihaoyi" %% "cask" % "0.10.2",
@@ -57,7 +51,7 @@ lazy val root = (project in file("."))
       
       // LLM provider dependencies
       "com.azure"          % "azure-ai-openai" % "1.0.0-beta.16",
-      "com.anthropic"      % "anthropic-java"  % "2.2.0",
+      "com.anthropic"      % "anthropic-java"  % "2.11.1",
       "com.knuddels"       % "jtokkit"         % "1.1.0",
       
       // HTTP and WebSocket

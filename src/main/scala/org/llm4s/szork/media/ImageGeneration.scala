@@ -13,6 +13,17 @@ class ImageGeneration {
   private val config = SzorkConfig.instance
 
   // Configure image generation provider based on configuration
+  // LLM4S image client factories now return Either[ImageGenerationError, ImageGenerationClient].
+  // Unwrap into an Option, logging (and disabling images) on construction failure.
+  private def unwrapClient(result: Either[imagegeneration.ImageGenerationError, imagegeneration.ImageGenerationClient])
+    : Option[imagegeneration.ImageGenerationClient] =
+    result match {
+      case Right(client) => Some(client)
+      case Left(error) =>
+        logger.error(s"Failed to create image generation client: ${error.message}")
+        None
+    }
+
   private val (imageClientOpt, providerName) =
     if (!config.imageGenerationEnabled) {
       logger.info("Image generation is disabled")
@@ -37,7 +48,7 @@ class ImageGeneration {
             case _ => "runwayml/stable-diffusion-v1-5"
           }
           logger.info(s"Using HuggingFace for image generation with model: $model")
-          (Some(imagegeneration.ImageGeneration.huggingFaceClient(hfKey, model)), s"HuggingFace ($model)")
+          (unwrapClient(imagegeneration.ImageGeneration.huggingFaceClient(hfKey, model)), s"HuggingFace ($model)")
 
         case ImageProvider.OpenAIDalle3 =>
           val openAIKey = EnvLoader
@@ -46,7 +57,7 @@ class ImageGeneration {
               throw new IllegalStateException("Image provider set to OpenAI DALL-E 3 but OPENAI_API_KEY not found")
             )
           logger.info("Using OpenAI DALL-E 3 for image generation")
-          (Some(imagegeneration.ImageGeneration.openAIClient(openAIKey, "dall-e-3")), "OpenAI DALL-E 3")
+          (unwrapClient(imagegeneration.ImageGeneration.openAIClient(openAIKey, "dall-e-3")), "OpenAI DALL-E 3")
 
         case ImageProvider.OpenAIDalle2 =>
           val openAIKey = EnvLoader
@@ -55,7 +66,7 @@ class ImageGeneration {
               throw new IllegalStateException("Image provider set to OpenAI DALL-E 2 but OPENAI_API_KEY not found")
             )
           logger.info("Using OpenAI DALL-E 2 for image generation")
-          (Some(imagegeneration.ImageGeneration.openAIClient(openAIKey, "dall-e-2")), "OpenAI DALL-E 2")
+          (unwrapClient(imagegeneration.ImageGeneration.openAIClient(openAIKey, "dall-e-2")), "OpenAI DALL-E 2")
 
         case ImageProvider.LocalStableDiffusion =>
           val baseUrl = EnvLoader
@@ -67,7 +78,7 @@ class ImageGeneration {
             .orElse(EnvLoader.get("SD_API_KEY"))
           logger.info(s"Using Local Stable Diffusion for image generation at: $baseUrl")
           (
-            Some(imagegeneration.ImageGeneration.stableDiffusionClient(baseUrl, apiKey)),
+            unwrapClient(imagegeneration.ImageGeneration.stableDiffusionClient(baseUrl, apiKey)),
             s"Local Stable Diffusion ($baseUrl)")
       }
     }

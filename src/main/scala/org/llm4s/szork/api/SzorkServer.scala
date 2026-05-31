@@ -111,17 +111,7 @@ object SzorkServer extends cask.Main with cask.Routes {
   private val musicRequested = config.musicEnabled
 
   private val imageRequested = config.imageGenerationEnabled && config.imageProvider != ImageProvider.None
-  private val imageKeysPresent: Boolean = config.imageProvider match {
-    case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
-      EnvLoader
-        .get("HUGGINGFACE_API_KEY")
-        .orElse(EnvLoader.get("HF_API_KEY"))
-        .orElse(EnvLoader.get("HUGGINGFACE_TOKEN"))
-        .exists(_.nonEmpty)
-    case ImageProvider.OpenAIDalle2 | ImageProvider.OpenAIDalle3 => openAIKeyPresent
-    case ImageProvider.LocalStableDiffusion => true
-    case ImageProvider.None => false
-  }
+  private val imageKeysPresent: Boolean = ImageProvider.imageCredsAvailable(config.imageProvider)
 
   logger.info("=== Feature Availability ===")
   logger.info(s"LLM Text Generation: ${config.llmConfig.map(_.provider).getOrElse("Unavailable")}")
@@ -143,17 +133,7 @@ object SzorkServer extends cask.Main with cask.Routes {
   @get("/api/feature-flags")
   def featureFlags(): ujson.Value = {
     val imageRequested = config.imageGenerationEnabled && config.imageProvider != ImageProvider.None
-    val imageCreds = config.imageProvider match {
-      case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
-        EnvLoader
-          .get("HUGGINGFACE_API_KEY")
-          .orElse(EnvLoader.get("HF_API_KEY"))
-          .orElse(EnvLoader.get("HUGGINGFACE_TOKEN"))
-          .exists(_.nonEmpty)
-      case ImageProvider.OpenAIDalle2 | ImageProvider.OpenAIDalle3 => openAIKeyPresent
-      case ImageProvider.LocalStableDiffusion => true
-      case ImageProvider.None => false
-    }
+    val imageCreds = ImageProvider.imageCredsAvailable(config.imageProvider)
     ujson.Obj(
       "llm" -> ujson.Obj(
         "provider" -> config.llmConfig.map(_.provider).getOrElse(""),

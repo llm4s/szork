@@ -5,6 +5,7 @@ import org.llm4s.szork.error.ErrorHandling._
 import org.slf4j.{Logger, LoggerFactory}
 import requests._
 import org.llm4s.config.EnvLoader
+import org.llm4s.szork.api.MediaNetworkConfig
 import java.util.Base64
 import ujson._
 import java.io.ByteArrayOutputStream
@@ -12,6 +13,7 @@ import java.net.URI
 
 class MusicGeneration {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private val net = MediaNetworkConfig.instance
   private val replicateApiKey =
     EnvLoader.get("REPLICATE_API_KEY").filter(key => key.nonEmpty && !key.contains("YOUR_REPLICATE_API_KEY"))
 
@@ -212,8 +214,8 @@ class MusicGeneration {
             "classifier_free_guidance" -> mood.cfGuidance
           )
         ).toString,
-        readTimeout = 30000,
-        connectTimeout = 10000
+        readTimeout = net.readTimeoutMs,
+        connectTimeout = net.connectTimeoutMs
       )
 
       if (createResponse.statusCode != 201) {
@@ -274,8 +276,8 @@ class MusicGeneration {
       val response = get(
         s"https://api.replicate.com/v1/predictions/$predictionId",
         headers = Map("Authorization" -> s"Bearer ${replicateApiKey.get}"),
-        readTimeout = 30000,
-        connectTimeout = 10000
+        readTimeout = net.readTimeoutMs,
+        connectTimeout = net.connectTimeoutMs
       )
 
       if (response.statusCode == 200) {
@@ -322,8 +324,8 @@ class MusicGeneration {
       val url = uri.toURL()
       val connection = url.openConnection()
       try {
-        connection.setConnectTimeout(10000)
-        connection.setReadTimeout(30000)
+        connection.setConnectTimeout(net.connectTimeoutMs)
+        connection.setReadTimeout(net.readTimeoutMs)
       } catch { case _: Throwable => () }
       val inputStream = connection.getInputStream
 

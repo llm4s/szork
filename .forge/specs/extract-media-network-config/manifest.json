@@ -16,10 +16,10 @@
       "acceptanceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
       "status": "in_progress",
       "baseSha": "e91463acf1d9ad426f5a01a5e685d3bda9ee562c",
-      "prNumber": null,
+      "prNumber": 15,
       "mergeCommit": null,
       "mergedAt": null,
-      "attempts": 0
+      "attempts": 1
     }
   ]
 }

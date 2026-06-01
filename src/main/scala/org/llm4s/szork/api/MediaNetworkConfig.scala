@@ -5,8 +5,8 @@ import scala.util.Try
 
 /** Network timeouts shared by the media HTTP clients (TTS, STT, music).
   *
-  * Defaults equal the historical inline literals, so default behaviour is
-  * unchanged. Both values are env-overridable for per-deployment tuning.
+  * Defaults equal the historical inline literals, so default behaviour is unchanged. Both values are env-overridable
+  * for per-deployment tuning.
   */
 case class MediaNetworkConfig(
   connectTimeoutMs: Int = 10000,

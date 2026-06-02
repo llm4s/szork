@@ -2,6 +2,7 @@
 
 > Feature **extract-media-network-config** — base branch `main`,
 > branch prefix `forge`.
+> Design PR: #14
 
 ## Pieces
 
@@ -10,7 +11,7 @@
    <!-- forge:editable-summary p1 -->
    Add env-overridable MediaNetworkConfig and route the five duplicated connect/read timeout sites in TextToSpeech, SpeechToText, and MusicGeneration through it.
    <!-- /forge:editable-summary -->
-   <!-- forge:status p1 -->`pending`<!-- /forge:status -->
+   <!-- forge:status p1 -->`in progress`<!-- /forge:status -->
 
 <!-- forge:order-end -->
 

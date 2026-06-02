@@ -5,11 +5,13 @@ import org.llm4s.szork.error.ErrorHandling._
 import org.slf4j.{Logger, LoggerFactory}
 import requests._
 import org.llm4s.config.EnvLoader
+import org.llm4s.szork.api.MediaNetworkConfig
 import java.io.File
 import java.nio.file.Files
 
 class SpeechToText {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private val net = MediaNetworkConfig.instance
   private val apiKey = EnvLoader
     .get("OPENAI_API_KEY")
     .getOrElse(
@@ -29,8 +31,8 @@ class SpeechToText {
           MultiItem("file", audioFile, audioFile.getName),
           MultiItem("model", "whisper-1")
         ),
-        readTimeout = 30000,
-        connectTimeout = 10000
+        readTimeout = net.readTimeoutMs,
+        connectTimeout = net.connectTimeoutMs
       )
 
       if (response.statusCode == 200) {

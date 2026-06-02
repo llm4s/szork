@@ -6,9 +6,11 @@ import org.llm4s.config.EnvLoader
 import java.util.Base64
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.api.MediaNetworkConfig
 
 class TextToSpeech {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private val net = MediaNetworkConfig.instance
   private val apiKey = EnvLoader
     .get("OPENAI_API_KEY")
     .getOrElse(
@@ -34,8 +36,8 @@ class TextToSpeech {
             "response_format" -> "mp3"
           )
           .toString,
-        readTimeout = 30000,
-        connectTimeout = 10000
+        readTimeout = net.readTimeoutMs,
+        connectTimeout = net.connectTimeoutMs
       )
 
       if (response.statusCode == 200) {

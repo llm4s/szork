@@ -6,6 +6,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import requests._
 import org.llm4s.config.EnvLoader
 import org.llm4s.szork.api.MediaNetworkConfig
+import org.llm4s.szork.api.MusicPollConfig
 import java.util.Base64
 import ujson._
 import java.io.ByteArrayOutputStream
@@ -265,7 +266,9 @@ class MusicGeneration {
     }
   }
 
-  private def pollPrediction(predictionId: String, maxAttempts: Int = 30): SzorkResult[String] = {
+  private def pollPrediction(
+    predictionId: String,
+    maxAttempts: Int = MusicPollConfig.instance.maxAttempts): SzorkResult[String] = {
     if (!isAvailable) {
       return Left(ConfigurationError("Music generation not available - REPLICATE_API_KEY not configured"))
     }
@@ -298,7 +301,7 @@ class MusicGeneration {
             return Left(MusicGenerationError(s"Generation failed: $error", retryable = false))
 
           case "processing" | "starting" =>
-            Thread.sleep(1000) // Wait 1 second before polling again
+            Thread.sleep(MusicPollConfig.instance.pollIntervalMs) // Wait before polling again
             attempts += 1
 
           case _ =>

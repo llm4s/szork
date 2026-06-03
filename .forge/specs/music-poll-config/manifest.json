@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "featureId": "music-poll-config",
+  "title": "music-poll-config",
+  "baseBranch": "main",
+  "branchPrefix": "forge",
+  "mode": "claude-driver",
+  "designPr": null,
+  "pieces": [
+    {
+      "id": "p1",
+      "order": 1,
+      "title": "Add MusicPollConfig and route pollPrediction through it",
+      "summary": "Introduce env-overridable MusicPollConfig, route MusicGeneration.pollPrediction through it, and add MusicPollConfigSpec.",
+      "specPath": "pieces/p1.md",
+      "acceptanceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "status": "pending",
+      "baseSha": null,
+      "prNumber": null,
+      "mergeCommit": null,
+      "mergedAt": null,
+      "attempts": 0
+    }
+  ]
+}

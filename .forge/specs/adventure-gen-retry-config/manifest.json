@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "featureId": "adventure-gen-retry-config",
+  "title": "Adventure-gen retry config",
+  "baseBranch": "main",
+  "branchPrefix": "forge",
+  "mode": "claude-driver",
+  "designPr": null,
+  "pieces": [
+    {
+      "id": "p1",
+      "order": 1,
+      "title": "Extract adventure-gen retry/back-off into AdventureGenConfig",
+      "summary": "Add an env-overridable AdventureGenConfig mirroring MusicPollConfig and rewire AdventureGenerator to use it.",
+      "specPath": "pieces/p1.md",
+      "acceptanceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "status": "pending",
+      "baseSha": null,
+      "prNumber": null,
+      "mergeCommit": null,
+      "mergedAt": null,
+      "attempts": 0
+    }
+  ]
+}

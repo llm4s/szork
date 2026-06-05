@@ -16,10 +16,14 @@ case class AdventureGenConfig(
 object AdventureGenConfig {
   lazy val instance: AdventureGenConfig = load()
 
-  /** Loads the adventure-generation retry configuration from the environment, falling back to the historical inline defaults when an override is absent or unparseable.
+  /** Loads the adventure-generation retry configuration from the environment, falling back to the historical inline
+    * defaults when an override is absent or unparseable.
     *
-    * @param reader the configuration source to read environment overrides from; defaults to the process environment loader
-    * @return a fully-resolved AdventureGenConfig whose fields equal the environment overrides where present and the historical defaults otherwise
+    * @param reader
+    *   the configuration source to read environment overrides from; defaults to the process environment loader
+    * @return
+    *   a fully-resolved AdventureGenConfig whose fields equal the environment overrides where present and the
+    *   historical defaults otherwise
     */
   def load(reader: ConfigReader = EnvLoader): AdventureGenConfig = {
     val defaults = AdventureGenConfig()

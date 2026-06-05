@@ -29,9 +29,23 @@ exactly on the existing `org.llm4s.szork.api.MusicPollConfig`
   - `lazy val instance: AdventureGenConfig = load()`
   - `def load(reader: ConfigReader = EnvLoader): AdventureGenConfig` that
     reads each value from an environment override, falling back to the
-    default when the override is absent or unparseable (using the same
-    `reader.get(...).flatMap(v => Try(v.toInt).toOption).getOrElse(default)`
-    pattern as `MusicPollConfig`).
+    default when the override is absent, unparseable, **or negative**. It
+    follows the `MusicPollConfig` pattern with an added non-negativity
+    guard:
+    `reader.get(...).flatMap(v => Try(v.toInt).toOption).filter(_ >= 0).getOrElse(default)`.
+
+### Input validation
+
+A syntactically valid but negative override would silently break
+generation rather than tune it: a negative `maxRetries` makes the
+`while (attempt <= maxRetries)` loop never enter (no generation attempt at
+all), and a negative `retryBackoffMs` throws `IllegalArgumentException`
+from `Thread.sleep(...)` after the first retryable failure. To keep an
+invalid env value from taking down a deployment, `load` treats a negative
+override the same as an absent/unparseable one and falls back to the
+historical default. Zero is permitted for both fields (`maxRetries = 0`
+means a single attempt with no retries; `retryBackoffMs = 0` means no
+back-off pause), so the guard is `_ >= 0`, not `_ > 0`.
 
 Environment overrides:
 
@@ -71,6 +85,8 @@ change confined to the `game` and `api` packages as required by the brief.
 - No change to the retry/parse logic itself, the LLM prompt, or any other
   behaviour of `AdventureGenerator`.
 - No new config keys beyond the two named above.
+- No clamping or coercion of negative overrides to a nearby valid value;
+  negative inputs simply fall back to the historical default.
 - No changes outside the `game` and `api` packages.
 - No broader configuration framework or refactor of `MusicPollConfig`.
 

@@ -5,7 +5,7 @@
   "baseBranch": "main",
   "branchPrefix": "forge",
   "mode": "claude-driver",
-  "designPr": null,
+  "designPr": 18,
   "pieces": [
     {
       "id": "p1",
@@ -14,8 +14,8 @@
       "summary": "Add an env-overridable AdventureGenConfig mirroring MusicPollConfig and rewire AdventureGenerator to use it.",
       "specPath": "pieces/p1.md",
       "acceptanceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-      "status": "pending",
-      "baseSha": null,
+      "status": "in_progress",
+      "baseSha": "faa363509cfe30e69f27b25ab56c99899d4bdd6e",
       "prNumber": null,
       "mergeCommit": null,
       "mergedAt": null,

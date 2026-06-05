@@ -2,6 +2,7 @@
 
 > Feature **adventure-gen-retry-config** — base branch `main`,
 > branch prefix `forge`.
+> Design PR: #18
 
 ## Pieces
 
@@ -10,7 +11,7 @@
    <!-- forge:editable-summary p1 -->
    Add an env-overridable AdventureGenConfig mirroring MusicPollConfig and rewire AdventureGenerator to use it.
    <!-- /forge:editable-summary -->
-   <!-- forge:status p1 -->`pending`<!-- /forge:status -->
+   <!-- forge:status p1 -->`in progress`<!-- /forge:status -->
 
 <!-- forge:order-end -->
 

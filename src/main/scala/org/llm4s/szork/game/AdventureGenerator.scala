@@ -1,5 +1,6 @@
 package org.llm4s.szork.game
 
+import org.llm4s.szork.api.AdventureGenConfig
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.llmconnect.LLMClient
@@ -193,13 +194,13 @@ object AdventureGenerator {
     )
 
     // Retry logic for better reliability
-    val maxRetries = 2
+    val config = AdventureGenConfig.instance
     var attempt = 0
     var lastError: Option[SzorkError] = None
 
-    while (attempt <= maxRetries) {
+    while (attempt <= config.maxRetries) {
       attempt += 1
-      logger.info(s"Adventure generation attempt $attempt of ${maxRetries + 1}")
+      logger.info(s"Adventure generation attempt $attempt of ${config.maxRetries + 1}")
 
       client.complete(Conversation(messages)) match {
         case Right(completion) =>
@@ -211,19 +212,19 @@ object AdventureGenerator {
             case Left(error) =>
               logger.warn(s"Attempt $attempt failed to parse outline: ${error.message}")
               lastError = Some(error)
-              if (attempt > maxRetries) {
+              if (attempt > config.maxRetries) {
                 return Left(error)
               }
               // Wait a bit before retrying
-              Thread.sleep(500)
+              Thread.sleep(config.retryBackoffMs.toLong)
           }
         case Left(error) =>
           logger.error(s"Attempt $attempt failed to call LLM: $error")
           lastError = Some(LLMError(s"Failed to generate adventure outline: $error", retryable = true))
-          if (attempt > maxRetries) {
+          if (attempt > config.maxRetries) {
             return Left(lastError.get)
           }
-          Thread.sleep(500)
+          Thread.sleep(config.retryBackoffMs.toLong)
       }
     }
 

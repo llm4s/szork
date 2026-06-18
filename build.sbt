@@ -1,4 +1,4 @@
-ThisBuild / scalaVersion := "3.7.1"
+ThisBuild / scalaVersion := "3.8.4"
 ThisBuild / organization := "org.llm4s"
 ThisBuild / organizationName := "llm4s"
 
@@ -40,14 +40,14 @@ lazy val root = (project in file("."))
       "org.llm4s" %% "core" % "0.3.2",
       
       // Cask for web server
-      "com.lihaoyi" %% "cask" % "0.10.2",
+      "com.lihaoyi" %% "cask" % "0.11.3",
       
       // Core dependencies
       "org.typelevel" %% "cats-core"       % "2.13.0",
-      "com.lihaoyi"   %% "upickle"         % "4.2.1",
-      "ch.qos.logback" % "logback-classic" % "1.5.18",
-      "io.github.cdimascio"           %  "dotenv-java"     % "3.0.0",
-      "org.slf4j"      % "log4j-over-slf4j" % "2.0.16",
+      "com.lihaoyi"   %% "upickle"         % "4.4.3",
+      "ch.qos.logback" % "logback-classic" % "1.5.34",
+      "io.github.cdimascio"           %  "dotenv-java"     % "3.2.0",
+      "org.slf4j"      % "log4j-over-slf4j" % "2.0.18",
       
       // LLM provider dependencies
       "com.azure"          % "azure-ai-openai" % "1.0.0-beta.16",
@@ -57,7 +57,7 @@ lazy val root = (project in file("."))
       // HTTP and WebSocket
       "com.lihaoyi"       %% "requests"        % "0.9.0",
       "org.java-websocket" % "Java-WebSocket"  % "1.6.0",
-      "com.lihaoyi"                   %% "ujson" % "4.2.1",
+      "com.lihaoyi"                   %% "ujson" % "4.4.3",
       
       // Document processing (none currently needed)
       // Environment configuration (already added above)

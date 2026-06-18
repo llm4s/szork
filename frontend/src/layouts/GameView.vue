@@ -146,7 +146,7 @@
                   <div v-if="message.scene && message.scene.exits && message.scene.exits.length > 0" class="exits-info">
                     <strong>Exits:</strong> 
                     <span v-for="(exit, index) in message.scene.exits" :key="index">
-                      {{ exit.direction }}<span v-if="exit.description"> ({{ exit.description }})</span><span v-if="index < message.scene.exits.length - 1">, </span>
+                      {{ exit.direction }}<span v-if="exit.description"> ({{ exit.description }})</span><span v-if="Number(index) < message.scene.exits.length - 1">, </span>
                     </span>
                   </div>
                 </div>

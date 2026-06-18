@@ -12,7 +12,7 @@ if ! sbt scalafmtCheckAll; then
 fi
 
 echo "Running compile check with fatal warnings..."
-if ! sbt 'set ThisBuild / scalacOptions += "-Xfatal-warnings"' compile; then
+if ! sbt 'set ThisBuild / scalacOptions += "-Werror"' compile; then
     echo ""
     echo "ERROR: Compilation failed or has warnings."
     echo "Fix all compiler warnings before committing."

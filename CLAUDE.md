@@ -45,7 +45,8 @@ npm run format    # Format code
 Copy `.env` file with required API keys:
 - `OPENAI_API_KEY` - For GPT-4, DALL-E, Whisper
 - `ANTHROPIC_API_KEY` - For Claude models  
-- `LLM_MODEL` - Specify model (e.g., "openai/gpt-4o")
+- `SZORK_LLM_PROVIDER` - `openai`, `anthropic` or `ollama`: a named section of `llm4s.providers` in `src/main/resources/application.conf`
+- `SZORK_LLM_MODEL` - Override that section's model (e.g., "gpt-4o"). llm4s 0.5 no longer reads `LLM_MODEL`
 
 ## Architecture Overview
 
@@ -137,8 +138,8 @@ Copy `.env` file with required API keys:
 - **File Watching**: Auto-restart on Scala file changes
 
 ### LLM Configuration  
-- **Provider**: OpenAI or Anthropic via LLM4S
-- **Model**: Configurable via `LLM_MODEL` environment variable
+- **Provider**: OpenAI, Anthropic or Ollama via LLM4S 0.5.1 (`llm4s-core` plus the `llm4s-openai`, `llm4s-anthropic`, `llm4s-ollama`, `llm4s-agent` and `llm4s-image` modules)
+- **Model**: Named provider sections in `src/main/resources/application.conf`; `SZORK_LLM_PROVIDER` picks one, `SZORK_LLM_MODEL` overrides its model
 - **Tools**: Inventory management, structured response generation
 - **Streaming**: Support for real-time text generation
 

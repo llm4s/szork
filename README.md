@@ -31,13 +31,13 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Java 17+
-- Scala 2.13
-- sbt 1.8+
+- JDK 21 (required by llm4s 0.5)
+- sbt 1.10+ (Scala 3.8 is fetched by sbt)
 - Node.js 18+ (for frontend)
 - API Keys for:
   - OpenAI (GPT-4 for DM, DALL-E for images, Whisper for speech)
   - OR Anthropic (Claude for DM)
+  - OR a local [Ollama](https://ollama.com) server with a tool-capable model (`ollama pull llama3.1`)
 
 ### Environment Setup
 
@@ -47,6 +47,35 @@ Copy `.env.example` to `.env` and fill in your local values. Never commit `.env`
 cp .env.example .env
 # Edit .env and add your keys (OPENAI_API_KEY/ANTHROPIC_API_KEY, etc.)
 ```
+
+### LLM configuration
+
+Szork uses [llm4s](https://github.com/llm4s/llm4s) 0.5.1. Each LLM provider is a named section of
+`llm4s.providers` in `src/main/resources/application.conf`:
+
+```hocon
+llm4s.providers {
+  openai    { provider = "openai",    model = "gpt-4o",            apiKey = ${?OPENAI_API_KEY} }
+  anthropic { provider = "anthropic", model = "claude-sonnet-4-5", apiKey = ${?ANTHROPIC_API_KEY} }
+  ollama    { provider = "ollama",    model = "llama3.1",          baseUrl = "http://localhost:11434" }
+}
+```
+
+`SZORK_LLM_PROVIDER` (`openai`, `anthropic` or `ollama`) selects a section; when unset, the first provider
+whose key (or `LLAMA_BASE_URL`) is present is used. `SZORK_LLM_MODEL` overrides the selected section's model.
+Values from `.env` reach these `${?VAR}` bindings too.
+
+### Upgrading from llm4s 0.3.2
+
+- Dependencies moved from `"org.llm4s" %% "core" % "0.3.2"` to the split 0.5.1 artifacts: `llm4s-core`,
+  `llm4s-agent`, `llm4s-image` and the provider modules `llm4s-openai`, `llm4s-anthropic` and `llm4s-ollama`
+  (all on one `llm4sVersion`). The direct Azure OpenAI, Anthropic SDK and jtokkit dependencies are gone; the
+  provider modules bring what they need.
+- The hand-built `OpenAIConfig`/`AnthropicConfig` in `SzorkConfig` are replaced by named provider sections in
+  `application.conf`, loaded with `Llm4sConfig.provider(name)`. `SZORK_LLM_PROVIDER=llama` now uses the native
+  Ollama provider instead of Ollama's OpenAI-compatible endpoint.
+- The unused `StreamingAgent` subclass was removed; the game drives the llm4s `Agent` directly.
+- See the llm4s [0.4.1 to 0.5.0 upgrade guide](https://github.com/llm4s/llm4s/blob/main/docs/migrations/0-4-1-to-0-5-0.md).
 
 ### Running the Game
 
@@ -87,8 +116,8 @@ See `frontend/src/types/WebSocketProtocol.ts` for the client protocol and `src/m
 ## 🏗️ Architecture
 
 ### Technology Stack
-- **Backend**: Scala 2.13 with Cask web framework
-- **AI Integration**: LLM4S library for LLM orchestration
+- **Backend**: Scala 3 with Cask web framework
+- **AI Integration**: LLM4S 0.5.1 for LLM orchestration
 - **Frontend**: Vue 3 + Vuetify 3 + TypeScript
 - **Real-time**: WebSockets for streaming responses
 - **Build Tool**: sbt with hot reload support
@@ -100,7 +129,6 @@ szork/
 ├── src/main/scala/org/llm4s/szork/
 │   ├── SzorkServer.scala         # Main server with all endpoints
 │   ├── GameEngine.scala          # Core game logic and LLM integration
-│   ├── StreamingAgent.scala      # Streaming LLM responses
 │   ├── GameTools.scala           # Tool definitions for the AI agent
 │   ├── ImageGeneration.scala     # AI image generation
 │   ├── TextToSpeech.scala        # TTS integration

@@ -118,7 +118,7 @@ object RunUserStep {
             narrationText = s"ERROR: ${error.message}",
             response = None,
             toolCalls = Nil,
-            agentMessages = engine.getState.conversation.messages.toList,
+            agentMessages = engine.getMessages.toList,
             executionTimeMs = executionTime,
             success = false,
             error = Some(error.message)
@@ -136,7 +136,7 @@ object RunUserStep {
       val executionTime = System.currentTimeMillis() - startTime
 
       // Extract tool calls from the agent conversation
-      val allMessages = engine.getState.conversation.messages
+      val allMessages = engine.getMessages
       val toolCalls = DebugHelpers.extractToolCalls(allMessages)
       if (toolCalls.nonEmpty) {
         println(s"✓ Detected ${toolCalls.length} tool call(s)")

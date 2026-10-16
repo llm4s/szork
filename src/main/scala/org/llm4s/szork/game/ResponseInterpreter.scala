@@ -44,7 +44,7 @@ object ResponseInterpreter {
   def extractLastAssistantResponse(messages: Seq[Message]): String =
     messages.reverse
       .collectFirst {
-        case AssistantMessage(Some(content), _) if content != null && content.nonEmpty => content
+        case a: AssistantMessage if a.contentOpt.exists(c => c != null && c.nonEmpty) => a.content
       }
       .getOrElse("")
 
@@ -54,7 +54,7 @@ object ResponseInterpreter {
   def extractAssistantResponses(messages: Seq[Message]): String =
     messages
       .collect {
-        case AssistantMessage(Some(content), _) if content != null && content.nonEmpty => content
+        case a: AssistantMessage if a.contentOpt.exists(c => c != null && c.nonEmpty) => a.content
       }
       .mkString("\n\n")
 }

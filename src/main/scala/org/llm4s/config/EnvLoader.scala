@@ -51,6 +51,25 @@ object EnvLoader extends ConfigReader {
 
   logger.info(s"Environment variables loaded")
 
+  /** Makes `.env` entries visible to the `${?VAR}` bindings in application.conf.
+    *
+    * llm4s reads its configuration with Typesafe Config, which resolves `${?VAR}` from the merged config (system
+    * properties included) and then the process environment. A `.env` file is neither, so each of its entries that the
+    * environment and system properties do not already set is copied into a system property, and Typesafe Config's cache
+    * is cleared so the next load sees them. Call before the first llm4s configuration load.
+    */
+  def exportToSystemProperties(): Unit = {
+    import scala.jdk.CollectionConverters._
+    val exported = dotenv
+      .entries(Dotenv.Filter.DECLARED_IN_ENV_FILE)
+      .asScala
+      .toList
+      .filter(e => System.getenv(e.getKey) == null && System.getProperty(e.getKey) == null)
+    exported.foreach(e => System.setProperty(e.getKey, e.getValue))
+    if (exported.nonEmpty) com.typesafe.config.ConfigFactory.invalidateCaches()
+    logger.info(s"Exported ${exported.size} .env entries for llm4s configuration")
+  }
+
   def get(key: String): Option[String] =
     Option(dotenv.get(key))
 

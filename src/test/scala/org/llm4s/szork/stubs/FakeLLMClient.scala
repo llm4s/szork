@@ -9,7 +9,7 @@ import org.llm4s.error.LLMError
   */
 class FakeLLMClient extends LLMClient {
   private def replyFor(conversation: Conversation): Completion = {
-    val lastUser = conversation.messages.reverse.collectFirst { case UserMessage(c) => c }.getOrElse("")
+    val lastUser = conversation.messages.reverse.collectFirst { case u: UserMessage => u.content }.getOrElse("")
     val (narration, json) =
       if (lastUser
           .toLowerCase()

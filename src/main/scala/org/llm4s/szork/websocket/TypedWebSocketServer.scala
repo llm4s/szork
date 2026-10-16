@@ -417,7 +417,7 @@ class TypedWebSocketServer(
                   narrationText = initialMessage,
                   scene = initialScene,
                   outline = adventureOutline,
-                  agentMessages = engine.getState.conversation.messages.toList,
+                  agentMessages = engine.getMessages.toList,
                   executionTimeMs = 0L
                 )
                 logger.info(s"[SAVE-STEP] Created step data with outline title: ${stepData.outline.map(_.title)}")

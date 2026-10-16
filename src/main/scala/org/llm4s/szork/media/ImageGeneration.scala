@@ -13,9 +13,9 @@ class ImageGeneration {
   private val config = SzorkConfig.instance
 
   // Configure image generation provider based on configuration
-  // LLM4S image client factories now return Either[ImageGenerationError, ImageGenerationClient].
+  // LLM4S image client factories return Result[ImageGenerationClient] (Either[LLMError, _]).
   // Unwrap into an Option, logging (and disabling images) on construction failure.
-  private def unwrapClient(result: Either[imagegeneration.ImageGenerationError, imagegeneration.ImageGenerationClient])
+  private def unwrapClient(result: org.llm4s.types.Result[imagegeneration.ImageGenerationClient])
     : Option[imagegeneration.ImageGenerationClient] =
     result match {
       case Right(client) => Some(client)
@@ -124,7 +124,7 @@ class ImageGeneration {
         // Configure options for image generation
         val options = ImageGenerationOptions(
           size = ImageSize.Square512, // 512x512 for good quality with reasonable file size
-          format = ImageFormat.PNG
+          format = org.llm4s.media.MediaType.Png
         )
 
         // Use LLM4S image generation

@@ -1,9 +1,12 @@
 package org.llm4s.szork.game
 
-import org.llm4s.agent.{Agent, AgentContext, AgentState, AgentStatus}
+import org.llm4s.agent.{Agent, AgentResult}
+import org.llm4s.agent.events.AgentEvents
+import org.llm4s.agent.graph.{RunConfig, ThreadId}
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{Message, UserMessage, AssistantMessage, SystemMessage, ToolMessage, ToolCall}
 import org.llm4s.toolapi.ToolRegistry
+import org.llm4s.types.Result
 import org.slf4j.LoggerFactory
 import org.llm4s.szork.core.{CoreEngine, CoreState}
 import org.llm4s.szork.spi.{Clock, SystemClock, TTSClient, ImageClient, MusicClient}
@@ -13,7 +16,7 @@ import org.llm4s.szork.debug.DebugHelpers
 import org.llm4s.szork.api.{GameTheme, ArtStyle}
 import org.llm4s.szork.media.{MediaPlanner, TextToSpeech}
 import org.llm4s.szork.persistence.{StepData, GameState, MediaCacheEntry, StepMetadata}
-import org.llm4s.szork.streaming.{StreamingAgent, StreamingTextParser}
+import org.llm4s.szork.streaming.StreamingTextParser
 
 /** Core game engine managing AI-driven text adventure gameplay.
   *
@@ -58,9 +61,17 @@ class GameEngine(
   private val artStyleDescription = PromptBuilder.artStyleDescription(artStyle)
   private val completeSystemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, adventureOutline)
   private val toolRegistry = new ToolRegistry(GameTools.allTools)
-  private val agent = new Agent(llmClient)
 
-  private var currentState: AgentState = _
+  // The Dungeon Master: an llm4s Agent running the model/tool loop with the game's system prompt. One agent answers
+  // whole turns; the other streams the answer's text as it is generated.
+  private var agent: Result[Agent] =
+    GameEngine.buildAgent(llmClient, toolRegistry, completeSystemPrompt, streaming = false)
+  private var streamingAgent: Result[Agent] =
+    GameEngine.buildAgent(llmClient, toolRegistry, completeSystemPrompt, streaming = true)
+
+  // The conversation so far (without the system prompt). Each turn runs on a fresh agent thread seeded with this
+  // history, so save/load is just this list.
+  private var messages: Vector[Message] = Vector.empty
   private var coreState: CoreState = CoreState()
   private var lastValidationIssues: Option[List[String]] = None
   private val createdAt: Long = clock.now()
@@ -86,28 +97,12 @@ class GameEngine(
     // Use init adventure prompt as the trigger message (not shown to user)
     val initPrompt = GameConstants.Prompts.INIT_ADVENTURE
 
-    // Initialize the agent with the complete system prompt including adventure outline
-    currentState = agent.initializeSafe(
-      initPrompt,
-      toolRegistry,
-      systemPromptAddition = Some(completeSystemPrompt)
-    ) match {
-      case Right(state) => state
-      case Left(error) =>
-        val szorkError = AIError(s"Failed to initialize game: ${error.message}", llmError = Some(error))
-        Logging.logError(s"[$sessionId] Initialize game")(Left(szorkError))
-        return Left(szorkError)
-    }
-
-    // Track the initialization message (but don't show to user)
-    // This ensures the agent knows to generate the opening scene
-
-    // Automatically run the initial scene generation
-    agent.run(currentState, maxSteps = None, AgentContext(debug = true)) match {
-      case Right(newState) =>
-        currentState = newState
+    // Run the opening turn: the agent generates the first scene from the init prompt
+    messages = Vector.empty
+    runTurn(initPrompt, onText = None) match {
+      case Right(result) =>
         // Extract the last textual response from the agent
-        val responseContent = ResponseInterpreter.extractLastAssistantResponse(newState.conversation.messages)
+        val responseContent = ResponseInterpreter.extractLastAssistantResponse(result.messages)
 
         // Try to parse as structured data
         val (dataOpt, issuesOpt) = ResponseInterpreter.parseToOption(responseContent)
@@ -171,34 +166,29 @@ class GameEngine(
     // Track user command in conversation history (pure core state)
     coreState = CoreEngine.trackUser(coreState, command)
 
-    // Track message count before adding user message
-    val previousMessageCount = currentState.conversation.messages.length
-
-    // Add user message to conversation
-    currentState = currentState
-      .addMessage(UserMessage(content = command))
-      .withStatus(AgentStatus.InProgress)
+    // Track message count before the turn
+    val previousMessageCount = messages.length
 
     // Run the agent
     val textStartTime = System.currentTimeMillis()
     logger.debug(s"[$sessionId] Starting text generation for command: $command")
 
-    agent.run(currentState, maxSteps = None, AgentContext(debug = true)) match {
-      case Right(newState) =>
+    runTurn(command, onText = None) match {
+      case Right(result) =>
         // Get only the new messages added by the agent
         val newMessages =
-          newState.conversation.messages.drop(previousMessageCount + 1) // +1 to skip the user message we just added
+          result.messages.drop(previousMessageCount + 1) // +1 to skip the user message of this turn
         val response = ResponseInterpreter.extractAssistantResponses(newMessages)
 
         // Debug: LLM response summary
         logger.debug(s"LLM response (truncated) for '$command': ${response.take(200)}")
         newMessages.foreach {
-          case AssistantMessage(content, toolCalls) =>
-            val preview = content.filter(_ != null).map(_.take(200))
+          case a: AssistantMessage =>
+            val preview = a.contentOpt.filter(_ != null).map(_.take(200))
             logger.debug(s"Assistant content: $preview")
-            logger.debug(s"Assistant tool calls: ${toolCalls.map(_.name)}")
-          case ToolMessage(toolCallId, content) =>
-            logger.debug(s"Tool message id=$toolCallId content=${content.take(200)}")
+            logger.debug(s"Assistant tool calls: ${a.toolCalls.map(_.name)}")
+          case t: ToolMessage =>
+            logger.debug(s"Tool message id=${t.toolCallId} content=${t.content.take(200)}")
           case msg =>
             logger.debug(s"Other message type: ${msg.getClass.getSimpleName}")
         }
@@ -206,8 +196,6 @@ class GameEngine(
 
         val assistantMessageCount = newMessages.count(_.isInstanceOf[AssistantMessage])
         logger.debug(s"Agent added ${newMessages.length} messages, $assistantMessageCount are assistant messages")
-
-        currentState = newState
 
         val textGenerationTime = System.currentTimeMillis() - textStartTime
         logger.debug(s"[$sessionId] Text generation completed in ${textGenerationTime}ms (${response.length} chars)")
@@ -296,15 +284,9 @@ class GameEngine(
     // Track user command in conversation history
     coreState = CoreEngine.trackUser(coreState, command)
 
-    // Create streaming agent and text parser
-    val streamingAgent = new StreamingAgent(llmClient)
+    // Text parser for the streamed answer
     val accumulatedText = new StringBuilder()
     val textParser = new StreamingTextParser()
-
-    // Add user message to conversation
-    currentState = currentState
-      .addMessage(UserMessage(content = command))
-      .withStatus(AgentStatus.InProgress)
 
     // Run the agent with streaming
     val textStartTime = System.currentTimeMillis()
@@ -312,9 +294,9 @@ class GameEngine(
 
     var chunkCount = 0
     var narrativeChunkCount = 0
-    streamingAgent.runStreaming(
-      currentState,
-      chunk => {
+    runTurn(
+      command,
+      onText = Some { chunk =>
         // Process the JSON chunk to extract narration text
         chunkCount += 1
         accumulatedText.append(chunk)
@@ -333,8 +315,7 @@ class GameEngine(
         }
       }
     ) match {
-      case Right(newState) =>
-        currentState = newState
+      case Right(_) =>
         val responseText = accumulatedText.toString
 
         // TEMPORARY: Log complete LLM response to console for debugging
@@ -413,10 +394,36 @@ class GameEngine(
   }
 
   /** Returns the current count of messages in the conversation history. */
-  def getMessageCount: Int = currentState.conversation.messages.length
+  def getMessageCount: Int = messages.length
 
-  /** Returns the current agent state with full conversation history. */
-  def getState: AgentState = currentState
+  /** Returns the full conversation history (without the system prompt). */
+  def getMessages: List[Message] = messages.toList
+
+  /** Runs one turn of the Dungeon Master on a fresh agent thread seeded with the conversation so far, streaming the
+    * answer's text to `onText` when given. On success the conversation becomes the thread's history at the turn's end.
+    */
+  private def runTurn(query: String, onText: Option[String => Unit]): Result[AgentResult] = {
+    val threadId = ThreadId(java.util.UUID.randomUUID().toString)
+    val config = RunConfig()
+    val history = messages.filter { case _: SystemMessage => false; case _ => true }
+    val chosen = if (onText.isDefined) streamingAgent else agent
+    chosen.flatMap { dm =>
+      val outcome = onText match {
+        case None => dm.run(threadId, query, config, history)
+        case Some(emit) =>
+          dm.stream(threadId, query, config, history) {
+            case AgentEvents.TextDelta(delta) => emit(delta.text)
+            case _ => ()
+          }.flatMap(_.await())
+      }
+      dm.forget(threadId, config): Unit
+      outcome.map { result =>
+        logger.debug(s"[$sessionId] Agent turn ended: ${result.status.productPrefix}, ${result.messages.size} messages")
+        messages = result.messages
+        result
+      }
+    }
+  }
 
   /** Retrieves and clears any validation issues from the last response parsing.
     *
@@ -572,16 +579,16 @@ class GameEngine(
   // Helper to convert Message to JSON for persistence
   private def messageToJson(message: Message): ujson.Value =
     message match {
-      case UserMessage(content) =>
+      case u: UserMessage =>
         ujson.Obj(
           "type" -> "user",
-          "content" -> content
+          "content" -> u.content
         )
-      case AssistantMessage(contentOpt, toolCalls) =>
+      case a: AssistantMessage =>
         ujson.Obj(
           "type" -> "assistant",
-          "content" -> contentOpt.map(ujson.Str(_)).getOrElse(ujson.Null),
-          "toolCalls" -> toolCalls.map(tc =>
+          "content" -> a.contentOpt.map(ujson.Str(_)).getOrElse(ujson.Null),
+          "toolCalls" -> a.toolCalls.map(tc =>
             ujson.Obj(
               "id" -> tc.id,
               "name" -> tc.name,
@@ -593,11 +600,11 @@ class GameEngine(
           "type" -> "system",
           "content" -> content
         )
-      case ToolMessage(toolCallId, content) =>
+      case t: ToolMessage =>
         ujson.Obj(
           "type" -> "tool",
-          "toolCallId" -> toolCallId,
-          "content" -> content
+          "toolCallId" -> t.toolCallId,
+          "content" -> t.content
         )
     }
 
@@ -618,11 +625,7 @@ class GameEngine(
     val currentSessionTime = clock.now() - sessionStartTime
 
     // Convert all agent messages to JSON for complete state persistence
-    val agentMessagesJson = if (currentState != null) {
-      currentState.conversation.messages.map(messageToJson).toList
-    } else {
-      List.empty
-    }
+    val agentMessagesJson = messages.map(messageToJson).toList
 
     GameState(
       gameId = gameId,
@@ -698,29 +701,15 @@ class GameEngine(
 
       // Use the stored system prompt or fall back to current one
       val systemPrompt = state.systemPrompt.getOrElse(completeSystemPrompt)
-
-      // Initialize the agent with the first message (should be "Start adventure")
-      val firstMessage = messages.headOption match {
-        case Some(UserMessage(content)) => content
-        case _ => "Start adventure" // Fallback
+      if (systemPrompt != completeSystemPrompt) {
+        agent = GameEngine.buildAgent(llmClient, toolRegistry, systemPrompt, streaming = false)
+        streamingAgent = GameEngine.buildAgent(llmClient, toolRegistry, systemPrompt, streaming = true)
       }
 
-      currentState = agent.initializeSafe(
-        firstMessage,
-        toolRegistry,
-        systemPromptAddition = Some(systemPrompt)
-      ) match {
-        case Right(state) => state
-        case Left(error) =>
-          throw new IllegalStateException(s"Failed to restore agent state: ${error.message}")
-      }
+      // The system prompt belongs to the agent, not the history
+      this.messages = messages.filter { case _: SystemMessage => false; case _ => true }.toVector
 
-      // Add all the remaining messages to fully restore the conversation
-      messages.tail.foreach { msg =>
-        currentState = currentState.addMessage(msg)
-      }
-
-      logger.info(s"[$sessionId] Game state restored with ${messages.size} agent messages")
+      logger.info(s"[$sessionId] Game state restored with ${this.messages.size} agent messages")
     } else if (state.conversationHistory.nonEmpty) {
       // Fallback to old restoration method for backwards compatibility
       val messages = state.conversationHistory.flatMap { entry =>
@@ -731,21 +720,7 @@ class GameEngine(
         }
       }
 
-      if (messages.nonEmpty) {
-        currentState = agent.initializeSafe(
-          messages.head.content,
-          toolRegistry,
-          systemPromptAddition = Some(completeSystemPrompt)
-        ) match {
-          case Right(state) => state
-          case Left(error) =>
-            throw new IllegalStateException(s"Failed to restore agent state: ${error.message}")
-        }
-
-        messages.tail.foreach { msg =>
-          currentState = currentState.addMessage(msg)
-        }
-      }
+      this.messages = messages.toVector
 
       logger.info(
         s"[$sessionId] Game state restored (legacy) with ${coreState.conversationHistory.size} conversation entries")
@@ -809,7 +784,7 @@ class GameEngine(
     executionTimeMs: Long
   ): StepData = {
     // Extract tool calls from agent messages
-    val toolCalls = DebugHelpers.extractToolCalls(currentState.conversation.messages)
+    val toolCalls = DebugHelpers.extractToolCalls(messages)
 
     // Convert response to GameResponse sealed trait
     val gameResponseOpt: Option[org.llm4s.szork.persistence.GameResponse] = response.flatMap { resp =>
@@ -823,7 +798,7 @@ class GameEngine(
       userCommand = userCommand,
       responseLength = narrationText.length,
       toolCallCount = toolCalls.length,
-      messageCount = currentState.conversation.messages.length,
+      messageCount = messages.length,
       success = true,
       executionTimeMs = executionTimeMs
     )
@@ -837,7 +812,7 @@ class GameEngine(
       narrationText = narrationText,
       response = gameResponseOpt,
       toolCalls = toolCalls,
-      agentMessages = currentState.conversation.messages.toList,
+      agentMessages = messages.toList,
       outline = if (currentStepNumber == 1) adventureOutline else None
     )
   }
@@ -846,6 +821,23 @@ class GameEngine(
 
 /** Factory for creating GameEngine instances. */
 object GameEngine {
+
+  /** Model calls the Dungeon Master may make in one turn. */
+  val MaxStepsPerTurn: Int = 20
+
+  /** The Dungeon Master agent: the game's tools and system prompt, optionally streaming its answers. */
+  private[game] def buildAgent(
+    llmClient: LLMClient,
+    tools: ToolRegistry,
+    systemPrompt: String,
+    streaming: Boolean): Result[Agent] = {
+    val builder = Agent
+      .builder(if (streaming) "szork-dm-streaming" else "szork-dm", llmClient)
+      .withTools(tools)
+      .withSystemPrompt(systemPrompt)
+      .withMaxSteps(MaxStepsPerTurn)
+    (if (streaming) builder.withStreaming() else builder).build()
+  }
 
   /** Creates a new GameEngine with the specified configuration.
     *

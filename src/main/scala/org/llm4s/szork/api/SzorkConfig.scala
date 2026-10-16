@@ -79,63 +79,27 @@ case class SzorkConfig(
   savesDirectory: String = "szork-saves"
 )
 
-case class LLMConfig(
-  provider: String,
-  apiKey: String,
-  model: Option[String] = None,
-  baseUrl: Option[String] = None
-) {
-
-  /** Convert to llm4s ProviderConfig for the new API */
-  def toProviderConfig: org.llm4s.llmconnect.config.ProviderConfig =
-    provider.toLowerCase match {
-      case "openai" =>
-        org.llm4s.llmconnect.config.OpenAIConfig(
-          apiKey = apiKey,
-          model = model.getOrElse("gpt-4o"),
-          organization = None,
-          baseUrl = baseUrl.getOrElse("https://api.openai.com/v1"),
-          contextWindow = 128000,
-          reserveCompletion = 4096
-        )
-      case "anthropic" =>
-        org.llm4s.llmconnect.config.AnthropicConfig(
-          apiKey = apiKey,
-          model = model.getOrElse("claude-3-opus-20240229"),
-          baseUrl = baseUrl.getOrElse("https://api.anthropic.com"),
-          contextWindow = 200000,
-          reserveCompletion = 4096
-        )
-      case "llama" | "local" =>
-        // Use OpenAI-compatible config for local LLaMA servers
-        org.llm4s.llmconnect.config.OpenAIConfig(
-          apiKey = if (apiKey == "not-required") "sk-no-key-required" else apiKey,
-          model = model.getOrElse("llama2"),
-          organization = None,
-          baseUrl = baseUrl.getOrElse("http://localhost:11434/v1"),
-          contextWindow = 8192,
-          reserveCompletion = 2048
-        )
-      case other =>
-        throw new IllegalArgumentException(s"Unknown LLM provider: $other")
-    }
-}
+/** The LLM provider szork uses: `provider` names a section of `llm4s.providers` in application.conf (`openai`,
+  * `anthropic` or `ollama`), which holds the model, base URL and API key binding.
+  */
+case class LLMConfig(provider: String)
 
 object SzorkConfig {
   lazy val instance: SzorkConfig = load()
 
-  /** Get an LLM client using the current configuration */
+  /** Get an LLM client for the selected `llm4s.providers.<name>` section of application.conf */
   def getLLMClient(): Either[String, org.llm4s.llmconnect.LLMClient] =
     instance.llmConfig match {
       case Some(config) =>
-        try
-          org.llm4s.model.ModelRegistryService.default().left.map(_.message).flatMap { registry =>
+        EnvLoader.exportToSystemProperties()
+        for {
+          providerConfig <- org.llm4s.config.Llm4sConfig.provider(config.provider).left.map(_.message)
+          registry <- org.llm4s.config.Llm4sConfig.modelRegistryService().left.map(_.message)
+          client <- {
             given org.llm4s.model.ModelRegistryService = registry
-            org.llm4s.llmconnect.LLMConnect.getClient(config.toProviderConfig).left.map(_.message)
+            org.llm4s.llmconnect.LLMConnect.getClient(providerConfig).left.map(_.message)
           }
-        catch {
-          case e: Exception => Left(s"Failed to create LLM client: ${e.getMessage}")
-        }
+        } yield client
       case None =>
         Left("No LLM configuration found")
     }
@@ -199,72 +163,19 @@ object SzorkConfig {
     )
   }
 
-  private def loadLLMConfig(): Option[LLMConfig] = {
-    // Try to detect LLM provider from environment
-    val openAIKey = EnvLoader.get("OPENAI_API_KEY")
-    val anthropicKey = EnvLoader.get("ANTHROPIC_API_KEY")
-    val llamaUrl = EnvLoader.get("LLAMA_BASE_URL")
-
-    // Check for explicit provider setting
-    val explicitProvider = EnvLoader.get("SZORK_LLM_PROVIDER").map(_.toLowerCase)
-
-    explicitProvider match {
-      case Some("openai") =>
-        openAIKey.map(key =>
-          LLMConfig(
-            provider = "openai",
-            apiKey = key,
-            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("gpt-4")),
-            baseUrl = EnvLoader.get("OPENAI_BASE_URL")
-          ))
-
-      case Some("anthropic") =>
-        anthropicKey.map(key =>
-          LLMConfig(
-            provider = "anthropic",
-            apiKey = key,
-            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("claude-3-opus-20240229")),
-            baseUrl = EnvLoader.get("ANTHROPIC_BASE_URL")
-          ))
-
-      case Some("llama") | Some("local") =>
-        Some(
-          LLMConfig(
-            provider = "llama",
-            apiKey = "not-required",
-            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("llama2")),
-            baseUrl = llamaUrl.orElse(Some("http://localhost:11434"))
-          ))
-
-      case _ =>
-        // Auto-detect based on available keys
-        if (openAIKey.isDefined) {
-          openAIKey.map(key =>
-            LLMConfig(
-              provider = "openai",
-              apiKey = key,
-              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("gpt-4")),
-              baseUrl = EnvLoader.get("OPENAI_BASE_URL")
-            ))
-        } else if (anthropicKey.isDefined) {
-          anthropicKey.map(key =>
-            LLMConfig(
-              provider = "anthropic",
-              apiKey = key,
-              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("claude-3-opus-20240229")),
-              baseUrl = EnvLoader.get("ANTHROPIC_BASE_URL")
-            ))
-        } else if (llamaUrl.isDefined) {
-          Some(
-            LLMConfig(
-              provider = "llama",
-              apiKey = "not-required",
-              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("llama2")),
-              baseUrl = llamaUrl
-            ))
-        } else {
-          None
-        }
+  /** Choose the provider section: SZORK_LLM_PROVIDER if set, else the first provider whose credentials are present. */
+  private[api] def loadLLMConfig(reader: ConfigReader = EnvLoader): Option[LLMConfig] = {
+    def present(key: String) = reader.get(key).exists(_.nonEmpty)
+    reader.get("SZORK_LLM_PROVIDER").map(_.trim.toLowerCase).filter(_.nonEmpty) match {
+      case Some("openai") => Some(LLMConfig("openai")).filter(_ => present("OPENAI_API_KEY"))
+      case Some("anthropic") => Some(LLMConfig("anthropic")).filter(_ => present("ANTHROPIC_API_KEY"))
+      case Some("ollama" | "llama" | "local") => Some(LLMConfig("ollama"))
+      case Some(_) => None
+      case None =>
+        if (present("OPENAI_API_KEY")) Some(LLMConfig("openai"))
+        else if (present("ANTHROPIC_API_KEY")) Some(LLMConfig("anthropic"))
+        else if (present("LLAMA_BASE_URL")) Some(LLMConfig("ollama"))
+        else None
     }
   }
 
@@ -291,7 +202,7 @@ object SzorkConfig {
 
       // Validate LLM configuration
       if (config.llmConfig.isEmpty) {
-        errors += "No LLM provider configured. Set one of: OPENAI_API_KEY, ANTHROPIC_API_KEY, or LLAMA_BASE_URL (or SZORK_LLM_PROVIDER)."
+        errors += "No LLM provider configured. Set one of: OPENAI_API_KEY, ANTHROPIC_API_KEY, or LLAMA_BASE_URL, or SZORK_LLM_PROVIDER=openai|anthropic|ollama (with its key)."
       }
 
       if (errors.isEmpty) {

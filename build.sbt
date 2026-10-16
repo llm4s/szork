@@ -1,4 +1,7 @@
 ThisBuild / scalaVersion := "3.8.4"
+
+// llm4s modules are published together, at one version
+val llm4sVersion = "0.5.1"
 ThisBuild / organization := "org.llm4s"
 ThisBuild / organizationName := "llm4s"
 
@@ -36,8 +39,13 @@ lazy val root = (project in file("."))
     
     // Dependencies
     libraryDependencies ++= Seq(
-      // Core LLM4S library (Scala 3 default build)
-      "org.llm4s" %% "core" % "0.3.2",
+      // LLM4S: the core API plus the modules szork uses
+      "org.llm4s" %% "llm4s-core"      % llm4sVersion, // LLMClient, messages, tool API, config
+      "org.llm4s" %% "llm4s-agent"     % llm4sVersion, // Agent: the Dungeon Master's tool-calling loop
+      "org.llm4s" %% "llm4s-image"     % llm4sVersion, // DALL-E, HuggingFace and Stable Diffusion image clients
+      "org.llm4s" %% "llm4s-openai"    % llm4sVersion, // provider = "openai"
+      "org.llm4s" %% "llm4s-anthropic" % llm4sVersion, // provider = "anthropic"
+      "org.llm4s" %% "llm4s-ollama"    % llm4sVersion, // provider = "ollama" (local models)
       
       // Cask for web server
       "com.lihaoyi" %% "cask" % "0.11.3",
@@ -48,11 +56,6 @@ lazy val root = (project in file("."))
       "ch.qos.logback" % "logback-classic" % "1.5.34",
       "io.github.cdimascio"           %  "dotenv-java"     % "3.2.0",
       "org.slf4j"      % "log4j-over-slf4j" % "2.0.18",
-      
-      // LLM provider dependencies
-      "com.azure"          % "azure-ai-openai" % "1.0.0-beta.16",
-      "com.anthropic"      % "anthropic-java"  % "2.11.1",
-      "com.knuddels"       % "jtokkit"         % "1.1.0",
       
       // HTTP and WebSocket
       "com.lihaoyi"       %% "requests"        % "0.9.0",

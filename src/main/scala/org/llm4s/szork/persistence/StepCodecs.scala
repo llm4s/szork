@@ -90,17 +90,17 @@ object ToolCallCodec {
 
 object MessageCodec {
   def toJson(message: Message): Value = message match {
-    case UserMessage(content) =>
+    case u: UserMessage =>
       ujson.Obj(
         "type" -> "user",
-        "content" -> content
+        "content" -> u.content
       )
 
-    case AssistantMessage(contentOpt, toolCalls) =>
+    case a: AssistantMessage =>
       ujson.Obj(
         "type" -> "assistant",
-        "content" -> contentOpt.map(ujson.Str(_)).getOrElse(ujson.Null),
-        "toolCalls" -> ujson.Arr(toolCalls.map { tc =>
+        "content" -> a.contentOpt.map(ujson.Str(_)).getOrElse(ujson.Null),
+        "toolCalls" -> ujson.Arr(a.toolCalls.map { tc =>
           ujson.Obj(
             "id" -> tc.id,
             "name" -> tc.name,
@@ -115,11 +115,11 @@ object MessageCodec {
         "content" -> content
       )
 
-    case ToolMessage(toolCallId, content) =>
+    case t: ToolMessage =>
       ujson.Obj(
         "type" -> "tool",
-        "toolCallId" -> toolCallId,
-        "content" -> content
+        "toolCallId" -> t.toolCallId,
+        "content" -> t.content
       )
   }
 

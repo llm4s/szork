@@ -85,8 +85,6 @@ class SessionManager {
     sessions.remove(sessionId).foreach(s => games.remove(s.gameId, s))
   }
 
-  def getAllSessions(): Map[String, GameSession] = sessions.toMap
-
   /** Runs `f` on session `sessionId`, if it exists, so that it cannot expire while `f` runs. */
   def withSession[A](sessionId: String)(f: GameSession => A): Option[A] = synchronized {
     sessions.get(sessionId).map(f)

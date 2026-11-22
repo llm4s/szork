@@ -5,37 +5,37 @@
         <!-- Generating Adventure Screen -->
         <div v-if="currentStep === 'generating'" class="setup-step generating-adventure">
           <h2 class="setup-title">Crafting Your Adventure</h2>
-          
+
           <div class="generation-container">
             <div class="loading-animation">
               <div class="spinner"></div>
               <div class="pulse-ring"></div>
             </div>
-            
+
             <div class="generation-status">
               <p class="status-text">{{ generationStatus }}</p>
               <div class="progress-bar">
                 <div class="progress-fill" :style="{ width: generationProgress + '%' }"></div>
               </div>
             </div>
-            
+
             <div v-if="adventureOutline" class="adventure-preview">
               <h3>{{ adventureOutline.title }}</h3>
               <p class="quest-preview">{{ adventureOutline.mainQuest }}</p>
             </div>
           </div>
         </div>
-        
+
         <!-- Theme Selection -->
         <div v-else-if="currentStep === 'theme'" class="setup-step">
           <div class="setup-header">
             <h2 class="setup-title">Choose Your Adventure Theme</h2>
           </div>
-          
+
           <div class="setup-scrollable">
             <div class="theme-grid">
-              <div 
-                v-for="theme in predefinedThemes" 
+              <div
+                v-for="theme in predefinedThemes"
                 :key="theme.id"
                 class="theme-card"
                 :class="{ selected: selectedTheme === theme.id }"
@@ -45,9 +45,9 @@
                 <h3 class="theme-name">{{ theme.name }}</h3>
                 <p class="theme-description">{{ theme.description }}</p>
               </div>
-              
+
               <!-- Custom Theme Option -->
-              <div 
+              <div
                 class="theme-card custom-theme"
                 :class="{ selected: selectedTheme === 'custom' }"
                 @click="selectTheme('custom')"
@@ -57,7 +57,7 @@
                 <p class="theme-description">Create your own unique adventure setting</p>
               </div>
             </div>
-            
+
             <!-- Custom Theme Input -->
             <div v-if="selectedTheme === 'custom'" class="custom-theme-input">
               <v-text-field
@@ -71,48 +71,38 @@
               />
             </div>
           </div>
-          
+
           <div class="action-buttons-sticky">
-            <v-btn
-              variant="outlined"
-              size="large"
-              @click="backToSelection"
-              class="mr-2"
-            >
+            <v-btn variant="outlined" size="large" @click="backToSelection" class="mr-2">
               <v-icon start>mdi-arrow-left</v-icon>
               Back
             </v-btn>
-            <v-btn
-              size="large"
-              :disabled="!canProceedFromTheme"
-              @click="proceedToStyle"
-              class="continue-btn"
-            >
+            <v-btn size="large" :disabled="!canProceedFromTheme" @click="proceedToStyle" class="continue-btn">
               Continue to Art Style
               <v-icon end>mdi-chevron-right</v-icon>
             </v-btn>
           </div>
         </div>
-        
+
         <!-- Art Style Selection -->
         <div v-else-if="currentStep === 'style'" class="setup-step">
           <div class="setup-header">
             <h2 class="setup-title">Choose Your Visual Style</h2>
           </div>
-          
+
           <div class="setup-scrollable">
             <div class="style-grid">
-              <div 
-                v-for="style in artStyles" 
+              <div
+                v-for="style in artStyles"
                 :key="style.id"
                 class="style-card"
                 :class="{ selected: selectedStyle === style.id }"
                 @click="selectStyle(style.id)"
               >
                 <div class="style-preview">
-                  <img 
-                    v-if="style.sampleImage" 
-                    :src="style.sampleImage" 
+                  <img
+                    v-if="style.sampleImage"
+                    :src="style.sampleImage"
                     :alt="style.name + ' sample'"
                     class="style-sample-image"
                   />
@@ -123,32 +113,41 @@
               </div>
             </div>
           </div>
-          
+
           <div class="action-buttons-sticky">
-            <v-btn
-              variant="outlined"
-              size="large"
-              @click="goBackToTheme"
-              class="mr-2"
-            >
-              Back
-            </v-btn>
+            <v-btn variant="outlined" size="large" @click="goBackToTheme" class="mr-2">Back</v-btn>
             <!-- Session feature toggles -->
             <div class="session-flags" v-if="featureFlagsLoaded">
-              <v-switch density="compact" hide-details class="mr-2"
-                v-model="enableImages" :disabled="!featureFlags.image.enabled || !featureFlags.image.available"
+              <v-switch
+                density="compact"
+                hide-details
+                class="mr-2"
+                v-model="enableImages"
+                :disabled="!featureFlags.image.enabled || !featureFlags.image.available"
                 :label="`Images ${featureFlags.image.enabled ? (featureFlags.image.available ? '' : '(unavailable)') : '(disabled)'}`"
               />
-              <v-switch density="compact" hide-details class="mr-2"
-                v-model="enableMusic" :disabled="!featureFlags.music.enabled || !featureFlags.music.available"
+              <v-switch
+                density="compact"
+                hide-details
+                class="mr-2"
+                v-model="enableMusic"
+                :disabled="!featureFlags.music.enabled || !featureFlags.music.available"
                 :label="`Music ${featureFlags.music.enabled ? (featureFlags.music.available ? '' : '(unavailable)') : '(disabled)'}`"
               />
-              <v-switch density="compact" hide-details class="mr-2"
-                v-model="enableTTS" :disabled="!featureFlags.tts.enabled || !featureFlags.tts.available"
+              <v-switch
+                density="compact"
+                hide-details
+                class="mr-2"
+                v-model="enableTTS"
+                :disabled="!featureFlags.tts.enabled || !featureFlags.tts.available"
                 :label="`TTS ${featureFlags.tts.enabled ? (featureFlags.tts.available ? '' : '(unavailable)') : '(disabled)'}`"
               />
-              <v-switch density="compact" hide-details class="mr-2"
-                v-model="enableSTT" :disabled="!featureFlags.stt.enabled || !featureFlags.stt.available"
+              <v-switch
+                density="compact"
+                hide-details
+                class="mr-2"
+                v-model="enableSTT"
+                :disabled="!featureFlags.stt.enabled || !featureFlags.stt.available"
                 :label="`STT ${featureFlags.stt.enabled ? (featureFlags.stt.available ? '' : '(unavailable)') : '(disabled)'}`"
               />
             </div>
@@ -227,103 +226,116 @@ export default defineComponent({
       image: { enabled: true, available: true },
       music: { enabled: true, available: true },
       tts: { enabled: true, available: true },
-      stt: { enabled: true, available: true }
+      stt: { enabled: true, available: true },
     });
     const enableImages = ref(true);
     const enableMusic = ref(true);
     const enableTTS = ref(true);
     const enableSTT = ref(true);
-    
+
     const predefinedThemes: Theme[] = [
       {
         id: "underground",
         name: "Underground Realm",
         icon: "⛏️",
-        description: "Cave systems, mines, and subterranean kingdoms filled with crystals, ancient ruins, and hidden treasures",
-        prompt: "underground caverns with glowing crystals, ancient dwarven ruins, underground rivers, and mysterious tunnels"
+        description:
+          "Cave systems, mines, and subterranean kingdoms filled with crystals, ancient ruins, and hidden treasures",
+        prompt:
+          "underground caverns with glowing crystals, ancient dwarven ruins, underground rivers, and mysterious tunnels",
       },
       {
         id: "ancient",
         name: "Ancient Mysteries",
         icon: "🏛️",
-        description: "Pyramids, temples, enchanted forests, and mystical ruins with hieroglyphic puzzles, nature magic, and archaeological treasures",
-        prompt: "ancient temples, mystical forests, magical ruins, hieroglyphic puzzles, and archaeological discoveries"
+        description:
+          "Pyramids, temples, enchanted forests, and mystical ruins with hieroglyphic puzzles, nature magic, and archaeological treasures",
+        prompt:
+          "ancient temples, mystical forests, magical ruins, hieroglyphic puzzles, and archaeological discoveries",
       },
       {
         id: "estate",
         name: "Abandoned Estate",
         icon: "🏰",
         description: "Mansions, castles, and towers with secret passages, mysterious artifacts, and family treasures",
-        prompt: "gothic mansion with secret passages, mysterious artifacts, haunted rooms, and family secrets"
+        prompt: "gothic mansion with secret passages, mysterious artifacts, haunted rooms, and family secrets",
       },
       {
         id: "island",
         name: "Lost Island",
         icon: "🏝️",
         description: "Tropical or arctic expeditions featuring shipwrecks, pirate gold, and survival challenges",
-        prompt: "mysterious island with shipwrecks, pirate treasures, jungle temples, and survival challenges"
+        prompt: "mysterious island with shipwrecks, pirate treasures, jungle temples, and survival challenges",
       },
       {
         id: "space",
         name: "Space Frontier",
         icon: "🚀",
-        description: "Space stations and alien worlds with technology puzzles, resource management, and cosmic mysteries",
-        prompt: "space station orbiting alien worlds, advanced technology, cosmic mysteries, and alien encounters"
+        description:
+          "Space stations and alien worlds with technology puzzles, resource management, and cosmic mysteries",
+        prompt: "space station orbiting alien worlds, advanced technology, cosmic mysteries, and alien encounters",
       },
       {
         id: "nautical",
         name: "Nautical Depths",
         icon: "🌊",
-        description: "Underwater adventures in submarines or sunken cities, with pressure puzzles and oceanic treasures",
-        prompt: "underwater exploration in sunken cities, submarine adventures, oceanic treasures, and deep sea mysteries"
+        description:
+          "Underwater adventures in submarines or sunken cities, with pressure puzzles and oceanic treasures",
+        prompt:
+          "underwater exploration in sunken cities, submarine adventures, oceanic treasures, and deep sea mysteries",
       },
       {
         id: "noir",
         name: "Noir City",
         icon: "🕵️",
-        description: "Rain-slicked streets, speakeasies, and office buildings hiding criminal treasures, coded messages, and conspiracy puzzles",
-        prompt: "noir detective story in rain-slicked city streets, speakeasies, criminal underworld, and conspiracy mysteries"
+        description:
+          "Rain-slicked streets, speakeasies, and office buildings hiding criminal treasures, coded messages, and conspiracy puzzles",
+        prompt:
+          "noir detective story in rain-slicked city streets, speakeasies, criminal underworld, and conspiracy mysteries",
       },
       {
         id: "cyberpunk",
         name: "Cyberpunk Metropolis",
         icon: "🌃",
-        description: "Neon-lit corporate towers, digital vaults, and underground networks with hacking puzzles and data treasures",
-        prompt: "cyberpunk metropolis with neon lights, corporate towers, digital networks, and hacking challenges"
-      }
+        description:
+          "Neon-lit corporate towers, digital vaults, and underground networks with hacking puzzles and data treasures",
+        prompt: "cyberpunk metropolis with neon lights, corporate towers, digital networks, and hacking challenges",
+      },
     ];
-    
+
     const artStyles: ArtStyle[] = [
       {
         id: "pixel",
         name: "Pixel Art",
         description: "Classic retro-style scenes with detailed pixelated environments, like 16-bit era adventure games",
         gradient: "linear-gradient(45deg, #8B4513, #228B22, #4169E1)",
-        sampleImage: "/style-samples/pixel-sample.png"
+        sampleImage: "/style-samples/pixel-sample.png",
       },
       {
         id: "illustration",
         name: "Pencil Art",
-        description: "Professional pencil drawings with detailed shading, realistic textures, and fine graphite work - like an artist's sketchbook",
+        description:
+          "Professional pencil drawings with detailed shading, realistic textures, and fine graphite work - like an artist's sketchbook",
         gradient: "linear-gradient(45deg, #F5F5F5, #B8B8B8, #4A4A4A)",
-        sampleImage: "/style-samples/illustration-sample.png"
+        sampleImage: "/style-samples/illustration-sample.png",
       },
       {
         id: "painting",
         name: "Painting",
-        description: "Fully rendered atmospheric scenes with realistic lighting, textures, and depth - like concept art or fantasy book covers",
+        description:
+          "Fully rendered atmospheric scenes with realistic lighting, textures, and depth - like concept art or fantasy book covers",
         gradient: "linear-gradient(45deg, #4B0082, #800080, #FF69B4)",
-        sampleImage: "/style-samples/painting-sample.png"
+        sampleImage: "/style-samples/painting-sample.png",
       },
       {
         id: "comic",
         name: "Comic/Graphic Novel",
-        description: "Bold lines with cel-shaded coloring, dramatic perspectives, and stylized environments that pop off the screen",
+        description:
+          "Bold lines with cel-shaded coloring, dramatic perspectives, and stylized environments that pop off the screen",
         gradient: "linear-gradient(45deg, #FF0000, #FFD700, #000000)",
-        sampleImage: "/style-samples/comic-sample.png"
-      }
+        sampleImage: "/style-samples/comic-sample.png",
+      },
     ];
-    
+
     const canProceedFromTheme = computed(() => {
       if (selectedTheme.value === "custom") {
         return (
@@ -334,7 +346,7 @@ export default defineComponent({
       }
       return selectedTheme.value !== null;
     });
-    
+
     const selectTheme = (themeId: string) => {
       selectedTheme.value = themeId;
       if (themeId !== "custom") {
@@ -342,11 +354,11 @@ export default defineComponent({
         validatedCustomTheme.value = "";
       }
     };
-    
+
     const selectStyle = (styleId: string) => {
       selectedStyle.value = styleId;
     };
-    
+
     // Editing the description invalidates the last validation (and its error)
     watch(customThemeInput, () => {
       validatedCustomTheme.value = "";
@@ -382,7 +394,7 @@ export default defineComponent({
         validatingCustomTheme.value = false;
       }
     };
-    
+
     const proceedToStyle = () => {
       if (selectedTheme.value === "custom" && !validatedCustomTheme.value) {
         validateCustomTheme().then(() => {
@@ -394,15 +406,15 @@ export default defineComponent({
         currentStep.value = "style";
       }
     };
-    
+
     const goBackToTheme = () => {
       currentStep.value = "theme";
     };
-    
+
     const backToSelection = () => {
       emit("back-to-selection");
     };
-    
+
     const generateAdventureOutline = async (themeData: any, styleData: any) => {
       let statusInterval: ReturnType<typeof setInterval> | undefined;
       try {
@@ -413,31 +425,31 @@ export default defineComponent({
           "Placing mysterious items...",
           "Bringing characters to life...",
           "Weaving the story together...",
-          "Adding the finishing touches..."
+          "Adding the finishing touches...",
         ];
-        
+
         let messageIndex = 0;
         statusInterval = setInterval(() => {
           messageIndex = (messageIndex + 1) % statusMessages.length;
           generationStatus.value = statusMessages[messageIndex];
           generationProgress.value = Math.min(generationProgress.value + 15, 90);
         }, 2000);
-        
+
         const response = await axios.post("/api/game/generate-adventure", {
           theme: themeData,
-          artStyle: styleData
+          artStyle: styleData,
         });
-        
+
         clearInterval(statusInterval);
-        
+
         if (response.data.status === "success") {
           adventureOutline.value = response.data.outline;
           generationStatus.value = "Adventure ready! Starting your journey...";
           generationProgress.value = 100;
-          
+
           // Wait a moment to show completion
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+
           return response.data.outline;
         } else {
           throw new Error(response.data.message || "Failed to generate adventure");
@@ -446,14 +458,14 @@ export default defineComponent({
         console.error("Error generating adventure:", error);
         generationStatus.value = "Using default adventure...";
         generationProgress.value = 100;
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         return null; // Will proceed without outline
       } finally {
         // Stop the progress messages whether generation succeeded or failed
         if (statusInterval) clearInterval(statusInterval);
       }
     };
-    
+
     // Fetch the server's feature flags on mount; an answer also shows the server is available
     onMounted(async () => {
       checkingServer.value = true;
@@ -475,47 +487,47 @@ export default defineComponent({
         checkingServer.value = false;
       }
     });
-    
+
     const startAdventure = async () => {
       if (!selectedTheme.value || !selectedStyle.value) return;
-      
+
       // Check server availability before starting
       if (!serverAvailable.value) {
-        console.error('[AdventureSetup] Cannot start adventure - server not available');
+        console.error("[AdventureSetup] Cannot start adventure - server not available");
         return;
       }
-      
+
       startingGame.value = true;
       currentStep.value = "generating";
       generationProgress.value = 10;
-      
+
       // Get the theme details
       let themeData;
       if (selectedTheme.value === "custom") {
         themeData = {
           id: "custom",
           name: "Custom Adventure",
-          prompt: validatedCustomTheme.value || customThemeInput.value
+          prompt: validatedCustomTheme.value || customThemeInput.value,
         };
       } else {
-        const theme = predefinedThemes.find(t => t.id === selectedTheme.value);
+        const theme = predefinedThemes.find((t) => t.id === selectedTheme.value);
         themeData = {
           id: theme?.id,
           name: theme?.name,
-          prompt: theme?.prompt
+          prompt: theme?.prompt,
         };
       }
-      
+
       // Get the style details
-      const style = artStyles.find(s => s.id === selectedStyle.value);
+      const style = artStyles.find((s) => s.id === selectedStyle.value);
       const styleData = {
         id: style?.id,
-        name: style?.name
+        name: style?.name,
       };
-      
+
       // Generate the adventure outline
       const outline = await generateAdventureOutline(themeData, styleData);
-      
+
       // Emit the ready event with the outline and session feature choices
       emit("adventure-ready", {
         theme: themeData,
@@ -525,11 +537,11 @@ export default defineComponent({
           image: enableImages.value && featureFlags.value.image.enabled && featureFlags.value.image.available,
           music: enableMusic.value && featureFlags.value.music.enabled && featureFlags.value.music.available,
           tts: enableTTS.value && featureFlags.value.tts.enabled && featureFlags.value.tts.available,
-          stt: enableSTT.value && featureFlags.value.stt.enabled && featureFlags.value.stt.available
-        }
+          stt: enableSTT.value && featureFlags.value.stt.enabled && featureFlags.value.stt.available,
+        },
       });
     };
-    
+
     return {
       currentStep,
       selectedTheme,
@@ -558,9 +570,9 @@ export default defineComponent({
       enableImages,
       enableMusic,
       enableTTS,
-      enableSTT
+      enableSTT,
     };
-  }
+  },
 });
 </script>
 
@@ -612,14 +624,16 @@ export default defineComponent({
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
 }
 
-.theme-grid, .style-grid {
+.theme-grid,
+.style-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
 
-.theme-card, .style-card {
+.theme-card,
+.style-card {
   background: rgba(255, 255, 255, 0.05);
   border: 2px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
@@ -629,16 +643,18 @@ export default defineComponent({
   backdrop-filter: blur(10px);
 }
 
-.theme-card:hover, .style-card:hover {
+.theme-card:hover,
+.style-card:hover {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-4px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
-.theme-card.selected, .style-card.selected {
+.theme-card.selected,
+.style-card.selected {
   background: rgba(33, 150, 243, 0.2);
-  border-color: #2196F3;
+  border-color: #2196f3;
   box-shadow: 0 0 20px rgba(33, 150, 243, 0.3);
 }
 
@@ -648,13 +664,15 @@ export default defineComponent({
   margin-bottom: 1rem;
 }
 
-.theme-name, .style-name {
+.theme-name,
+.style-name {
   font-size: 1.3rem;
   margin-bottom: 0.5rem;
   color: #fff;
 }
 
-.theme-description, .style-description {
+.theme-description,
+.style-description {
   font-size: 0.9rem;
   color: rgba(255, 255, 255, 0.7);
   line-height: 1.4;
@@ -709,11 +727,13 @@ export default defineComponent({
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
 }
 
-.fade-enter-active, .fade-leave-active {
+.fade-enter-active,
+.fade-leave-active {
   transition: opacity 0.3s ease;
 }
 
-.fade-enter-from, .fade-leave-to {
+.fade-enter-from,
+.fade-leave-to {
   opacity: 0;
 }
 
@@ -730,7 +750,8 @@ export default defineComponent({
 
 /* Responsive Design */
 @media (max-width: 1024px) {
-  .theme-grid, .style-grid {
+  .theme-grid,
+  .style-grid {
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 1rem;
   }
@@ -740,60 +761,68 @@ export default defineComponent({
   .setup-header {
     padding: 1rem 1rem 0.5rem;
   }
-  
+
   .setup-scrollable {
     padding: 0 1rem;
     padding-bottom: 100px;
   }
-  
-  .theme-grid, .style-grid {
+
+  .theme-grid,
+  .style-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 0.75rem;
   }
-  
+
   .setup-title {
     font-size: 1.8rem;
     margin-bottom: 0.75rem;
   }
-  
-  .theme-card, .style-card {
+
+  .theme-card,
+  .style-card {
     padding: 1rem;
   }
-  
+
   .theme-icon {
     font-size: 2rem;
     margin-bottom: 0.5rem;
   }
-  
-  .theme-name, .style-name {
+
+  .theme-name,
+  .style-name {
     font-size: 1.1rem;
   }
-  
-  .theme-description, .style-description {
+
+  .theme-description,
+  .style-description {
     font-size: 0.85rem;
   }
-  
+
   .action-buttons-sticky {
     padding: 1rem;
   }
-  
-  .continue-btn, .begin-adventure-btn {
+
+  .continue-btn,
+  .begin-adventure-btn {
     font-size: 0.9rem;
     padding: 0 16px !important;
   }
 }
 
 @media (max-width: 480px) {
-  .theme-grid, .style-grid {
+  .theme-grid,
+  .style-grid {
     grid-template-columns: 1fr;
   }
-  
-  .theme-card, .style-card {
+
+  .theme-card,
+  .style-card {
     padding: 1.25rem;
   }
 }
 
-.begin-adventure-btn, .continue-btn {
+.begin-adventure-btn,
+.continue-btn {
   background-color: #000000 !important;
   color: #ffffff !important;
   border: 2px solid #ffffff !important;
@@ -802,32 +831,35 @@ export default defineComponent({
   text-transform: none;
   letter-spacing: 0.5px;
   padding: 0 24px !important;
-  box-shadow: 
+  box-shadow:
     inset 2px 2px 4px rgba(255, 255, 255, 0.2),
     inset -2px -2px 4px rgba(0, 0, 0, 0.5),
     0 4px 8px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
 }
 
-.begin-adventure-btn:hover:not(:disabled), .continue-btn:hover:not(:disabled) {
+.begin-adventure-btn:hover:not(:disabled),
+.continue-btn:hover:not(:disabled) {
   background-color: #1a1a1a !important;
   border-color: #ffffff !important;
-  box-shadow: 
+  box-shadow:
     inset 2px 2px 6px rgba(255, 255, 255, 0.3),
     inset -2px -2px 6px rgba(0, 0, 0, 0.6),
     0 6px 12px rgba(0, 0, 0, 0.4);
   transform: translateY(-2px);
 }
 
-.begin-adventure-btn:active:not(:disabled), .continue-btn:active:not(:disabled) {
-  box-shadow: 
+.begin-adventure-btn:active:not(:disabled),
+.continue-btn:active:not(:disabled) {
+  box-shadow:
     inset 2px 2px 4px rgba(0, 0, 0, 0.6),
     inset -2px -2px 4px rgba(255, 255, 255, 0.1),
     0 2px 4px rgba(0, 0, 0, 0.2);
   transform: translateY(0);
 }
 
-.begin-adventure-btn:disabled, .continue-btn:disabled {
+.begin-adventure-btn:disabled,
+.continue-btn:disabled {
   opacity: 0.5;
   background-color: #333333 !important;
   border-color: #666666 !important;
@@ -860,7 +892,7 @@ export default defineComponent({
   width: 100%;
   height: 100%;
   border: 3px solid rgba(255, 255, 255, 0.1);
-  border-top: 3px solid #2196F3;
+  border-top: 3px solid #2196f3;
   border-radius: 50%;
   animation: spin 1.5s linear infinite;
 }
@@ -869,14 +901,18 @@ export default defineComponent({
   position: absolute;
   width: 100%;
   height: 100%;
-  border: 2px solid #2196F3;
+  border: 2px solid #2196f3;
   border-radius: 50%;
   animation: pulse 2s ease-out infinite;
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes pulse {
@@ -902,8 +938,13 @@ export default defineComponent({
 }
 
 @keyframes fadeInOut {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .progress-bar {
@@ -918,7 +959,7 @@ export default defineComponent({
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #2196F3, #00BCD4);
+  background: linear-gradient(90deg, #2196f3, #00bcd4);
   border-radius: 4px;
   transition: width 0.5s ease;
   box-shadow: 0 0 10px rgba(33, 150, 243, 0.5);
@@ -935,7 +976,7 @@ export default defineComponent({
 
 .adventure-preview h3 {
   font-size: 1.5rem;
-  color: #2196F3;
+  color: #2196f3;
   margin-bottom: 0.5rem;
 }
 

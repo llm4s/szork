@@ -4,49 +4,38 @@
     <div v-if="!gameStarted && !setupStarted && !selectionStarted" class="intro-screen">
       <div class="intro-content" v-if="!loading">
         <img src="/SZork_intro.webp" alt="Welcome to Szork" class="intro-image" />
-        <v-btn 
-          size="x-large" 
-          class="begin-button begin-adventure-btn"
-          @click="beginSelection"
-        >
+        <v-btn size="x-large" class="begin-button begin-adventure-btn" @click="beginSelection">
           Begin Your Adventure
           <v-icon end>mdi-chevron-right</v-icon>
         </v-btn>
       </div>
       <div class="intro-content" v-else>
-        <v-progress-circular
-          indeterminate
-          color="primary"
-          size="64"
-          width="4"
-        />
+        <v-progress-circular indeterminate color="primary" size="64" width="4" />
         <div class="text-h6 mt-4">Loading saved game...</div>
       </div>
     </div>
-    
+
     <!-- Game Selection Screen -->
     <GameSelection
       v-else-if="selectionStarted && !setupStarted && !gameStarted"
       @start-new-game="startNewGame"
       @load-game="loadSelectedGame"
     />
-    
+
     <!-- Adventure Setup Screen -->
-    <AdventureSetup 
+    <AdventureSetup
       v-else-if="setupStarted && !gameStarted"
       @adventure-ready="onAdventureReady"
       @back-to-selection="goBackToSelection"
     />
-    
+
     <!-- Game Screen -->
     <v-row v-else class="game-row ma-0">
       <v-col cols="12" md="8" class="mx-auto game-col pa-0">
         <div class="game-wrapper">
           <v-card-title class="text-h5 game-title">
             <v-row align="center" justify="space-between">
-              <v-col cols="auto">
-                SZork - {{ adventureTitle }}
-              </v-col>
+              <v-col cols="auto">SZork - {{ adventureTitle }}</v-col>
               <v-col cols="auto">
                 <div class="audio-controls">
                   <v-tooltip text="Back to Adventure Selection" location="bottom">
@@ -64,7 +53,16 @@
                       </v-btn>
                     </template>
                   </v-tooltip>
-                  <v-tooltip :text="imageEnabled ? (imageGenerationEnabled ? 'Disable image generation' : 'Enable image generation') : 'Image generation disabled by server'" location="bottom">
+                  <v-tooltip
+                    :text="
+                      imageEnabled
+                        ? imageGenerationEnabled
+                          ? 'Disable image generation'
+                          : 'Enable image generation'
+                        : 'Image generation disabled by server'
+                    "
+                    location="bottom"
+                  >
                     <template v-slot:activator="{ props }">
                       <v-btn
                         v-bind="props"
@@ -76,11 +74,20 @@
                         size="small"
                         class="mr-2"
                       >
-                        <v-icon>{{ imageGenerationEnabled ? 'mdi-image' : 'mdi-image-off' }}</v-icon>
+                        <v-icon>{{ imageGenerationEnabled ? "mdi-image" : "mdi-image-off" }}</v-icon>
                       </v-btn>
                     </template>
                   </v-tooltip>
-                  <v-tooltip :text="musicEnabled ? (backgroundMusicEnabled ? 'Disable background music' : 'Enable background music') : 'Music disabled by server'" location="bottom">
+                  <v-tooltip
+                    :text="
+                      musicEnabled
+                        ? backgroundMusicEnabled
+                          ? 'Disable background music'
+                          : 'Enable background music'
+                        : 'Music disabled by server'
+                    "
+                    location="bottom"
+                  >
                     <template v-slot:activator="{ props }">
                       <v-btn
                         v-bind="props"
@@ -92,11 +99,20 @@
                         size="small"
                         class="mr-2"
                       >
-                        <v-icon>{{ backgroundMusicEnabled ? 'mdi-music' : 'mdi-music-off' }}</v-icon>
+                        <v-icon>{{ backgroundMusicEnabled ? "mdi-music" : "mdi-music-off" }}</v-icon>
                       </v-btn>
                     </template>
                   </v-tooltip>
-                  <v-tooltip :text="ttsEnabled ? (narrationEnabled ? 'Disable voice narration' : 'Enable voice narration') : 'TTS disabled by server'" location="bottom">
+                  <v-tooltip
+                    :text="
+                      ttsEnabled
+                        ? narrationEnabled
+                          ? 'Disable voice narration'
+                          : 'Enable voice narration'
+                        : 'TTS disabled by server'
+                    "
+                    location="bottom"
+                  >
                     <template v-slot:activator="{ props }">
                       <v-btn
                         v-bind="props"
@@ -107,7 +123,7 @@
                         icon
                         size="small"
                       >
-                        <v-icon>{{ narrationEnabled ? 'mdi-account-voice' : 'mdi-account-voice-off' }}</v-icon>
+                        <v-icon>{{ narrationEnabled ? "mdi-account-voice" : "mdi-account-voice-off" }}</v-icon>
                       </v-btn>
                     </template>
                   </v-tooltip>
@@ -115,38 +131,30 @@
               </v-col>
             </v-row>
           </v-card-title>
-          
+
           <div class="game-output-wrapper">
             <div class="game-output" ref="gameOutput">
-              <div
-                v-for="(message, index) in messages"
-                :key="index"
-                class="game-message"
-                :class="message.type"
-              >
+              <div v-for="(message, index) in messages" :key="index" class="game-message" :class="message.type">
                 <div v-if="message.image || message.imageLoading" class="scene-image-container">
-                  <img 
+                  <img
                     v-if="message.image"
-                    :src="'data:image/png;base64,' + message.image" 
+                    :src="'data:image/png;base64,' + message.image"
                     alt="Scene visualization"
                     class="scene-image"
                   />
                   <div v-else-if="message.imageLoading" class="image-loading">
-                    <v-progress-circular
-                      indeterminate
-                      color="primary"
-                      size="40"
-                      width="3"
-                    ></v-progress-circular>
+                    <v-progress-circular indeterminate color="primary" size="40" width="3"></v-progress-circular>
                   </div>
                 </div>
                 <div class="message-text">
                   {{ message.text }}
                   <span v-if="message.streaming" class="streaming-cursor">▊</span>
                   <div v-if="message.scene && message.scene.exits && message.scene.exits.length > 0" class="exits-info">
-                    <strong>Exits:</strong> 
+                    <strong>Exits:</strong>
                     <span v-for="(exit, index) in message.scene.exits" :key="index">
-                      {{ exit.direction }}<span v-if="exit.description"> ({{ exit.description }})</span><span v-if="Number(index) < message.scene.exits.length - 1">, </span>
+                      {{ exit.direction }}
+                      <span v-if="exit.description">({{ exit.description }})</span>
+                      <span v-if="Number(index) < message.scene.exits.length - 1">,</span>
                     </span>
                   </div>
                 </div>
@@ -163,7 +171,7 @@
               </div>
             </div>
           </div>
-          
+
           <div class="game-input-wrapper">
             <v-text-field
               v-model="userInput"
@@ -251,18 +259,18 @@ export default defineComponent({
   name: "GameView",
   components: {
     AdventureSetup,
-    GameSelection
+    GameSelection,
   },
   props: {
     gameId: {
       type: String,
-      default: null
-    }
+      default: null,
+    },
   },
   setup(props) {
     const router = useRouter();
     const route = useRoute();
-    
+
     // Use the WebSocket composable
     const {
       sessionId,
@@ -291,9 +299,9 @@ export default defineComponent({
       loadFailed,
       log: wsLog,
       errorSnackbar,
-      errorMessage
+      errorMessage,
     } = useWebSocketGame();
-    
+
     // Local UI state
     const userInput = ref("");
     const gameOutput = ref<HTMLElement>();
@@ -326,7 +334,7 @@ export default defineComponent({
     let unmounted = false;
     // The game this view last asked to load (gameLoaded may not have arrived yet)
     let requestedGameId: string | null = null;
-    
+
     // Map WebSocket messages to the expected format for the UI
     const messages = computed(() => {
       return wsMessages.value.map((msg): GameMessage => {
@@ -334,7 +342,7 @@ export default defineComponent({
           return {
             text: `> ${msg.text}`,
             type: "user",
-            streaming: false
+            streaming: false,
           };
         } else {
           const gameMsg: GameMessage = {
@@ -344,19 +352,19 @@ export default defineComponent({
             scene: msg.scene,
             hasImage: msg.hasImage,
             imageLoading: msg.imageLoading,
-            streaming: msg.isStreaming || false
+            streaming: msg.isStreaming || false,
           };
-          
+
           // Add image if available
           if (msg.image) {
             gameMsg.image = msg.image;
           }
-          
+
           return gameMsg;
         }
       });
     });
-    
+
     // Use the log function from the composable
     const log = wsLog;
 
@@ -370,17 +378,17 @@ export default defineComponent({
     const beginSelection = () => {
       selectionStarted.value = true;
     };
-    
+
     const startNewGame = () => {
       selectionStarted.value = false;
       setupStarted.value = true;
     };
-    
+
     const loadSelectedGame = async (gameId: string) => {
       selectionStarted.value = false;
       await loadGame(gameId);
     };
-    
+
     const backToSelection = () => {
       resetGame();
       // Clear the game ID from the URL if present
@@ -403,7 +411,7 @@ export default defineComponent({
         currentNarration.value.src = "";
         currentNarration.value = null;
       }
-      
+
       // Reset game state
       gameStarted.value = false;
       setupStarted.value = false;
@@ -422,16 +430,23 @@ export default defineComponent({
     const beginSetup = () => {
       setupStarted.value = true;
     };
-    
-    const onAdventureReady = (config: { theme: any, style: any, outline?: any, sessionFeatures?: { image?: boolean; music?: boolean; tts?: boolean; stt?: boolean } }) => {
+
+    const onAdventureReady = (config: {
+      theme: any;
+      style: any;
+      outline?: any;
+      sessionFeatures?: { image?: boolean; music?: boolean; tts?: boolean; stt?: boolean };
+    }) => {
       adventureTheme.value = config.theme;
       artStyle.value = config.style;
       adventureOutline.value = config.outline || null;
       if (config.sessionFeatures) {
-        if (typeof config.sessionFeatures.image === 'boolean') imageGenerationEnabled.value = config.sessionFeatures.image;
-        if (typeof config.sessionFeatures.music === 'boolean') backgroundMusicEnabled.value = config.sessionFeatures.music;
-        if (typeof config.sessionFeatures.tts === 'boolean') narrationEnabled.value = config.sessionFeatures.tts;
-        if (typeof config.sessionFeatures.stt === 'boolean') speechInputRequested.value = config.sessionFeatures.stt;
+        if (typeof config.sessionFeatures.image === "boolean")
+          imageGenerationEnabled.value = config.sessionFeatures.image;
+        if (typeof config.sessionFeatures.music === "boolean")
+          backgroundMusicEnabled.value = config.sessionFeatures.music;
+        if (typeof config.sessionFeatures.tts === "boolean") narrationEnabled.value = config.sessionFeatures.tts;
+        if (typeof config.sessionFeatures.stt === "boolean") speechInputRequested.value = config.sessionFeatures.stt;
       }
       // Set the adventure title if available
       if (config.outline && config.outline.title) {
@@ -464,7 +479,7 @@ export default defineComponent({
       gameStarted.value = false;
       setupStarted.value = false;
       selectionStarted.value = false;
-      router.push('/');
+      router.push("/");
     });
 
     // Once a new game has an id, put it in the URL so a refresh returns to it
@@ -496,8 +511,15 @@ export default defineComponent({
 
     const startGame = async () => {
       try {
-        log("Starting game with theme:", adventureTheme.value, "and style:", artStyle.value, "and outline:", adventureOutline.value);
-        
+        log(
+          "Starting game with theme:",
+          adventureTheme.value,
+          "and style:",
+          artStyle.value,
+          "and outline:",
+          adventureOutline.value
+        );
+
         // Clean up any existing audio when starting a new game
         if (currentBackgroundMusic.value) {
           currentBackgroundMusic.value.pause();
@@ -505,7 +527,7 @@ export default defineComponent({
           currentBackgroundMusic.value = null;
           currentMusicMood.value = null;
         }
-        
+
         // Start game via WebSocket
         const theme = adventureTheme.value?.name || adventureTheme.value;
         const artStyleValue = artStyle.value?.id || artStyle.value;
@@ -514,12 +536,11 @@ export default defineComponent({
           music: backgroundMusicEnabled.value,
           stt: speechInputRequested.value,
         });
-        
+
         // Set the adventure title from the outline if available
         if (adventureOutline.value && adventureOutline.value.title) {
           adventureTitle.value = adventureOutline.value.title;
         }
-        
       } catch (error) {
         log("Error starting game:", error);
         alert("Failed to start game. Please try again.");
@@ -546,9 +567,9 @@ export default defineComponent({
         log("Error sending command:", error);
       }
     };
-    
+
     // Streaming is handled by the WebSocket composable automatically
-    
+
     // Just use sendCommand (WebSocket handles streaming)
     const sendCommandMain = async () => {
       await sendCommand();
@@ -581,21 +602,16 @@ export default defineComponent({
         // Try to use a format that's more compatible with Whisper
         let options = {};
         // Try different formats in order of preference
-        const formats = [
-          'audio/wav',
-          'audio/ogg;codecs=opus',
-          'audio/webm;codecs=opus',
-          'audio/webm'
-        ];
-        
+        const formats = ["audio/wav", "audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"];
+
         for (const format of formats) {
           if (MediaRecorder.isTypeSupported(format)) {
             options = { mimeType: format };
-            log('Using audio format:', format);
+            log("Using audio format:", format);
             break;
           }
         }
-        
+
         const recorder = new MediaRecorder(stream, options);
         mediaRecorder.value = recorder;
         audioChunks.value = [];
@@ -629,7 +645,7 @@ export default defineComponent({
     };
 
     const releaseMicrophone = () => {
-      micStream?.getTracks().forEach(track => track.stop());
+      micStream?.getTracks().forEach((track) => track.stop());
       micStream = null;
     };
 
@@ -660,7 +676,7 @@ export default defineComponent({
           reader.onload = () => {
             const base64 = reader.result as string;
             // Remove the data:audio/webm;base64, prefix
-            resolve(base64.split(',')[1]);
+            resolve(base64.split(",")[1]);
           };
           reader.onerror = () => reject(reader.error ?? new Error("Could not read the recording"));
           reader.readAsDataURL(audioBlob);
@@ -677,65 +693,66 @@ export default defineComponent({
     };
 
     const playAudioNarration = (audioBase64: string) => {
-      log(`[${sessionId.value || 'no-session'}] playAudioNarration called, narration enabled:`, narrationEnabled.value);
-      log(`[${sessionId.value || 'no-session'}] Audio base64 length:`, audioBase64.length);
-      
+      log(`[${sessionId.value || "no-session"}] playAudioNarration called, narration enabled:`, narrationEnabled.value);
+      log(`[${sessionId.value || "no-session"}] Audio base64 length:`, audioBase64.length);
+
       if (!narrationEnabled.value) {
-        log(`[${sessionId.value || 'no-session'}] Narration is disabled, skipping playback`);
+        log(`[${sessionId.value || "no-session"}] Narration is disabled, skipping playback`);
         return;
       }
-      
+
       try {
         // Stop any current narration
         if (currentNarration.value && !currentNarration.value.paused) {
           currentNarration.value.pause();
           currentNarration.value = null;
         }
-        
+
         // Create audio element
         const audioUrl = `data:audio/mpeg;base64,${audioBase64}`;
-        log(`[${sessionId.value || 'no-session'}] Creating audio element with URL length:`, audioUrl.length);
-        
+        log(`[${sessionId.value || "no-session"}] Creating audio element with URL length:`, audioUrl.length);
+
         const audio = new Audio(audioUrl);
         audio.volume = narrationVolume.value;
         currentNarration.value = audio;
-        
+
         // Add event listeners for debugging
-        audio.addEventListener('loadeddata', () => {
-          log(`[${sessionId.value || 'no-session'}] Audio loaded successfully, duration:`, audio.duration);
+        audio.addEventListener("loadeddata", () => {
+          log(`[${sessionId.value || "no-session"}] Audio loaded successfully, duration:`, audio.duration);
         });
-        
-        audio.addEventListener('error', (e) => {
-          log(`[${sessionId.value || 'no-session'}] Audio error event:`, e);
-          log(`[${sessionId.value || 'no-session'}] Audio error details:`, audio.error);
+
+        audio.addEventListener("error", (e) => {
+          log(`[${sessionId.value || "no-session"}] Audio error event:`, e);
+          log(`[${sessionId.value || "no-session"}] Audio error details:`, audio.error);
         });
-        
-        audio.addEventListener('play', () => {
-          log(`[${sessionId.value || 'no-session'}] Audio started playing`);
+
+        audio.addEventListener("play", () => {
+          log(`[${sessionId.value || "no-session"}] Audio started playing`);
         });
-        
-        audio.addEventListener('ended', () => {
-          log(`[${sessionId.value || 'no-session'}] Audio playback ended`);
+
+        audio.addEventListener("ended", () => {
+          log(`[${sessionId.value || "no-session"}] Audio playback ended`);
           if (currentNarration.value === audio) {
             currentNarration.value = null;
           }
         });
-        
+
         // Play the audio
-        log(`[${sessionId.value || 'no-session'}] Attempting to play audio...`);
-        audio.play()
+        log(`[${sessionId.value || "no-session"}] Attempting to play audio...`);
+        audio
+          .play()
           .then(() => {
-            log(`[${sessionId.value || 'no-session'}] Audio play() promise resolved successfully`);
+            log(`[${sessionId.value || "no-session"}] Audio play() promise resolved successfully`);
           })
-          .catch(error => {
-            log(`[${sessionId.value || 'no-session'}] Error playing audio narration:`, error);
-            log(`[${sessionId.value || 'no-session'}] Error type:`, error.name, "Message:", error.message);
+          .catch((error) => {
+            log(`[${sessionId.value || "no-session"}] Error playing audio narration:`, error);
+            log(`[${sessionId.value || "no-session"}] Error type:`, error.name, "Message:", error.message);
           });
-        
-        log(`[${sessionId.value || 'no-session'}] Playing audio narration at volume:`, narrationVolume.value);
+
+        log(`[${sessionId.value || "no-session"}] Playing audio narration at volume:`, narrationVolume.value);
       } catch (error) {
-        log(`[${sessionId.value || 'no-session'}] Error creating audio element:`, error);
-        log(`[${sessionId.value || 'no-session'}] Error details:`, error);
+        log(`[${sessionId.value || "no-session"}] Error creating audio element:`, error);
+        log(`[${sessionId.value || "no-session"}] Error details:`, error);
       }
     };
 
@@ -743,12 +760,12 @@ export default defineComponent({
 
     const playBackgroundMusic = (musicBase64: string, mood: string) => {
       log(`Playing background music, mood: ${mood}, enabled: ${backgroundMusicEnabled.value}`);
-      
+
       if (!backgroundMusicEnabled.value) {
         log("Background music is disabled, skipping");
         return;
       }
-      
+
       try {
         // Clean up any existing music first
         if (currentBackgroundMusic.value) {
@@ -757,29 +774,29 @@ export default defineComponent({
           currentBackgroundMusic.value.src = "";
           currentBackgroundMusic.value = null;
         }
-        
+
         // Create new audio element
         const audioUrl = `data:audio/mpeg;base64,${musicBase64}`;
         const newMusic = new Audio(audioUrl);
         newMusic.volume = backgroundMusicVolume.value;
         newMusic.loop = true; // Loop background music
-        
+
         // Store reference and mood
         currentBackgroundMusic.value = newMusic;
         currentMusicMood.value = mood;
-        
+
         // Play the music
-        newMusic.play()
+        newMusic
+          .play()
           .then(() => {
             log("Background music started successfully");
           })
-          .catch(error => {
+          .catch((error) => {
             log("Error playing background music:", error);
             // Clean up on error
             currentBackgroundMusic.value = null;
             currentMusicMood.value = null;
           });
-        
       } catch (error) {
         log("Error creating background music element:", error);
         currentBackgroundMusic.value = null;
@@ -815,11 +832,12 @@ export default defineComponent({
         // Resume current music if it exists
         if (currentBackgroundMusic.value && currentBackgroundMusic.value.paused) {
           log("Resuming paused background music");
-          currentBackgroundMusic.value.play()
+          currentBackgroundMusic.value
+            .play()
             .then(() => {
               log("Background music resumed");
             })
-            .catch(error => {
+            .catch((error) => {
               log("Error resuming background music:", error);
             });
         }
@@ -845,19 +863,19 @@ export default defineComponent({
       setScrollCallback(() => {
         scrollToBottom();
       });
-      
+
       // Set up audio playback callbacks
       setPlayBackgroundMusicCallback(playBackgroundMusic);
       setPlayAudioNarrationCallback(playAudioNarration);
-      
+
       // Connect to WebSocket server
       try {
         await connect();
-        log('WebSocket connected successfully');
+        log("WebSocket connected successfully");
       } catch (error) {
-        log('Failed to connect to WebSocket:', error);
+        log("Failed to connect to WebSocket:", error);
       }
-      
+
       // Check if there's a game ID in the URL
       const gameIdFromRoute = props.gameId;
       // A navigation while connecting may already have loaded it
@@ -926,7 +944,7 @@ export default defineComponent({
       imageEnabled,
       isConnected,
       errorSnackbar,
-      errorMessage
+      errorMessage,
     };
   },
 });
@@ -984,7 +1002,7 @@ export default defineComponent({
   align-items: center !important;
   justify-content: center !important;
   line-height: 1 !important;
-  box-shadow: 
+  box-shadow:
     inset 2px 2px 4px rgba(255, 255, 255, 0.2),
     inset -2px -2px 4px rgba(0, 0, 0, 0.5),
     0 4px 8px rgba(0, 0, 0, 0.3);
@@ -994,7 +1012,7 @@ export default defineComponent({
 .begin-adventure-btn:hover {
   background-color: #1a1a1a !important;
   border-color: #ffffff !important;
-  box-shadow: 
+  box-shadow:
     inset 2px 2px 6px rgba(255, 255, 255, 0.3),
     inset -2px -2px 6px rgba(0, 0, 0, 0.6),
     0 6px 12px rgba(0, 0, 0, 0.4);
@@ -1002,7 +1020,7 @@ export default defineComponent({
 }
 
 .begin-adventure-btn:active {
-  box-shadow: 
+  box-shadow:
     inset 2px 2px 4px rgba(0, 0, 0, 0.6),
     inset -2px -2px 4px rgba(255, 255, 255, 0.1),
     0 2px 4px rgba(0, 0, 0, 0.2);
@@ -1010,15 +1028,16 @@ export default defineComponent({
 }
 
 @keyframes pulse-shadow {
-  0%, 100% {
-    box-shadow: 
+  0%,
+  100% {
+    box-shadow:
       inset 2px 2px 4px rgba(255, 255, 255, 0.2),
       inset -2px -2px 4px rgba(0, 0, 0, 0.5),
       0 4px 8px rgba(0, 0, 0, 0.3),
       0 0 20px rgba(255, 255, 255, 0.2);
   }
   50% {
-    box-shadow: 
+    box-shadow:
       inset 2px 2px 4px rgba(255, 255, 255, 0.2),
       inset -2px -2px 4px rgba(0, 0, 0, 0.5),
       0 4px 8px rgba(0, 0, 0, 0.3),
@@ -1046,10 +1065,12 @@ export default defineComponent({
 }
 
 @keyframes blink {
-  0%, 50% {
+  0%,
+  50% {
     opacity: 1;
   }
-  51%, 100% {
+  51%,
+  100% {
     opacity: 0;
   }
 }
@@ -1130,7 +1151,7 @@ export default defineComponent({
   margin-top: 0.5rem;
   padding-top: 0.5rem;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  color: #4CAF50;
+  color: #4caf50;
   font-size: 0.95em;
 }
 
@@ -1167,7 +1188,8 @@ export default defineComponent({
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.6;
   }
   50% {

@@ -4,13 +4,8 @@
       <h1 class="selection-title">SZork Adventures</h1>
       <!-- Capability Badges -->
       <div class="capabilities" v-if="featureFlagsLoaded">
-        <v-chip
-          class="mr-2 mb-2"
-          :color="featureFlags.llm.available ? 'primary' : 'grey'"
-          variant="outlined"
-          label
-        >
-          LLM: {{ featureFlags.llm.provider || 'Unavailable' }}
+        <v-chip class="mr-2 mb-2" :color="featureFlags.llm.available ? 'primary' : 'grey'" variant="outlined" label>
+          LLM: {{ featureFlags.llm.provider || "Unavailable" }}
         </v-chip>
         <v-chip
           class="mr-2 mb-2"
@@ -18,7 +13,7 @@
           variant="outlined"
           label
         >
-          Images: {{ featureFlags.image.enabled ? featureFlags.image.provider : 'Disabled' }}
+          Images: {{ featureFlags.image.enabled ? featureFlags.image.provider : "Disabled" }}
         </v-chip>
         <v-chip
           class="mr-2 mb-2"
@@ -26,7 +21,8 @@
           variant="outlined"
           label
         >
-          Music: {{ featureFlags.music.enabled ? (featureFlags.music.available ? 'Enabled' : 'Unavailable') : 'Disabled' }}
+          Music:
+          {{ featureFlags.music.enabled ? (featureFlags.music.available ? "Enabled" : "Unavailable") : "Disabled" }}
         </v-chip>
         <v-chip
           class="mr-2 mb-2"
@@ -34,7 +30,7 @@
           variant="outlined"
           label
         >
-          TTS: {{ featureFlags.tts.enabled ? (featureFlags.tts.available ? 'Enabled' : 'Unavailable') : 'Disabled' }}
+          TTS: {{ featureFlags.tts.enabled ? (featureFlags.tts.available ? "Enabled" : "Unavailable") : "Disabled" }}
         </v-chip>
         <v-chip
           class="mr-2 mb-2"
@@ -42,44 +38,27 @@
           variant="outlined"
           label
         >
-          STT: {{ featureFlags.stt.enabled ? (featureFlags.stt.available ? 'Enabled' : 'Unavailable') : 'Disabled' }}
+          STT: {{ featureFlags.stt.enabled ? (featureFlags.stt.available ? "Enabled" : "Unavailable") : "Disabled" }}
         </v-chip>
       </div>
-      
-      <v-btn 
-        size="x-large" 
-        class="new-game-button"
-        @click="$emit('start-new-game')"
-      >
+
+      <v-btn size="x-large" class="new-game-button" @click="$emit('start-new-game')">
         <v-icon start>mdi-plus-circle</v-icon>
         Start New Adventure
       </v-btn>
-      
+
       <div v-if="loading" class="loading-container">
-        <v-progress-circular
-          indeterminate
-          color="primary"
-          size="40"
-          width="3"
-        ></v-progress-circular>
+        <v-progress-circular indeterminate color="primary" size="40" width="3"></v-progress-circular>
       </div>
-      
+
       <div v-else-if="savedGames.length > 0" class="saved-games-section">
         <h2 class="section-title">Continue Your Adventures</h2>
         <div class="games-grid">
-          <v-card 
-            v-for="game in savedGames" 
-            :key="game.gameId"
-            class="game-card"
-            @click="selectGame(game)"
-            hover
-          >
+          <v-card v-for="game in savedGames" :key="game.gameId" class="game-card" @click="selectGame(game)" hover>
             <v-card-title class="game-title">
               {{ game.title }}
             </v-card-title>
-            <v-card-subtitle class="game-theme">
-              {{ game.theme }} • {{ game.artStyle }}
-            </v-card-subtitle>
+            <v-card-subtitle class="game-theme">{{ game.theme }} • {{ game.artStyle }}</v-card-subtitle>
             <v-card-text>
               <div class="game-stats">
                 <div class="stat">
@@ -101,35 +80,25 @@
               </div>
             </v-card-text>
             <v-card-actions>
-              <v-btn 
-                variant="text" 
-                color="primary"
-                @click.stop="loadGame(game.gameId)"
-              >
+              <v-btn variant="text" color="primary" @click.stop="loadGame(game.gameId)">
                 Continue
                 <v-icon end>mdi-play</v-icon>
               </v-btn>
               <v-spacer></v-spacer>
-              <v-btn 
-                variant="text" 
-                color="error"
-                icon
-                @click.stop="confirmDelete(game)"
-                title="Delete Save"
-              >
+              <v-btn variant="text" color="error" icon @click.stop="confirmDelete(game)" title="Delete Save">
                 <v-icon>mdi-delete</v-icon>
               </v-btn>
             </v-card-actions>
           </v-card>
         </div>
       </div>
-      
+
       <div v-else class="no-games">
         <p>No saved adventures found</p>
         <p class="subtitle">Start a new adventure to begin your journey!</p>
       </div>
     </div>
-    
+
     <!-- Delete Confirmation Dialog -->
     <v-dialog v-model="deleteDialog" max-width="400">
       <v-card>
@@ -148,9 +117,9 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted } from 'vue';
-import axios from 'axios';
-import { useRouter } from 'vue-router';
+import { defineComponent, ref, onMounted } from "vue";
+import axios from "axios";
+import { useRouter } from "vue-router";
 
 interface SavedGame {
   gameId: string;
@@ -165,37 +134,37 @@ interface SavedGame {
 }
 
 export default defineComponent({
-  name: 'GameSelection',
-  emits: ['start-new-game', 'load-game'],
+  name: "GameSelection",
+  emits: ["start-new-game", "load-game"],
   setup(props, { emit }) {
     const router = useRouter();
     const savedGames = ref<SavedGame[]>([]);
     const loading = ref(true);
     const featureFlagsLoaded = ref(false);
     const featureFlags = ref<any>({
-      llm: { provider: '', available: false },
-      image: { enabled: true, provider: '', available: false },
+      llm: { provider: "", available: false },
+      image: { enabled: true, provider: "", available: false },
       music: { enabled: true, available: false },
       tts: { enabled: true, available: false },
-      stt: { enabled: true, available: false }
+      stt: { enabled: true, available: false },
     });
     const deleteDialog = ref(false);
     const gameToDelete = ref<SavedGame | null>(null);
     const isDebugMode = import.meta.env.DEV; // Show step numbers in development mode
-    
+
     const loadSavedGames = async () => {
       try {
         loading.value = true;
-        const response = await axios.get('/api/games');
-        if (response.data.status === 'success') {
+        const response = await axios.get("/api/games");
+        if (response.data.status === "success") {
           // Map adventureTitle from API to title field
           savedGames.value = response.data.games.map((game: any) => ({
             ...game,
-            title: game.adventureTitle || 'Untitled Adventure'
+            title: game.adventureTitle || "Untitled Adventure",
           }));
         }
       } catch (error) {
-        console.error('Error loading saved games:', error);
+        console.error("Error loading saved games:", error);
       } finally {
         loading.value = false;
       }
@@ -203,86 +172,86 @@ export default defineComponent({
 
     const loadFeatureFlags = async () => {
       try {
-        const resp = await axios.get('/api/feature-flags');
+        const resp = await axios.get("/api/feature-flags");
         featureFlags.value = resp.data;
         featureFlagsLoaded.value = true;
       } catch (e) {
-        console.warn('Unable to fetch feature flags:', e);
+        console.warn("Unable to fetch feature flags:", e);
         featureFlagsLoaded.value = false;
       }
     };
-    
+
     const formatDate = (timestamp: number) => {
-      if (!timestamp || Number.isNaN(timestamp)) return 'Unknown';
+      if (!timestamp || Number.isNaN(timestamp)) return "Unknown";
       const d = new Date(timestamp);
-      if (isNaN(d.getTime())) return 'Unknown';
-      return d.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
+      if (isNaN(d.getTime())) return "Unknown";
+      return d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
       });
     };
-    
+
     const formatRelativeDate = (timestamp: number) => {
       const now = Date.now();
       const diff = now - timestamp;
       const minutes = Math.floor(diff / 60000);
       const hours = Math.floor(diff / 3600000);
       const days = Math.floor(diff / 86400000);
-      
-      if (minutes < 1) return 'Just now';
+
+      if (minutes < 1) return "Just now";
       if (minutes < 60) return `${minutes}m ago`;
       if (hours < 24) return `${hours}h ago`;
       if (days < 7) return `${days}d ago`;
       return formatDate(timestamp);
     };
-    
+
     const formatPlayTime = (milliseconds: number) => {
       const totalSeconds = Math.floor(milliseconds / 1000);
       const hours = Math.floor(totalSeconds / 3600);
       const minutes = Math.floor((totalSeconds % 3600) / 60);
-      
+
       if (hours > 0) {
         return `${hours}h ${minutes}m`;
       }
       return `${minutes}m`;
     };
-    
+
     const selectGame = (game: SavedGame) => {
-      emit('load-game', game.gameId);
+      emit("load-game", game.gameId);
     };
-    
+
     const loadGame = (gameId: string) => {
       router.push(`/game/${gameId}`);
     };
-    
+
     const confirmDelete = (game: SavedGame) => {
       gameToDelete.value = game;
       deleteDialog.value = true;
     };
-    
+
     const deleteGame = async () => {
       if (!gameToDelete.value) return;
-      
+
       try {
         // Call the backend to delete the game
         await axios.delete(`/api/game/${gameToDelete.value.gameId}`);
-        
+
         // Remove from the frontend list
-        savedGames.value = savedGames.value.filter(g => g.gameId !== gameToDelete.value!.gameId);
+        savedGames.value = savedGames.value.filter((g) => g.gameId !== gameToDelete.value!.gameId);
         deleteDialog.value = false;
         gameToDelete.value = null;
       } catch (error) {
-        console.error('Error deleting game:', error);
-        alert('Failed to delete the game. Please try again.');
+        console.error("Error deleting game:", error);
+        alert("Failed to delete the game. Please try again.");
       }
     };
-    
+
     onMounted(() => {
       loadSavedGames();
       loadFeatureFlags();
     });
-    
+
     return {
       savedGames,
       loading,
@@ -297,9 +266,9 @@ export default defineComponent({
       loadGame,
       confirmDelete,
       deleteGame,
-      isDebugMode
+      isDebugMode,
     };
-  }
+  },
 });
 </script>
 
@@ -350,7 +319,7 @@ export default defineComponent({
   padding: 0 32px !important;
   min-height: 56px !important;
   height: 56px !important;
-  box-shadow: 
+  box-shadow:
     inset 2px 2px 4px rgba(255, 255, 255, 0.2),
     inset -2px -2px 4px rgba(0, 0, 0, 0.5),
     0 4px 8px rgba(0, 0, 0, 0.3);
@@ -360,7 +329,7 @@ export default defineComponent({
 .new-game-button:hover {
   background-color: #1a1a1a !important;
   transform: translateY(-2px);
-  box-shadow: 
+  box-shadow:
     inset 2px 2px 6px rgba(255, 255, 255, 0.3),
     inset -2px -2px 6px rgba(0, 0, 0, 0.6),
     0 6px 12px rgba(0, 0, 0, 0.4);

@@ -39,7 +39,8 @@ class GameEngineAgentSpec extends AnyFunSuite with Matchers {
     engine.initialize().isRight shouldBe true
 
     val streamed = new StringBuilder()
-    val result = engine.processCommandStreaming("go north", chunk => streamed.append(chunk), generateAudio = false)
+    val result =
+      engine.processCommand("go north", generateAudio = false, onTextChunk = Some(chunk => streamed.append(chunk)))
 
     result.isRight shouldBe true
     result.toOption.get.text should include("small hall")

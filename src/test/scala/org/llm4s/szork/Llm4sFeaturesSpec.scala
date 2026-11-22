@@ -130,7 +130,7 @@ class Llm4sFeaturesSpec extends AnyFunSuite with Matchers {
     val engine = GameEngine.create(llm, "correcting-stream")
     engine.initialize().isRight shouldBe true
 
-    val response = engine.processCommandStreaming("test", _ => (), generateAudio = false)
+    val response = engine.processCommand("test", generateAudio = false, onTextChunk = Some(_ => ()))
     response.toOption.get.text shouldBe "The dust settles."
   }
 }

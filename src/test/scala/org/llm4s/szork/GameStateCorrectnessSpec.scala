@@ -155,15 +155,26 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
     val engine = GameEngine.create(new FakeLLMClient(), sessionId = "tts", ttsClient = Some(tts))
     engine.initialize().isRight shouldBe true
 
-    engine.processCommandStreaming("look", _ => (), generateAudio = false).toOption.get.audioBase64 shouldBe None
+    engine
+      .processCommand("look", generateAudio = false, onTextChunk = Some(_ => ()))
+      .toOption
+      .get
+      .audioBase64 shouldBe None
     calls shouldBe 0
-    engine.processCommandStreaming("look", _ => (), generateAudio = true).toOption.get.audioBase64 shouldBe Some(
-      "FAKE_AUDIO_BASE64")
+    engine
+      .processCommand("look", generateAudio = true, onTextChunk = Some(_ => ()))
+      .toOption
+      .get
+      .audioBase64 shouldBe Some("FAKE_AUDIO_BASE64")
     calls shouldBe 1
 
     val noTts = GameEngine.create(new FakeLLMClient(), sessionId = "no-tts")
     noTts.initialize().isRight shouldBe true
-    noTts.processCommandStreaming("look", _ => (), generateAudio = true).toOption.get.audioBase64 shouldBe None
+    noTts
+      .processCommand("look", generateAudio = true, onTextChunk = Some(_ => ()))
+      .toOption
+      .get
+      .audioBase64 shouldBe None
   }
 
   test("step data records only the tool calls of the latest turn") {

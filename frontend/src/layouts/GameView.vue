@@ -227,12 +227,13 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, nextTick, onMounted, onUnmounted, watch, computed } from "vue";
+import { defineComponent, ref, nextTick, onMounted, watch, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import AdventureSetup from "@/components/AdventureSetup.vue";
 import GameSelection from "@/components/GameSelection.vue";
 import { useWebSocketGame } from "@/composables/useWebSocketGame";
 import { useAudioPlayback } from "@/composables/useAudioPlayback";
+import { blobToBase64, useVoiceRecorder } from "@/composables/useVoiceRecorder";
 import type { AdventureConfig, AdventureOutline, StyleChoice, ThemeChoice } from "@/types/api";
 import type { SceneData } from "@/types/WebSocketProtocol";
 
@@ -302,9 +303,6 @@ export default defineComponent({
     const gameOutput = ref<HTMLElement>();
     // Waiting for the response to a typed or spoken command
     const loading = computed(() => isStreaming.value || awaitingResponse.value);
-    const recording = ref(false);
-    const mediaRecorder = ref<MediaRecorder | null>(null);
-    const audioChunks = ref<Blob[]>([]);
     const gameStarted = ref(false);
     const setupStarted = ref(false);
     const selectionStarted = ref(false);
@@ -314,12 +312,6 @@ export default defineComponent({
     const adventureTitle = ref<string>("Generative Adventuring");
     const imageGenerationEnabled = ref(true);
     const speechInputRequested = ref(true);
-    // The microphone stream while recording, released when recording stops or the view unmounts
-    let micStream: MediaStream | null = null;
-    // Whether the push-to-talk button is held, and whether the microphone is being requested
-    let micPressed = false;
-    let acquiringMic = false;
-    let unmounted = false;
     // The game this view last asked to load (gameLoaded may not have arrived yet)
     let requestedGameId: string | null = null;
 
@@ -520,90 +512,6 @@ export default defineComponent({
       }
     };
 
-    const startRecording = async () => {
-      log("Start recording called");
-      micPressed = true;
-      if (recording.value || acquiringMic) {
-        log("Already recording, ignoring");
-        return;
-      }
-
-      try {
-        acquiringMic = true;
-        let stream: MediaStream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        } finally {
-          acquiringMic = false;
-        }
-        micStream = stream;
-        // The button was released (or the view closed) while the browser asked for permission
-        if (!micPressed || unmounted) {
-          log("Button released before the microphone was ready, not recording");
-          releaseMicrophone();
-          return;
-        }
-
-        // Try to use a format that's more compatible with Whisper
-        let options = {};
-        // Try different formats in order of preference
-        const formats = ["audio/wav", "audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"];
-
-        for (const format of formats) {
-          if (MediaRecorder.isTypeSupported(format)) {
-            options = { mimeType: format };
-            log("Using audio format:", format);
-            break;
-          }
-        }
-
-        const recorder = new MediaRecorder(stream, options);
-        mediaRecorder.value = recorder;
-        audioChunks.value = [];
-
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunks.value.push(event.data);
-          }
-        };
-
-        recorder.onstop = async () => {
-          // Release this recording's stream (a newer recording may have its own by now)
-          stream.getTracks().forEach((track) => track.stop());
-          if (micStream === stream) micStream = null;
-          // Stopped because the view closed: there is no game to send the command to
-          if (unmounted) return;
-          const mimeType = recorder.mimeType || "audio/webm";
-          const audioBlob = new Blob(audioChunks.value, { type: mimeType });
-          log("Recording stopped, mime type:", mimeType, "size:", audioBlob.size);
-          await sendAudioCommand(audioBlob);
-        };
-
-        recorder.start();
-        recording.value = true;
-        log("Recording started successfully");
-      } catch (error) {
-        log("Error accessing microphone:", error);
-        releaseMicrophone();
-        addLocalMessage("Error: Could not access microphone. Please check permissions.");
-      }
-    };
-
-    const releaseMicrophone = () => {
-      micStream?.getTracks().forEach((track) => track.stop());
-      micStream = null;
-    };
-
-    const stopRecording = () => {
-      log("Stop recording called", "recording:", recording.value);
-      micPressed = false;
-      if (mediaRecorder.value && recording.value) {
-        mediaRecorder.value.stop();
-        recording.value = false;
-        log("Recording stopped");
-      }
-    };
-
     const sendAudioCommand = async (audioBlob: Blob) => {
       // Check if audio clip has content
       log("Audio blob size:", audioBlob.size, "bytes");
@@ -615,17 +523,7 @@ export default defineComponent({
       try {
         await scrollToBottom();
 
-        // Convert blob to base64
-        const base64Audio = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const base64 = reader.result as string;
-            // Remove the data:audio/webm;base64, prefix
-            resolve(base64.split(",")[1]);
-          };
-          reader.onerror = () => reject(reader.error ?? new Error("Could not read the recording"));
-          reader.readAsDataURL(audioBlob);
-        });
+        const base64Audio = await blobToBase64(audioBlob);
 
         // Send via WebSocket - the transcription and response will come via WebSocket events
         await wsSendAudioCommand(base64Audio, imageGenerationEnabled.value);
@@ -636,6 +534,12 @@ export default defineComponent({
         await scrollToBottom();
       }
     };
+
+    const { recording, startRecording, stopRecording } = useVoiceRecorder({
+      onRecorded: sendAudioCommand,
+      onError: () => addLocalMessage("Error: Could not access microphone. Please check permissions."),
+      log,
+    });
 
     onMounted(async () => {
       // Set up auto-scroll callback for streaming
@@ -666,13 +570,6 @@ export default defineComponent({
         // The user will click "Begin Your Adventure" to go to selection screen
         log("No game ID in URL, waiting for user to begin");
       }
-    });
-
-    onUnmounted(() => {
-      log("Component unmounting, cleaning up the microphone");
-      unmounted = true;
-      if (mediaRecorder.value && recording.value) mediaRecorder.value.stop();
-      releaseMicrophone();
     });
 
     return {

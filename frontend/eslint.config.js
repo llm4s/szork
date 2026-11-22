@@ -24,9 +24,9 @@ export default [
     },
     rules: {
       ...prettierConfig.rules,
-      "prettier/prettier": "warn",
+      "prettier/prettier": "error",
       "@typescript-eslint/no-unused-vars": "warn",
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "error",
       "vue/multi-word-component-names": "off",
     },
   },

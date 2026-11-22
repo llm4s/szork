@@ -3,7 +3,6 @@ package org.llm4s.szork.debug
 import org.llm4s.szork.game._
 import org.llm4s.szork.api.{GameTheme, ArtStyle, SzorkConfig}
 import org.llm4s.szork.persistence.{GameMetadataHelper, StepData, StepPersistence}
-import org.llm4s.szork.adapters.DefaultClients
 import org.slf4j.LoggerFactory
 import scala.util.{Try, Success, Failure}
 
@@ -67,20 +66,13 @@ object CreateAdventure {
       println("\nInitializing game engine...")
       val sessionId = IdGenerator.sessionId()
 
-      // Create SPI clients (optional, not used in debug mode)
-      val ttsClient = DefaultClients.createTTSClient()
-      val imageClient = DefaultClients.createImageClient()
-      val musicClient = DefaultClients.createMusicClient()
-
+      // No media clients: the debug tools only play the text of a turn
       val engine = GameEngine.create(
         llmClient = llmClient,
         sessionId = sessionId,
         theme = Some(config.theme),
         artStyle = Some(config.artStyle),
-        adventureOutline = Some(outline),
-        ttsClient = ttsClient,
-        imageClient = imageClient,
-        musicClient = musicClient
+        adventureOutline = Some(outline)
       )
       println("✓ Game engine created")
 
@@ -107,7 +99,8 @@ object CreateAdventure {
           return
       }
 
-      val gameTheme = Some(GameTheme(id = config.artStyle, name = config.theme, prompt = config.theme))
+      // As the server records a theme given by its description
+      val gameTheme = Some(GameTheme(id = config.theme, name = config.theme, prompt = config.theme))
       val gameArtStyle = Some(ArtStyle(id = config.artStyle, name = config.artStyle))
       val gameState = engine.getGameState(config.gameId, gameTheme, gameArtStyle)
 

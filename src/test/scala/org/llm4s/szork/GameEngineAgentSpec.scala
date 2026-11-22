@@ -3,8 +3,8 @@ package org.llm4s.szork
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.llm4s.llmconnect.model._
-import org.llm4s.types.Result
-import org.llm4s.szork.stubs.FakeLLMClient
+import org.llm4s.szork.stubs.ScriptedDm
+import org.llm4s.testkit.Reply
 import org.llm4s.szork.game.{GameConstants, GameEngine}
 
 /** Covers the GameEngine's use of the llm4s Agent: conversation threads, streaming turns, and restoring a saved
@@ -13,7 +13,7 @@ import org.llm4s.szork.game.{GameConstants, GameEngine}
 class GameEngineAgentSpec extends AnyFunSuite with Matchers {
 
   private def newEngine(sessionId: String): GameEngine =
-    GameEngine.create(llmClient = new FakeLLMClient(), sessionId = sessionId, theme = Some("underground realm"))
+    GameEngine.create(llmClient = ScriptedDm(), sessionId = sessionId, theme = Some("underground realm"))
 
   test("each turn continues the same conversation, without the system prompt in its history") {
     val engine = newEngine("thread-test")
@@ -69,23 +69,9 @@ class GameEngineAgentSpec extends AnyFunSuite with Matchers {
   }
 
   test("the agent runs the game's inventory tools and feeds their results back to the model") {
-    // Asks for add_inventory_item on "take" commands until it sees the tool's result, then narrates
-    val llm = new FakeLLMClient {
-      override def complete(conversation: Conversation, options: CompletionOptions): Result[Completion] =
-        conversation.messages.lastOption match {
-          case Some(u: UserMessage) if u.content.startsWith("take") =>
-            val call = ToolCall("call-1", "add_inventory_item", ujson.Obj("item" -> "brass lantern"))
-            Right(
-              Completion(
-                id = "tool-turn",
-                created = java.time.Instant.now(),
-                content = "",
-                model = "fake-llm",
-                message = AssistantMessage(contentOpt = None, toolCalls = Seq(call)),
-                toolCalls = List(call)
-              ))
-          case _ => super.complete(conversation, options)
-        }
+    // Asks for add_inventory_item while the "take" command is the last message, then (seeing the tool's result) narrates
+    val llm = ScriptedDm { case ScriptedDm.Command("take lantern") =>
+      Reply.toolCall("add_inventory_item", """{"item": "brass lantern"}""", id = Some("call-1"))
     }
     val engine = GameEngine.create(llmClient = llm, sessionId = "tool-test")
     engine.initialize().isRight shouldBe true
@@ -96,6 +82,10 @@ class GameEngineAgentSpec extends AnyFunSuite with Matchers {
     val toolResults = engine.getMessages.collect { case t: ToolMessage => t }
     toolResults.map(_.toolCallId) shouldBe Vector("call-1")
     toolResults.head.content should include("brass lantern")
+    // the model's next call was sent the tool's result
+    val fedBack = llm.lastCall.get.messages.last
+    fedBack shouldBe a[ToolMessage]
+    fedBack.content should include("brass lantern")
   }
 
   test("a save that ends mid-turn (a tool call without its result) is cut back and still plays") {

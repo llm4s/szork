@@ -12,7 +12,7 @@ import org.llm4s.szork.api._
 import org.llm4s.szork.error.ErrorHandling.SzorkResult
 import org.llm4s.szork.spi.STTClient
 import org.llm4s.szork.game.GameEngine
-import org.llm4s.szork.stubs.{FakeImageClient, FakeLLMClient}
+import org.llm4s.szork.stubs.{FakeImageClient, ScriptedDm}
 import org.llm4s.szork.websocket.TypedWebSocketServer
 import org.llm4s.szork.websocket.protocol._
 
@@ -31,7 +31,7 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
   private val engineFactory: EngineFactory = (sessionId, theme, artStyle, outline, features) =>
     Right(
       GameEngine.create(
-        new FakeLLMClient(),
+        ScriptedDm(),
         sessionId,
         theme,
         artStyle,

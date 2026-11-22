@@ -5,21 +5,14 @@ import org.scalatest.matchers.should.Matchers
 import scala.concurrent.ExecutionContext
 import org.llm4s.szork.api.{GameSession, SessionFeatures, SessionManager}
 import org.llm4s.szork.game.GameEngine
-import org.llm4s.szork.stubs.FakeLLMClient
+import org.llm4s.szork.stubs.ScriptedDm
 
 class SessionManagerSpec extends AnyFunSuite with Matchers {
 
   private val features = SessionFeatures(tts = false, stt = false, image = false, music = false)
 
   private def session(id: String, gameId: String): GameSession =
-    new GameSession(
-      id,
-      gameId,
-      GameEngine.create(new FakeLLMClient(), id),
-      None,
-      None,
-      features,
-      ExecutionContext.parasitic)
+    new GameSession(id, gameId, GameEngine.create(ScriptedDm(), id), None, None, features, ExecutionContext.parasitic)
 
   test("a game has one session: registering a second joins the first") {
     val manager = new SessionManager()

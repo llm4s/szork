@@ -2,58 +2,20 @@ package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
-import org.llm4s.llmconnect.model._
-import org.llm4s.types.Result
-import org.llm4s.szork.stubs.{FakeLLMClient, FakeTTSClient}
+import org.llm4s.llmconnect.model.SystemMessage
+import org.llm4s.testkit.{Reply, ScriptedLLMClient}
+import org.llm4s.szork.stubs.{DmAnswers, FakeTTSClient, ScriptedDm}
 import org.llm4s.szork.game._
 
 /** Regression tests for game-state correctness (issue #23). */
 class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
 
-  /** A fake LLM that adds an item on "take" commands, as the real Dungeon Master would through its tools. */
-  private class TakingLLM extends FakeLLMClient {
-    override def complete(conversation: Conversation, options: CompletionOptions): Result[Completion] =
-      conversation.messages.lastOption match {
-        case Some(u: UserMessage) if u.content.startsWith("take ") =>
-          val call =
-            ToolCall(s"call-${u.content}", "add_inventory_item", ujson.Obj("item" -> u.content.stripPrefix("take ")))
-          Right(
-            Completion(
-              id = "tool-turn",
-              created = java.time.Instant.now(),
-              content = "",
-              model = "fake-llm",
-              message = AssistantMessage(contentOpt = None, toolCalls = Seq(call)),
-              toolCalls = List(call)
-            ))
-        case _ => super.complete(conversation, options)
-      }
-  }
+  /** Adds an item on "take" commands, as the real Dungeon Master would through its tools. */
+  private def takingLLM(): ScriptedLLMClient = ScriptedDm(ScriptedDm.takesItems)
 
-  /** A fake LLM that records the system prompt of every call. */
-  private class PromptRecordingLLM extends FakeLLMClient {
-    @volatile var systemPrompts: Vector[String] = Vector.empty
-    override def complete(conversation: Conversation, options: CompletionOptions): Result[Completion] = {
-      systemPrompts ++= conversation.messages.collect { case s: SystemMessage => s.content }
-      super.complete(conversation, options)
-    }
-  }
-
-  /** A fake LLM answering every command with `answer`. */
-  private class FixedAnswerLLM(answer: String) extends FakeLLMClient {
-    override def complete(conversation: Conversation, options: CompletionOptions): Result[Completion] =
-      conversation.messages.lastOption match {
-        case Some(u: UserMessage) if u.content == "test" =>
-          Right(
-            Completion(
-              id = "fixed",
-              created = java.time.Instant.now(),
-              content = answer,
-              model = "fake-llm",
-              message = AssistantMessage(answer)))
-        case _ => super.complete(conversation, options)
-      }
-  }
+  /** Answers the command "test" with `answer`. */
+  private def fixedAnswerLLM(answer: String): ScriptedLLMClient =
+    ScriptedDm { case ScriptedDm.Command("test") => Reply.text(answer) }
 
   private val outline = AdventureOutline(
     title = "The Sunken Vault",
@@ -66,8 +28,8 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
   )
 
   test("each game has its own inventory") {
-    val a = GameEngine.create(new TakingLLM(), sessionId = "a")
-    val b = GameEngine.create(new TakingLLM(), sessionId = "b")
+    val a = GameEngine.create(takingLLM(), sessionId = "a")
+    val b = GameEngine.create(takingLLM(), sessionId = "b")
     a.initialize().isRight shouldBe true
     a.processCommand("take lamp", generateAudio = false).isRight shouldBe true
 
@@ -80,24 +42,25 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
   }
 
   test("a restored game keeps its adventure outline in the Dungeon Master's prompt") {
-    val original = GameEngine.create(new FakeLLMClient(), sessionId = "orig", adventureOutline = Some(outline))
+    val original = GameEngine.create(ScriptedDm(), sessionId = "orig", adventureOutline = Some(outline))
     original.initialize().isRight shouldBe true
     val saved = original.getGameState("game-1", None, None)
 
     // Loaded without an outline passed in: the save's outline must still be used, and saved again
-    val llm = new PromptRecordingLLM()
+    val llm = ScriptedDm()
     val restored = GameEngine.create(llm, sessionId = "restored")
     restored.restoreGameState(saved)
     restored.processCommand("look", generateAudio = false).isRight shouldBe true
 
-    llm.systemPrompts.last should include("The Sunken Vault")
+    val systemPrompts = llm.lastCall.get.messages.collect { case s: SystemMessage => s.content }
+    systemPrompts.last should include("The Sunken Vault")
     restored.getGameState("game-1", None, None).adventureOutline.map(_.title) shouldBe Some("The Sunken Vault")
   }
 
   test("a response over the narration length guideline is used, with a warning") {
     val longNarration = "You wade deeper. " * 40 // > 500 characters
-    val answer = org.llm4s.szork.stubs.DmAnswers.simple(longNarration, "cavern_entrance", "wade")
-    val engine = GameEngine.create(new FixedAnswerLLM(answer), sessionId = "long")
+    val answer = DmAnswers.simple(longNarration, "cavern_entrance", "wade")
+    val engine = GameEngine.create(fixedAnswerLLM(answer), sessionId = "long")
     engine.initialize().isRight shouldBe true
 
     val response = engine.processCommand("test", generateAudio = false)
@@ -107,8 +70,8 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
 
   test("a response that breaks the game's rules shows its narration, never raw JSON") {
     val answer =
-      org.llm4s.szork.stubs.DmAnswers.scene("The floor gives way beneath you!", "Bad Id!", "Pit", Seq("down" -> "pit"))
-    val engine = GameEngine.create(new FixedAnswerLLM(answer), sessionId = "bad")
+      DmAnswers.scene("The floor gives way beneath you!", "Bad Id!", "Pit", Seq("down" -> "pit"))
+    val engine = GameEngine.create(fixedAnswerLLM(answer), sessionId = "bad")
     engine.initialize().isRight shouldBe true
     val before = engine.getCurrentScene
 
@@ -119,7 +82,7 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
   }
 
   test("scene media is requested only when the player moves to a new location") {
-    val engine = GameEngine.create(new FakeLLMClient(), sessionId = "media")
+    val engine = GameEngine.create(ScriptedDm(), sessionId = "media")
     engine.initialize().isRight shouldBe true
     engine.locationChangedLastTurn shouldBe true // first scene
 
@@ -136,7 +99,7 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
   }
 
   test("each narration is recorded once in the transcript") {
-    val engine = GameEngine.create(new FakeLLMClient(), sessionId = "transcript")
+    val engine = GameEngine.create(ScriptedDm(), sessionId = "transcript")
     engine.initialize().isRight shouldBe true
     engine.processCommand("go north", generateAudio = false).isRight shouldBe true
 
@@ -152,7 +115,7 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
         calls += 1; super.synthesizeToBase64(text, voice)
       }
     }
-    val engine = GameEngine.create(new FakeLLMClient(), sessionId = "tts", ttsClient = Some(tts))
+    val engine = GameEngine.create(ScriptedDm(), sessionId = "tts", ttsClient = Some(tts))
     engine.initialize().isRight shouldBe true
 
     engine
@@ -168,7 +131,7 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
       .audioBase64 shouldBe Some("FAKE_AUDIO_BASE64")
     calls shouldBe 1
 
-    val noTts = GameEngine.create(new FakeLLMClient(), sessionId = "no-tts")
+    val noTts = GameEngine.create(ScriptedDm(), sessionId = "no-tts")
     noTts.initialize().isRight shouldBe true
     noTts
       .processCommand("look", generateAudio = true, onTextChunk = Some(_ => ()))
@@ -178,7 +141,7 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
   }
 
   test("step data records only the tool calls of the latest turn") {
-    val engine = GameEngine.create(new TakingLLM(), sessionId = "steps")
+    val engine = GameEngine.create(takingLLM(), sessionId = "steps")
     engine.initialize().isRight shouldBe true
     engine.processCommand("take lamp", generateAudio = false).isRight shouldBe true
     engine.createStepData("g", None, None, Some("take lamp"), "", None, 0).toolCalls.map(_.name) shouldBe List(

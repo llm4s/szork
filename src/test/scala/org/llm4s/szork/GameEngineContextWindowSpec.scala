@@ -6,10 +6,10 @@ import org.llm4s.agent.ContextWindowConfig
 import org.llm4s.config.ConfigReader
 import org.llm4s.context.ConversationTokenCounter
 import org.llm4s.llmconnect.model._
-import org.llm4s.types.Result
+import org.llm4s.testkit.ScriptedLLMClient
 import org.llm4s.szork.api.SzorkConfig
 import org.llm4s.szork.game._
-import org.llm4s.szork.stubs.FakeLLMClient
+import org.llm4s.szork.stubs.ScriptedDm
 
 /** Covers the Dungeon Master's context window: llm4s's ContextWindowMiddleware trims what each model call is sent,
   * while the game's thread (and its saves) keep the whole conversation.
@@ -26,41 +26,13 @@ class GameEngineContextWindowSpec extends AnyFunSuite with Matchers {
     adventureArc = "Descend / Search / Escape"
   )
 
-  /** Answers like FakeLLMClient, records every request, and on "take <item>" first calls add_inventory_item. */
-  private class RecordingLLM extends FakeLLMClient {
-    @volatile var requests: Vector[Vector[Message]] = Vector.empty
-    private val calls = new java.util.concurrent.atomic.AtomicInteger()
+  /** Plays the cavern and, on "take <item>", first calls add_inventory_item; the testkit records every request. */
+  private def recordingLLM(): ScriptedLLMClient = ScriptedDm(ScriptedDm.takesItems)
 
-    private def toolCallFor(conversation: Conversation): Option[Completion] =
-      conversation.messages.lastOption.collect {
-        case u: UserMessage if u.content.startsWith("take ") =>
-          val call =
-            ToolCall(s"call-${calls.incrementAndGet()}", "add_inventory_item", ujson.Obj("item" -> u.content.drop(5)))
-          Completion(
-            id = call.id,
-            created = java.time.Instant.now(),
-            content = "",
-            model = "fake-llm",
-            message = AssistantMessage(contentOpt = None, toolCalls = Seq(call)),
-            toolCalls = List(call)
-          )
-      }
+  /** The messages each model call was sent, oldest call first. */
+  extension (llm: ScriptedLLMClient) private def requests: Vector[Vector[Message]] = llm.calls.map(_.messages.toVector)
 
-    override def complete(conversation: Conversation, options: CompletionOptions): Result[Completion] = {
-      requests :+= conversation.messages.toVector
-      toolCallFor(conversation).map(Right(_)).getOrElse(super.complete(conversation, options))
-    }
-
-    override def streamComplete(
-      conversation: Conversation,
-      options: CompletionOptions,
-      onChunk: StreamedChunk => Unit): Result[Completion] = {
-      requests :+= conversation.messages.toVector
-      toolCallFor(conversation).map(Right(_)).getOrElse(super.streamComplete(conversation, options, onChunk))
-    }
-  }
-
-  private def newEngine(llm: RecordingLLM, window: ContextWindowConfig, id: String = "window-test"): GameEngine =
+  private def newEngine(llm: ScriptedLLMClient, window: ContextWindowConfig, id: String = "window-test"): GameEngine =
     GameEngine.create(
       llmClient = llm,
       sessionId = id,
@@ -97,7 +69,7 @@ class GameEngineContextWindowSpec extends AnyFunSuite with Matchers {
   }
 
   test("a long game sends at most maxMessages of conversation per model call, and keeps its whole history") {
-    val llm = new RecordingLLM
+    val llm = recordingLLM()
     val engine = newEngine(llm, ContextWindowConfig(maxMessages = Some(8)))
     engine.initialize().isRight shouldBe true
     val played = play(engine, 40)
@@ -125,7 +97,7 @@ class GameEngineContextWindowSpec extends AnyFunSuite with Matchers {
 
   test("a token limit keeps each call's conversation within maxTokens, counted with cl100k_base") {
     val counter = ConversationTokenCounter.openAI().fold(e => fail(e.message), identity)
-    val llm = new RecordingLLM
+    val llm = recordingLLM()
     val maxTokens = 600
     val engine = newEngine(llm, ContextWindowConfig(maxTokens = Some(maxTokens)))
     engine.initialize().isRight shouldBe true
@@ -142,7 +114,7 @@ class GameEngineContextWindowSpec extends AnyFunSuite with Matchers {
 
   test("pruning never sends an inventory tool call without its result, whatever the limit") {
     (3 to 9).foreach { limit =>
-      val llm = new RecordingLLM
+      val llm = recordingLLM()
       val engine = newEngine(llm, ContextWindowConfig(maxMessages = Some(limit)), s"tools-$limit")
       engine.initialize().isRight shouldBe true
       val played = play(engine, 24)
@@ -156,7 +128,7 @@ class GameEngineContextWindowSpec extends AnyFunSuite with Matchers {
       }
     }
     // with room for it, an earlier turn's tool call and result are sent together
-    val llm = new RecordingLLM
+    val llm = recordingLLM()
     val engine = newEngine(llm, ContextWindowConfig(maxMessages = Some(9)))
     engine.initialize().isRight shouldBe true
     play(engine, 24)
@@ -168,13 +140,13 @@ class GameEngineContextWindowSpec extends AnyFunSuite with Matchers {
 
   test("a save holds the whole conversation, and a restored game prunes it again") {
     val window = ContextWindowConfig(maxMessages = Some(6))
-    val original = newEngine(new RecordingLLM, window, "save")
+    val original = newEngine(recordingLLM(), window, "save")
     original.initialize().isRight shouldBe true
     play(original, 20)
     val saved = original.getGameState("game-1", None, None)
     saved.agentMessages shouldBe original.getMessages.toList
 
-    val llm = new RecordingLLM
+    val llm = recordingLLM()
     val restored = newEngine(llm, window, "restore")
     restored.restoreGameState(saved)
     restored.getMessages shouldBe original.getMessages
@@ -192,7 +164,8 @@ class GameEngineContextWindowSpec extends AnyFunSuite with Matchers {
   }
 
   test("a token limit is capped to fit the model's context window") {
-    val llm = new FakeLLMClient // 8000-token window, 1000 reserved for the completion
+    // 8000-token window, 1000 reserved for the completion; capping the window never calls the model
+    val llm = ScriptedLLMClient.sequence().withContextWindow(8000).withReserveCompletion(1000)
     GameEngine.contextWindowFor(Some(ContextWindowConfig(maxTokens = Some(24000))), llm).flatMap(_.maxTokens) shouldBe
       Some(3500)
     GameEngine.contextWindowFor(Some(ContextWindowConfig(maxTokens = Some(2000))), llm).flatMap(_.maxTokens) shouldBe

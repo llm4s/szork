@@ -16,7 +16,7 @@ import org.llm4s.szork.error.ErrorHandling.SzorkResult
 import org.llm4s.szork.game.GameEngine
 import org.llm4s.szork.persistence.StepPersistence
 import org.llm4s.szork.spi.MusicClient
-import org.llm4s.szork.stubs.{FakeImageClient, FakeLLMClient}
+import org.llm4s.szork.stubs.{FakeImageClient, ScriptedDm}
 import org.llm4s.szork.websocket.TypedWebSocketServer
 
 /** Session lifecycle over real connections, with saves on: one session per game, ending a game's session, music on its
@@ -54,7 +54,7 @@ class GameSessionsSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll 
     else
       Right(
         GameEngine.create(
-          new FakeLLMClient(),
+          ScriptedDm(),
           sessionId,
           theme,
           artStyle,

@@ -168,7 +168,6 @@ class TypedWebSocketServer(
       send(conn, ErrorMessage("Failed to load game", Some(s"Invalid game id: ${request.gameId.take(40)}")))
     case request: LoadGameRequest => runForConnection(conn)(loadGame(conn, request))
     case ResumeSessionRequest(sessionId) => resume(conn, sessionId)
-    case ListGamesRequest() => runForConnection(conn)(listGames(conn))
     case CommandRequest(command) => withSession(conn)(s => runFor(s)(playCommand(s, command)))
     case request: StreamCommandRequest => withSession(conn)(s => runFor(s)(playStreamCommand(s, request)))
     case request: AudioCommandRequest => withSession(conn)(s => runFor(s)(playAudioCommand(s, request)))
@@ -249,12 +248,7 @@ class TypedWebSocketServer(
       }
     }
     val features = SessionFeatures
-      .requested(
-        capabilities,
-        request.tts,
-        request.stt,
-        request.image.orElse(Some(request.imageGeneration)),
-        request.music)
+      .requested(capabilities, request.tts, request.stt, request.image, request.music)
       .copy(autoSave = autoSave)
 
     engineFactory.create(sessionId, request.theme, request.artStyle, outline, engineFeatures) match {
@@ -400,11 +394,6 @@ class TypedWebSocketServer(
       case None =>
         send(conn, ErrorMessage("Session expired", Some(ErrorMessage.SessionExpired)))
     }
-
-  private def listGames(conn: WebSocket): Unit = {
-    val games = GamePersistence.listGames().map(g => GameInfo(g.gameId, g.theme, g.lastPlayed, g.adventureTitle))
-    send(conn, GamesListMessage(games))
-  }
 
   // ============= Turns =============
 

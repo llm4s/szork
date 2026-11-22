@@ -290,7 +290,7 @@ export function useWebSocketGame() {
   ) => {
     await connect();
     clearMessages();
-    wsClient.value?.newGame(theme, artStyle, imageGeneration, adventureOutline, {
+    wsClient.value?.newGame(theme, artStyle, adventureOutline, {
       ...features,
       image: imageGeneration && (features?.image ?? true),
     });

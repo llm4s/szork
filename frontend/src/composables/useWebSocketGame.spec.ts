@@ -46,6 +46,24 @@ describe("useWebSocketGame", () => {
     vi.restoreAllMocks();
   });
 
+  it("asks for a new game's features, with images off when the player turned them off", async () => {
+    const game = useWebSocketGame();
+    const starting = game.startNewGame("caves", "pixel", false, null, { tts: true, music: false });
+    latest().open();
+    await starting;
+    expect(latest().sentMessages()).toEqual([
+      {
+        type: "newGame",
+        theme: "caves",
+        artStyle: "pixel",
+        adventureOutline: null,
+        tts: true,
+        music: false,
+        image: false,
+      },
+    ]);
+  });
+
   it("resumes the session when a command is sent while waiting to reconnect", async () => {
     const game = await startedGame();
     latest().drop();

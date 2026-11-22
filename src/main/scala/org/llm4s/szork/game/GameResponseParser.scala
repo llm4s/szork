@@ -3,36 +3,19 @@ package org.llm4s.szork.game
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 
+/** Reads the Dungeon Master's answer: a JSON object matching [[DungeonMasterOutput.schema]]. */
 object GameResponseParser {
-  val JsonMarker = "<<<JSON>>>"
 
-  // Extract JSON string; if a marker is present, inject narrationText from prefix
-  def extractJsonWithNarration(response: String): Option[String] = {
-    if (response == null || response.trim.isEmpty) return None
-
-    val trimmed = response.trim
-    val markerIndex = trimmed.indexOf(JsonMarker)
-    if (markerIndex >= 0) {
-      val narration = trimmed.substring(0, markerIndex).trim
-      val jsonStart = markerIndex + JsonMarker.length
-      val jsonStr = trimmed.substring(jsonStart).trim
-      try {
-        val json = ujson.read(jsonStr)
-        json("narrationText") = narration
-        Some(json.toString())
-      } catch {
-        case _: Throwable => Some(jsonStr) // fall back to original JSON segment
-      }
-    } else {
-      // Fallback: take outermost JSON braces
+  /** The JSON object in `response`: the whole text, or its outermost braces if the model wrapped it in prose. */
+  def extractJson(response: String): Option[String] =
+    Option(response).map(_.trim).filter(_.nonEmpty).flatMap { trimmed =>
       val start = trimmed.indexOf('{')
       val end = trimmed.lastIndexOf('}')
-      if (start >= 0 && end > start) Some(trimmed.substring(start, end + 1)) else None
+      Option.when(start >= 0 && end > start)(trimmed.substring(start, end + 1))
     }
-  }
 
   def parse(response: String): SzorkResult[GameResponseData] =
-    extractJsonWithNarration(response) match {
+    extractJson(response) match {
       case Some(json) => GameResponseData.fromJson(json)
       case None => Left(ParseError("No JSON found in response"))
     }

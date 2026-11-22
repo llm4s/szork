@@ -169,6 +169,7 @@ export function useWebSocketGame() {
     client.on<StreamCompleteMessage>("streamComplete", ({ data }) => {
       const streaming = currentStreamingMessage.value;
       if (streaming) {
+        streaming.text = data.text;
         streaming.scene = data.scene;
         streaming.messageIndex = data.messageIndex;
         streaming.hasImage = data.hasImage;

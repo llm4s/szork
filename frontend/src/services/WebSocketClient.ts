@@ -237,7 +237,7 @@ export class WebSocketClient {
     this.send({ type: "streamCommand", command, imageGeneration });
   }
 
-  sendAudio(audioBase64: string): void {
-    this.send({ type: "audioCommand", audio: audioBase64 });
+  sendAudio(audioBase64: string, imageGeneration?: boolean): void {
+    this.send({ type: "audioCommand", audio: audioBase64, imageGeneration });
   }
 }

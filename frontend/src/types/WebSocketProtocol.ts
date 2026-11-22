@@ -50,6 +50,7 @@ export interface StreamCommandRequest {
 export interface AudioCommandRequest {
   type: "audioCommand";
   audio: string; // Base64 encoded audio
+  imageGeneration?: boolean;
 }
 
 export interface ListGamesRequest {
@@ -103,11 +104,14 @@ export interface GameStartedMessage {
   };
 }
 
+/** The flags are the ones the session now uses: loading an open game applies the requested features to it. */
 export interface GameLoadedMessage {
   type: "gameLoaded";
   data: SessionFeatureFlags & {
     sessionId: string;
     gameId: string;
+    /** The session's message index, as in sessionResumed. */
+    messageIndex: number;
     conversation: ConversationEntry[];
     currentLocation?: string;
     currentScene?: SceneData;
@@ -120,6 +124,15 @@ export interface SessionResumedMessage {
     sessionId: string;
     gameId: string;
     messageIndex: number;
+  };
+}
+
+/** Another connection loaded this game and took its session: stop resuming it, and offer to load the game again. */
+export interface SessionTakenOverMessage {
+  type: "sessionTakenOver";
+  data: {
+    sessionId: string;
+    gameId: string;
   };
 }
 
@@ -222,6 +235,7 @@ export type ServerMessage =
   | GameStartedMessage
   | GameLoadedMessage
   | SessionResumedMessage
+  | SessionTakenOverMessage
   | CommandResponseMessage
   | TextChunkMessage
   | StreamCompleteMessage

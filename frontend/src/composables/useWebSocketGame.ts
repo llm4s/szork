@@ -14,6 +14,7 @@ import type {
   GameStartedMessage,
   GameLoadedMessage,
   SessionResumedMessage,
+  SessionTakenOverMessage,
   CommandResponseMessage,
   TextChunkMessage,
   StreamCompleteMessage,
@@ -52,6 +53,8 @@ export function useWebSocketGame() {
   const errorMessage = ref("");
   // Set when a requested game could not be loaded
   const loadFailed = ref<string | null>(null);
+  // Set when another tab or window loaded this game and took its session; cleared by loading it again
+  const sessionTakenOver = ref(false);
   // Session feature flags, as confirmed by the server
   const ttsEnabled = ref(true);
   const sttEnabled = ref(true);
@@ -62,11 +65,9 @@ export function useWebSocketGame() {
   let playBackgroundMusicCallback: ((musicBase64: string, mood: string) => void) | null = null;
   let playAudioNarrationCallback: ((audioBase64: string) => void) | null = null;
   let pendingLoad: string | null = null;
-  // The server's message index after the last response we received; null until a response
-  // (a loaded game's history carries none). A larger index on resume means we missed a response.
+  // The server's message index after the last response (or load) we received; null until then.
+  // A larger index on resume means we missed a response.
   let lastMessageIndex: number | null = null;
-  // Whether the response to the voice command in flight should show its scene image
-  let voiceImageWanted = true;
   // Set once the owning component unmounts: late callbacks must not open a new connection
   let disposed = false;
 
@@ -134,6 +135,7 @@ export function useWebSocketGame() {
         isConnected.value = connected;
         // Whenever a connection opens while we have a session, re-attach to it. This runs before
         // queued messages are sent, so a command typed while offline reaches the resumed session.
+        // A session another tab took over is forgotten, so it is not taken back here.
         if (connected && sessionId.value) {
           log(`Connected; resuming session ${sessionId.value}`);
           created.resumeSession(sessionId.value);
@@ -152,6 +154,7 @@ export function useWebSocketGame() {
 
   const setupMessageHandlers = (client: WebSocketClient) => {
     client.on<GameStartedMessage>("gameStarted", ({ data }) => {
+      sessionTakenOver.value = false;
       sessionId.value = data.sessionId;
       gameId.value = data.gameId;
       lastMessageIndex = data.messageIndex;
@@ -163,9 +166,10 @@ export function useWebSocketGame() {
 
     client.on<GameLoadedMessage>("gameLoaded", ({ data }) => {
       pendingLoad = null;
+      sessionTakenOver.value = false;
       sessionId.value = data.sessionId;
       gameId.value = data.gameId;
-      lastMessageIndex = null;
+      lastMessageIndex = data.messageIndex;
       applyFlags(data);
       endStreaming();
       // History has no media to attach, so its entries carry no message index
@@ -190,13 +194,21 @@ export function useWebSocketGame() {
       }
     });
 
+    client.on<SessionTakenOverMessage>("sessionTakenOver", ({ data }) => {
+      // From a connection we have since left for another session: nothing to do
+      if (data.sessionId !== sessionId.value) return;
+      log(`Session ${data.sessionId} was taken over by another tab`);
+      // Forget the session so reconnecting does not resume it (and take it back); keep the game,
+      // so the player can choose to load it again here
+      sessionId.value = null;
+      endStreaming();
+      sessionTakenOver.value = true;
+    });
+
     client.on<CommandResponseMessage>("commandResponse", ({ data }) => {
       awaitingResponse.value = false;
       lastMessageIndex = data.messageIndex;
-      // A voice command with images turned off: the server still reports the scene's image
-      const hasImage = data.hasImage && voiceImageWanted;
-      voiceImageWanted = true;
-      messages.value.push(responseMessage(data.text, data.messageIndex, hasImage, data.scene));
+      messages.value.push(responseMessage(data.text, data.messageIndex, data.hasImage, data.scene));
       if (data.audio) playAudioNarration(data.audio);
       scroll();
     });
@@ -284,6 +296,12 @@ export function useWebSocketGame() {
     });
   };
 
+  /** Load the game again after another tab took its session, taking the session back. */
+  const takeBackSession = () => {
+    sessionTakenOver.value = false;
+    reloadCurrentGame();
+  };
+
   const loadGame = async (gameIdToLoad: string, features?: FeatureRequest) => {
     await connect();
     loadFailed.value = null;
@@ -293,6 +311,8 @@ export function useWebSocketGame() {
 
   /** Send a command; streaming shows the response as it is generated. */
   const sendCommand = async (command: string, streaming = true, imageGeneration = true) => {
+    // This tab no longer plays the game; the server would refuse the command
+    if (sessionTakenOver.value) return;
     await connect();
     messages.value.push({ text: command, isUser: true, timestamp: new Date() });
 
@@ -307,16 +327,13 @@ export function useWebSocketGame() {
     }
   };
 
-  /**
-   * Send a recorded voice command; the transcription and response arrive as messages. The
-   * protocol has no image flag for voice commands, so with images off the image is not shown.
-   */
+  /** Send a recorded voice command; the transcription and response arrive as messages. */
   const sendAudioCommand = async (audioBase64: string, imageGeneration = true) => {
+    if (sessionTakenOver.value) return;
     await connect();
     if (!wsClient.value) return;
-    voiceImageWanted = imageGeneration;
     awaitingResponse.value = true;
-    wsClient.value.sendAudio(audioBase64);
+    wsClient.value.sendAudio(audioBase64, imageGeneration && imageEnabled.value);
   };
 
   /** Forget the current game's messages and session (e.g. when returning to game selection). */
@@ -326,6 +343,7 @@ export function useWebSocketGame() {
     sessionId.value = null;
     gameId.value = null;
     lastMessageIndex = null;
+    sessionTakenOver.value = false;
   };
 
   /** Add a local message (not from the server), e.g. a microphone error. */
@@ -377,12 +395,14 @@ export function useWebSocketGame() {
     musicEnabled,
     imageEnabled,
     loadFailed,
+    sessionTakenOver,
 
     // Methods
     connect,
     disconnect,
     startNewGame,
     loadGame,
+    takeBackSession,
     sendCommand,
     sendAudioCommand,
     clearMessages,

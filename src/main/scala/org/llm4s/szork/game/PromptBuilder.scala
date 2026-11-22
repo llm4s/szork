@@ -19,10 +19,51 @@ object PromptBuilder {
   def outlinePrompt(outline: Option[AdventureOutline]): String =
     outline.map(AdventureGenerator.outlineToSystemPrompt).getOrElse("")
 
-  def fullSystemPrompt(theme: Option[String], artStyle: Option[String], outline: Option[AdventureOutline]): String = {
+  /** When to delegate to the subagents `subagents` offers (empty when it offers none). llm4s adds its own section
+    * listing each subagent's tool; this says when to use them and what to do with their reports.
+    */
+  def subagentGuidance(subagents: SubagentSettings): String = {
+    val npc = Option.when(subagents.npcDialogue)(
+      s"""- ${DmSubagents.NpcDialogueTool}: when the player talks to a character - speaks to, greets, asks, answers,
+        |  bargains with or threatens them ("talk to the hermit", "ask Mara about the key", "say hello"). Give the
+        |  character's name as the outline has it, the player's words, and a one- or two-sentence situation (where they
+        |  are, what just happened, anything the character should react to). Put the returned speech in your
+        |  narrationText as the character's quoted words, keeping what they said, and show their attitude in how they
+        |  say it. If revealsSomething is true, also call record_npc_met with a short note of what was revealed. One
+        |  call per character spoken to; not for characters who cannot speak, or when the player only looks at
+        |  someone.""".stripMargin)
+    val hint = Option.when(subagents.hints)(
+      s"""- ${DmSubagents.HintTool}: when the player asks for a hint or help with the game ("hint", "help", "I'm stuck",
+        |  "what should I do now?"). Pass their question. Answer with a simple response whose narrationText gives the
+        |  hint (you may frame it in a sentence); add nothing more of the solution than the hint gives.""".stripMargin)
+    val tools = npc.toList ++ hint.toList
+    if (tools.isEmpty) ""
+    else
+      s"""=== CHARACTERS AND HINTS - YOUR SUBAGENTS ===
+        |
+        |Some work you hand to a subagent, which answers with a short report as the tool's result. You stay in charge
+        |of the turn: you still write the JSON answer, weaving the report into it.
+        |${tools.mkString("\n")}
+        |If a subagent's tool returns an error, answer the turn yourself.
+        |""".stripMargin
+  }
+
+  /** The Dungeon Master's system prompt: its role, the adventure outline, its tools (and, with `subagents`, when to
+    * delegate to them) and the house style.
+    */
+  def fullSystemPrompt(
+    theme: Option[String],
+    artStyle: Option[String],
+    outline: Option[AdventureOutline],
+    subagents: SubagentSettings = SubagentSettings.none
+  ): String = {
     val themeDesc = themeDescription(theme)
     val artStyleDesc = artStyleDescription(artStyle)
     val outlineDesc = outlinePrompt(outline)
+    val talking =
+      if (subagents.npcDialogue)
+        s"Plain looking and examining that change nothing need no tool; talking goes through ${DmSubagents.NpcDialogueTool}."
+      else "Plain looking, examining and talking that change nothing need no tool (record_npc_met aside)."
     s"""You are a Dungeon Master guiding a text adventure game in the classic Infocom tradition.
       |
       |Adventure Theme: $themeDesc
@@ -72,7 +113,7 @@ object PromptBuilder {
       |1. Call a tool for what the player DOES, not for what you describe: an item in a room is not taken until the
       |   player takes it; a door you describe as locked is already locked in the world state.
       |2. Movement needs no tool: your fullScene answer moves the player and records the visit.
-      |3. Plain looking, examining and talking that change nothing need no tool (record_npc_met aside).
+      |3. $talking
       |4. Call the tools you need, then give your answer; the tools never replace the JSON answer.
       |
       |EXAMPLES:
@@ -82,6 +123,7 @@ object PromptBuilder {
       |- "north" through a door you are unsure of → get_location_state; a fullScene answer only if it is open.
       |- The player enters a room with a lantern on the floor → no tool; describe it.
       |
+      |${subagentGuidance(subagents)}
       |COMMAND MAPPING:
       |- Movement commands (north/south/east/west/up/down/in/out):
       |  • If passable, answer with a fullScene for the destination.

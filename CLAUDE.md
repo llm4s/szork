@@ -85,6 +85,14 @@ tools per game: inventory tools over a `PlayerInventory`, and world-state tools 
 flags, visits, characters met and quest progress. Seeded from the outline (`WorldSnapshot.fromOutline`); scene answers
 record visits (there is no move tool); saved in `GameState.worldState`.
 
+**game/DmSubagents.scala** - The Dungeon Master's llm4s subagents (`TypedAgent`s offered with `withSubagents`, bounded
+by `withDelegation(DmSubagents.Delegation)`): `npc_dialogue` (tool `task_npc_dialogue`, returns `NpcLines`) and `hint`
+(`task_hint`, returns `Hint`). Their briefs are rendered when the task runs (`withInputText`) from the outline, world
+state and inventory; each has no tools, one step and a token/time `TaskBudget`. The DM stays in charge and weaves the
+report into its answer; subagents do not stream (turns stream without `nested`) and trace under the DM's run.
+Configured by `SubagentConfig` (SZORK_NPC_AGENT, SZORK_HINT_AGENT, SZORK_SUBAGENT_MODEL) via `EngineFactory`; tests
+script them in `DmSubagentsSpec` by matching the subagent's system prompt.
+
 **game/AdventureGenerator.scala** - Designs a new game's `AdventureOutline` (locations with their planned exits,
 interactables, puzzles and secrets; items; characters) with a second llm4s agent, built with
 `withOutput(AdventureOutlineSchema.schema)` and no tools; the outline goes into the Dungeon Master's system prompt.

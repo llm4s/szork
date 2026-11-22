@@ -128,19 +128,11 @@ object CreateAdventure {
         executionTimeMs = executionTime
       )
 
-      StepPersistence.saveStep(stepData) match {
-        case Right(_) => println("✓ Step 1 saved")
+      // As the server saves a new game
+      StepPersistence.saveNewGame(stepData, metadata) match {
+        case Right(_) => println("✓ Step 1 and game metadata saved")
         case Left(error) =>
-          println(s"ERROR: Failed to save step: ${error.message}")
-          System.exit(1)
-          return
-      }
-
-      // game.json last, so it never names a step that is not saved
-      StepPersistence.saveGameMetadata(metadata) match {
-        case Right(_) => println("✓ Game metadata saved")
-        case Left(error) =>
-          println(s"ERROR: Failed to save game metadata: ${error.message}")
+          println(s"ERROR: Failed to save the game: ${error.message}")
           System.exit(1)
           return
       }

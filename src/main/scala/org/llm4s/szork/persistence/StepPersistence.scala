@@ -68,7 +68,7 @@ object StepPersistence {
     val dir = getGameDir(gameId)
     if (!Files.exists(dir)) {
       Files.createDirectories(dir)
-      logger.info(s"Created game directory: ${dir.toAbsolutePath}")
+      logger.debug(s"Created game directory: ${dir.toAbsolutePath}")
     }
     dir
   }
@@ -108,18 +108,13 @@ object StepPersistence {
       val gameDir = ensureGameDir(metadata.gameId)
       val metadataPath = gameDir.resolve("game.json")
 
-      logger.info(
-        s"[PERSIST-SAVE] Saving metadata for ${metadata.gameId}: title='${metadata.adventureTitle}', theme=${metadata.theme}, artStyle=${metadata.artStyle}")
       val json = GameMetadataCodec.toJson(metadata)
-      val jsonStr = json.toString
-      logger.info(s"[PERSIST-SAVE] JSON to write: ${jsonStr.take(500)}")
+      logger.debug(s"Saving game metadata to $metadataPath: ${json.toString.take(500)}")
       saveJson(metadataPath, json)
-
-      logger.info(s"[PERSIST-SAVE] Successfully saved game metadata to ${metadataPath}")
       Right(())
     } catch {
       case e: Exception =>
-        logger.error(s"[PERSIST-SAVE] Failed to save game metadata: ${metadata.gameId}", e)
+        logger.error(s"Failed to save game metadata: ${metadata.gameId}", e)
         Left(PersistenceError(s"Failed to save game metadata: ${e.getMessage}", Some(e), operation = "save"))
     }
 
@@ -129,18 +124,13 @@ object StepPersistence {
       val metadataPath = getGameDir(gameId).resolve("game.json")
 
       if (!Files.exists(metadataPath)) {
-        logger.warn(s"[PERSIST-LOAD] Game metadata not found: $gameId at $metadataPath")
+        logger.debug(s"Game metadata not found: $gameId at $metadataPath")
         return Left(NotFoundError(s"Game not found: $gameId"))
       }
 
       val json = loadJson(metadataPath)
-      val jsonStr = json.toString
-      logger.info(s"[PERSIST-LOAD] Loaded JSON from $metadataPath: ${jsonStr.take(500)}")
-      val metadata = GameMetadataCodec.fromJson(json)
-
-      logger.info(
-        s"[PERSIST-LOAD] Loaded game metadata: $gameId, title='${metadata.adventureTitle}', theme=${metadata.theme}, artStyle=${metadata.artStyle}")
-      Right(metadata)
+      logger.debug(s"Loaded game metadata from $metadataPath: ${json.toString.take(500)}")
+      Right(GameMetadataCodec.fromJson(json))
     } catch {
       case e: Exception =>
         logger.error(s"Failed to load game metadata: $gameId", e)
@@ -187,13 +177,25 @@ object StepPersistence {
         saveJson(stepDir.resolve("outline.json"), AdventureGenerator.outlineToJson(outline))
       }
 
-      logger.info(s"Saved step ${stepData.metadata.stepNumber} for game ${stepData.metadata.gameId}")
+      logger.debug(s"Saved step ${stepData.metadata.stepNumber} for game ${stepData.metadata.gameId}")
       Right(())
     } catch {
       case e: Exception =>
         logger.error(s"Failed to save step ${stepData.metadata.stepNumber} for game ${stepData.metadata.gameId}", e)
         Left(PersistenceError(s"Failed to save step: ${e.getMessage}", Some(e), operation = "save"))
     }
+
+  /** Saves a new game's first step, then its game.json: a game is listed only once its first step is complete. */
+  def saveNewGame(stepData: StepData, metadata: GameMetadata): SzorkResult[Unit] =
+    saveStep(stepData).flatMap(_ => saveGameMetadata(metadata))
+
+  /** Saves a later step, then records it in the game's game.json, adding `playTimeMs` to the game's play time. */
+  def saveNextStep(stepData: StepData, playTimeMs: Long): SzorkResult[Unit] =
+    for {
+      _ <- saveStep(stepData)
+      metadata <- loadGameMetadata(stepData.metadata.gameId)
+      _ <- saveGameMetadata(GameMetadataHelper.afterStep(metadata, stepData.metadata.stepNumber, playTimeMs))
+    } yield ()
 
   /** Load a specific step. */
   def loadStep(gameId: String, stepNumber: Int): SzorkResult[StepData] =
@@ -318,7 +320,9 @@ object StepPersistence {
     Files.delete(path)
   }
 
-  /** List all games. */
+  /** List all games. Anything else in the save directory (a folder that is not a game, or a game whose first step is
+    * still being saved) is skipped.
+    */
   def listGames(): List[GameMetadata] =
     try {
       val saveDir = ensureSaveDir()
@@ -326,11 +330,9 @@ object StepPersistence {
         stream
           .iterator()
           .asScala
-          .filter(Files.isDirectory(_))
-          .flatMap { gameDir =>
-            val gameId = gameDir.getFileName.toString
-            loadGameMetadata(gameId).toOption
-          }
+          .map(_.getFileName.toString)
+          .filter(gameExists)
+          .flatMap(gameId => loadGameMetadata(gameId).toOption)
           .toList
           .sortBy(-_.lastPlayed) // Most recently played first
       }

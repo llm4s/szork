@@ -161,10 +161,4 @@ class ImageGeneration {
 object ImageGeneration {
   def apply(): ImageGeneration = new ImageGeneration()
 
-  // Style presets for consistent art direction
-  val STYLE_FANTASY = "fantasy art, digital painting, concept art"
-  val STYLE_DUNGEON = "dark fantasy, dungeon, atmospheric, ominous"
-  val STYLE_FOREST = "enchanted forest, mystical, natural lighting"
-  val STYLE_TOWN = "medieval town, bustling, warm colors"
-  val STYLE_COMBAT = "dynamic action scene, dramatic lighting"
 }

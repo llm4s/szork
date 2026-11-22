@@ -53,24 +53,4 @@ object ResponseInterpreter {
           .orElse(extractNarrationTextFromJson(trimmed.substring(at + GameResponseParser.JsonMarker.length).trim))
     }
   }
-
-  /** Extract textual content from assistant messages, properly handling optional content. Returns the last non-empty
-    * assistant response, or empty string if none found.
-    */
-  def extractLastAssistantResponse(messages: Seq[Message]): String =
-    messages.reverse
-      .collectFirst {
-        case a: AssistantMessage if a.contentOpt.exists(_.nonEmpty) => a.content
-      }
-      .getOrElse("")
-
-  /** Extract and combine all textual responses from a sequence of messages. Only includes assistant messages that have
-    * actual text content.
-    */
-  def extractAssistantResponses(messages: Seq[Message]): String =
-    messages
-      .collect {
-        case a: AssistantMessage if a.contentOpt.exists(_.nonEmpty) => a.content
-      }
-      .mkString("\n\n")
 }

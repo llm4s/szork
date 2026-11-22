@@ -4,15 +4,16 @@ import org.llm4s.szork.media.ImageGeneration
 import java.nio.file.{Files, Paths}
 import java.util.Base64
 
-/** Script to regenerate just the illustration style with a simpler black and white sketch aesthetic Run with: sbt
-  * "szork/runMain org.llm4s.szork.RegenerateIllustrationStyle"
+/** Regenerates just the illustration style sample, with a black and white sketch aesthetic.
+  *
+  * Run from the repository root: `sbt "runMain org.llm4s.szork.tools.RegenerateIllustrationStyle"`
   */
 object RegenerateIllustrationStyle {
 
   def main(args: Array[String]): Unit = {
     println("Regenerating illustration style sample with black and white sketch aesthetic...")
 
-    val outputDir = Paths.get("szork/frontend/public/style-samples")
+    val outputDir = Paths.get("frontend/public/style-samples")
     if (!Files.exists(outputDir)) {
       Files.createDirectories(outputDir)
     }

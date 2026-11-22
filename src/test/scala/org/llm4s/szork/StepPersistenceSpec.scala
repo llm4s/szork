@@ -118,9 +118,10 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
       lastPlayed = System.currentTimeMillis(),
       totalPlayTime = 0L,
       adventureTitle = Some("Test Adventure"),
-      agentMessages = List(),
-      mediaCache = Map.empty,
-      systemPrompt = Some("Test system prompt")
+      agentMessages = List(
+        UserMessage("Start adventure"),
+        AssistantMessage(Some("You find yourself at the beginning."), List())
+      )
     )
 
     val stepData = StepData(
@@ -140,10 +141,6 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
       narrationText = "You find yourself at the beginning.",
       response = Some(SceneResponse(gameState.currentScene.get)),
       toolCalls = List(),
-      agentMessages = List(
-        UserMessage("Start adventure"),
-        AssistantMessage(Some("You find yourself at the beginning."), List())
-      ),
       outline = None
     )
 
@@ -162,7 +159,8 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     loaded.gameState.gameId shouldBe testGameId
     loaded.gameState.inventory should contain("torch")
     loaded.narrationText shouldBe "You find yourself at the beginning."
-    loaded.agentMessages should have size 2
+    loaded.gameState.agentMessages should have size 2
+    loaded.gameState.agentMessages.head.content shouldBe "Start adventure"
   }
 
   test("loadLatestStep loads most recent step") {
@@ -196,9 +194,7 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
       lastPlayed = System.currentTimeMillis(),
       totalPlayTime = 0L,
       adventureTitle = Some("Test Adventure"),
-      agentMessages = List(),
-      mediaCache = Map.empty,
-      systemPrompt = None
+      agentMessages = List()
     )
 
     val stepData = StepData(
@@ -218,7 +214,6 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
       narrationText = "You go north.",
       response = None,
       toolCalls = List(),
-      agentMessages = List(UserMessage("go north")),
       outline = None
     )
 
@@ -264,9 +259,7 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
       lastPlayed = System.currentTimeMillis(),
       totalPlayTime = 0L,
       adventureTitle = Some("Test Adventure"),
-      agentMessages = List(),
-      mediaCache = Map.empty,
-      systemPrompt = None
+      agentMessages = List()
     )
 
     // Save steps 1, 2, and 3
@@ -288,7 +281,6 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
         narrationText = s"Step $stepNum",
         response = None,
         toolCalls = List(),
-        agentMessages = List(),
         outline = None
       )
       StepPersistence.saveStep(stepData)
@@ -348,9 +340,7 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
       lastPlayed = System.currentTimeMillis(),
       totalPlayTime = 0L,
       adventureTitle = Some("Test Adventure"),
-      agentMessages = List(),
-      mediaCache = Map.empty,
-      systemPrompt = None
+      agentMessages = List()
     )
 
     val stepData = StepData(
@@ -370,7 +360,6 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
       narrationText = "Test",
       response = None,
       toolCalls = List(),
-      agentMessages = List(),
       outline = None
     )
     StepPersistence.saveStep(stepData)

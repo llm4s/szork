@@ -96,4 +96,19 @@ class GameEngineAgentSpec extends AnyFunSuite with Matchers {
     toolResults.map(_.toolCallId) shouldBe Vector("call-1")
     toolResults.head.content should include("brass lantern")
   }
+
+  test("a save that ends mid-turn (a tool call without its result) is cut back and still plays") {
+    val original = newEngine("midturn-save")
+    original.initialize().isRight shouldBe true
+    val saved = original.getGameState("game-1", None, None)
+    val dangling =
+      AssistantMessage(contentOpt = None, toolCalls = Seq(ToolCall("call-x", "list_inventory", ujson.Obj())))
+    val broken = saved.copy(agentMessages = saved.agentMessages :+ UserMessage("look") :+ dangling)
+
+    val restored = newEngine("midturn-restore")
+    restored.restoreGameState(broken)
+    restored.getMessages shouldBe original.getMessages.toVector :+ UserMessage("look")
+
+    restored.processCommand("examine wall", generateAudio = false).isRight shouldBe true
+  }
 }

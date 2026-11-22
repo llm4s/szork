@@ -68,8 +68,6 @@ case class StepMetadata(
   *   Structured response (GameScene or SimpleResponse)
   * @param toolCalls
   *   Tool calls executed during this step
-  * @param agentMessages
-  *   Complete agent conversation at this step
   * @param outline
   *   Adventure outline (included in step 1 only)
   */
@@ -80,7 +78,6 @@ case class StepData(
   narrationText: String,
   response: Option[GameResponse],
   toolCalls: List[ToolCallInfo] = Nil,
-  agentMessages: List[Message] = Nil,
   outline: Option[AdventureOutline] = None
 )
 
@@ -105,12 +102,7 @@ case class ToolCallInfo(
   timestamp: Long
 )
 
-/** Structured game response (scene or simple action result).
-  *
-  * This can represent either:
-  *   - A full scene with location, exits, items, NPCs
-  *   - A simple response to an action (examine, inventory, etc.)
-  */
+/** Structured game response recorded with a step: the scene the step described, if any. */
 sealed trait GameResponse {
   def narrationText: String
 }
@@ -122,13 +114,6 @@ case class SceneResponse(
   override def narrationText: String = scene.narrationText
 }
 
-/** Simple action response without scene change. */
-case class ActionResponse(
-  narrationText: String,
-  locationId: String,
-  action: String
-) extends GameResponse
-
 object StepData {
 
   /** Create StepData for initial game creation (step 1). */
@@ -138,7 +123,6 @@ object StepData {
     narrationText: String,
     scene: Option[GameScene],
     outline: Option[AdventureOutline],
-    agentMessages: List[Message],
     executionTimeMs: Long
   ): StepData = {
     val metadata = StepMetadata(
@@ -148,7 +132,7 @@ object StepData {
       userCommand = None,
       responseLength = narrationText.length,
       toolCallCount = 0,
-      messageCount = agentMessages.length,
+      messageCount = gameState.agentMessages.length,
       success = true,
       executionTimeMs = executionTimeMs
     )
@@ -162,7 +146,6 @@ object StepData {
       narrationText = narrationText,
       response = response,
       toolCalls = Nil,
-      agentMessages = agentMessages,
       outline = outline
     )
   }
@@ -176,7 +159,6 @@ object StepData {
     narrationText: String,
     response: Option[GameResponse],
     toolCalls: List[ToolCallInfo],
-    agentMessages: List[Message],
     executionTimeMs: Long,
     success: Boolean = true,
     error: Option[String] = None
@@ -188,7 +170,7 @@ object StepData {
       userCommand = Some(userCommand),
       responseLength = narrationText.length,
       toolCallCount = toolCalls.length,
-      messageCount = agentMessages.length,
+      messageCount = gameState.agentMessages.length,
       success = success,
       error = error,
       executionTimeMs = executionTimeMs
@@ -201,7 +183,6 @@ object StepData {
       narrationText = narrationText,
       response = response,
       toolCalls = toolCalls,
-      agentMessages = agentMessages,
       outline = None
     )
   }

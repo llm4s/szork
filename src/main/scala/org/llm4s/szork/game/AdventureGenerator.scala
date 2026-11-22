@@ -237,14 +237,7 @@ object AdventureGenerator {
     logger.info(s"Response preview: ${response.take(500)}")
     logger.info(s"Response ending: ...${response.takeRight(200)}")
 
-    // Debug: Save full LLM response
-    try {
-      val debugFile = java.nio.file.Paths.get("debug-llm-response.txt")
-      java.nio.file.Files.write(debugFile, response.getBytes(java.nio.charset.StandardCharsets.UTF_8))
-      logger.info(s"Saved full LLM response to: ${debugFile.toAbsolutePath}")
-    } catch {
-      case e: Exception => logger.warn(s"Failed to save debug response: ${e.getMessage}")
-    }
+    logger.debug(s"Full outline response: $response")
 
     val parsed = AdventureOutlineParser.parse(response)
     parsed match {
@@ -301,6 +294,28 @@ object AdventureGenerator {
       |items are placed where they make sense, and characters appear at appropriate times. The player
       |should be able to discover and complete the main quest through exploration and interaction.
       |""".stripMargin
+  }
+
+  /** Reads an outline written by [[outlineToJson]] (also the format the frontend sends back). */
+  def outlineFromJson(json: ujson.Value): AdventureOutline = {
+    def optStr(key: String): Option[String] =
+      json.obj.get(key).flatMap { case ujson.Null => None; case s => Some(s.str) }
+    AdventureOutline(
+      title = json("title").str,
+      tagline = optStr("tagline"),
+      mainQuest = json("mainQuest").str,
+      subQuests = json("subQuests").arr.map(_.str).toList,
+      keyLocations = json("keyLocations").arr
+        .map(l => LocationOutline(l("id").str, l("name").str, l("description").str, l("significance").str))
+        .toList,
+      importantItems =
+        json("importantItems").arr.map(i => ItemOutline(i("name").str, i("description").str, i("purpose").str)).toList,
+      keyCharacters = json("keyCharacters").arr
+        .map(c => CharacterOutline(c("name").str, c("role").str, c("description").str))
+        .toList,
+      adventureArc = json("adventureArc").str,
+      specialMechanics = optStr("specialMechanics")
+    )
   }
 
   def outlineToJson(outline: AdventureOutline): Value =

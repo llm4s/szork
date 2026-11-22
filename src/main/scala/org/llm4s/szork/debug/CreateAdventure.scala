@@ -134,7 +134,6 @@ object CreateAdventure {
         narrationText = initialText,
         scene = Some(initialScene),
         outline = Some(outline),
-        agentMessages = engine.getMessages.toList,
         executionTimeMs = executionTime
       )
 

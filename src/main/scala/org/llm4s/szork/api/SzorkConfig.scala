@@ -217,14 +217,15 @@ object SzorkConfig {
     )
   }
 
-  private def loadLLMConfig(): Option[LLMConfig] = {
+  /** The LLM to use, from SZORK_LLM_PROVIDER or else whichever provider's settings are present. */
+  private[szork] def loadLLMConfig(env: ConfigReader = EnvLoader): Option[LLMConfig] = {
     // Try to detect LLM provider from environment
-    val openAIKey = EnvLoader.get("OPENAI_API_KEY")
-    val anthropicKey = EnvLoader.get("ANTHROPIC_API_KEY")
-    val llamaUrl = EnvLoader.get("LLAMA_BASE_URL")
+    val openAIKey = env.get("OPENAI_API_KEY")
+    val anthropicKey = env.get("ANTHROPIC_API_KEY")
+    val llamaUrl = env.get("LLAMA_BASE_URL")
 
     // Check for explicit provider setting
-    val explicitProvider = EnvLoader.get("SZORK_LLM_PROVIDER").map(_.toLowerCase)
+    val explicitProvider = env.get("SZORK_LLM_PROVIDER").map(_.toLowerCase)
 
     explicitProvider match {
       case Some("openai") =>
@@ -232,8 +233,8 @@ object SzorkConfig {
           LLMConfig(
             provider = "openai",
             apiKey = key,
-            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultOpenAIModel)),
-            baseUrl = EnvLoader.get("OPENAI_BASE_URL")
+            model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultOpenAIModel)),
+            baseUrl = env.get("OPENAI_BASE_URL")
           ))
 
       case Some("anthropic") =>
@@ -241,8 +242,8 @@ object SzorkConfig {
           LLMConfig(
             provider = "anthropic",
             apiKey = key,
-            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultAnthropicModel)),
-            baseUrl = EnvLoader.get("ANTHROPIC_BASE_URL")
+            model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultAnthropicModel)),
+            baseUrl = env.get("ANTHROPIC_BASE_URL")
           ))
 
       case Some("llama") | Some("local") =>
@@ -250,8 +251,8 @@ object SzorkConfig {
           LLMConfig(
             provider = "llama",
             apiKey = "not-required",
-            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultLlamaModel)),
-            baseUrl = llamaUrl.orElse(Some("http://localhost:11434"))
+            model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultLlamaModel)),
+            baseUrl = llamaUrl // unset: LLMConfig.toProviderConfig's default, which ends in /v1
           ))
 
       case _ =>
@@ -261,23 +262,23 @@ object SzorkConfig {
             LLMConfig(
               provider = "openai",
               apiKey = key,
-              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultOpenAIModel)),
-              baseUrl = EnvLoader.get("OPENAI_BASE_URL")
+              model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultOpenAIModel)),
+              baseUrl = env.get("OPENAI_BASE_URL")
             ))
         } else if (anthropicKey.isDefined) {
           anthropicKey.map(key =>
             LLMConfig(
               provider = "anthropic",
               apiKey = key,
-              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultAnthropicModel)),
-              baseUrl = EnvLoader.get("ANTHROPIC_BASE_URL")
+              model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultAnthropicModel)),
+              baseUrl = env.get("ANTHROPIC_BASE_URL")
             ))
         } else if (llamaUrl.isDefined) {
           Some(
             LLMConfig(
               provider = "llama",
               apiKey = "not-required",
-              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultLlamaModel)),
+              model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultLlamaModel)),
               baseUrl = llamaUrl
             ))
         } else {

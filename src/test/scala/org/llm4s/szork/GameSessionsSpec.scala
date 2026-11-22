@@ -146,15 +146,19 @@ class GameSessionsSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll 
     val first = connect()
     val (sessionId, gameId) = startGame(first)
     first.sendJson("type" -> "streamCommand", "command" -> "go north")
-    first.await("streamComplete")
+    val lastIndex = first.await("streamComplete")("data")("messageIndex").num
 
     val second = connect()
     loadGame(second, gameId)
     val loaded = second.await("gameLoaded")("data")
     loaded("sessionId").str shouldBe sessionId
     loaded("currentScene")("locationName").str shouldBe "Small Hall" // the live state, including the last turn
+    loaded("messageIndex").num shouldBe lastIndex
 
-    // The game has one writer: the first connection no longer plays it
+    // The game has one writer: the first connection is told it lost the session, and no longer plays it
+    val takenOver = first.await("sessionTakenOver")("data")
+    takenOver("sessionId").str shouldBe sessionId
+    takenOver("gameId").str shouldBe gameId
     first.sendJson("type" -> "streamCommand", "command" -> "look")
     first.await("error")("data")("error").str shouldBe "No active session"
     second.sendJson("type" -> "streamCommand", "command" -> "look")
@@ -162,6 +166,39 @@ class GameSessionsSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll 
     eventually(StepPersistence.loadGameMetadata(gameId).exists(_.currentStep == 3))
     first.close()
     second.close()
+  }
+
+  test("loading an open game applies the features it asks for to the session") {
+    val first = connect()
+    val (sessionId, gameId) = startGame(first) // music off
+
+    val second = connect()
+    second.sendJson("type" -> "loadGame", "gameId" -> gameId, "music" -> true, "image" -> false)
+    val loaded = second.await("gameLoaded")("data")
+    loaded("sessionId").str shouldBe sessionId
+    loaded("musicEnabled").bool shouldBe true
+    loaded("imageEnabled").bool shouldBe false
+
+    second.sendJson("type" -> "streamCommand", "command" -> "go north")
+    val complete = second.await("streamComplete")("data")
+    complete("hasMusic").bool shouldBe true
+    complete("hasImage").bool shouldBe false
+    second.await("musicReady")
+    Seq(first, second).foreach(_.close())
+  }
+
+  test("a loaded game reports the session's message index, as a resume does") {
+    val c = connect()
+    val (_, gameId) = startGame(c)
+    Await.result(server.endGame(gameId)(()), 10.seconds)
+
+    loadGame(c, gameId)
+    val loaded = c.await("gameLoaded")("data")
+    loaded("messageIndex").num should be > 0.0
+    val other = connect()
+    other.sendJson("type" -> "resumeSession", "sessionId" -> loaded("sessionId").str)
+    other.await("sessionResumed")("data")("messageIndex").num shouldBe loaded("messageIndex").num
+    Seq(c, other).foreach(_.close())
   }
 
   test("two loads of a saved game at once share one session") {

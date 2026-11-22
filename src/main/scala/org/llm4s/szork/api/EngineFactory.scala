@@ -7,7 +7,11 @@ import org.llm4s.szork.game.{AdventureOutline, GameEngine}
 import org.llm4s.szork.spi.SystemClock
 import org.llm4s.trace.Tracing
 
-/** Creates the engine for a new or loaded game, with the media clients its session's features call for. */
+/** Creates the engine for a new or loaded game, with the media clients `features` call for.
+  *
+  * The server asks for every feature it can provide, not just the ones the session starts with: a session's features
+  * can change while it plays, and it only uses the clients its current features allow.
+  */
 trait EngineFactory {
   def create(
     sessionId: String,

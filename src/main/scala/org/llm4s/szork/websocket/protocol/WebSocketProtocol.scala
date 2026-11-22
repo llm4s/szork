@@ -31,6 +31,7 @@ object ServerMessage {
     GameStartedMessage.rw,
     GameLoadedMessage.rw,
     SessionResumedMessage.rw,
+    SessionTakenOverMessage.rw,
     CommandResponseMessage.rw,
     TextChunkMessage.rw,
     StreamCompleteMessage.rw,
@@ -96,8 +97,10 @@ object StreamCommandRequest {
   implicit val rw: ReadWriter[StreamCommandRequest] = macroRW
 }
 
+/** A spoken command. `imageGeneration` false asks for no scene image for its response, as for typed commands. */
 case class AudioCommandRequest(
-  audio: String // Base64 encoded audio
+  audio: String, // Base64 encoded audio
+  imageGeneration: Option[Boolean] = None
 ) extends ClientMessage
 object AudioCommandRequest {
   implicit val rw: ReadWriter[AudioCommandRequest] = macroRW
@@ -144,9 +147,14 @@ object GameStartedMessage {
   implicit val rw: ReadWriter[GameStartedMessage] = macroRW
 }
 
+/** A loaded game. `messageIndex` is the session's message index (as in [[SessionResumedMessage]]), so a client can tell
+  * on resuming whether it missed a response. The feature flags are the ones the session now uses: loading a game that
+  * is already open applies the features this request asked for to its session.
+  */
 case class GameLoadedMessage(
   sessionId: String,
   gameId: String,
+  messageIndex: Int,
   conversation: Seq[ConversationEntry],
   currentLocation: Option[String] = None,
   currentScene: Option[SceneData] = None,
@@ -166,6 +174,17 @@ case class SessionResumedMessage(
 ) extends ServerMessage
 object SessionResumedMessage {
   implicit val rw: ReadWriter[SessionResumedMessage] = macroRW
+}
+
+/** Sent to a connection whose session was taken by another connection loading the same game. The client should stop
+  * resuming `sessionId` and offer to load the game again (which takes the session back).
+  */
+case class SessionTakenOverMessage(
+  sessionId: String,
+  gameId: String
+) extends ServerMessage
+object SessionTakenOverMessage {
+  implicit val rw: ReadWriter[SessionTakenOverMessage] = macroRW
 }
 
 case class CommandResponseMessage(
@@ -230,10 +249,25 @@ object MusicReadyMessage {
   implicit val rw: ReadWriter[MusicReadyMessage] = macroRW
 }
 
-/** Media announced for a message (hasImage / hasMusic) could not be produced; `kind` is "image" or "music". */
+/** The kind of media a [[MediaFailedMessage]] is about; sent as "image" or "music". */
+enum MediaKind(val wireName: String) {
+  case Image extends MediaKind("image")
+  case Music extends MediaKind("music")
+}
+object MediaKind {
+  implicit val rw: ReadWriter[MediaKind] = readwriter[String].bimap[MediaKind](
+    _.wireName,
+    name =>
+      MediaKind.values
+        .find(_.wireName == name)
+        .getOrElse(throw new IllegalArgumentException(s"Unknown media kind: $name"))
+  )
+}
+
+/** Media announced for a message (hasImage / hasMusic) could not be produced. */
 case class MediaFailedMessage(
   messageIndex: Int,
-  kind: String
+  kind: MediaKind
 ) extends ServerMessage
 object MediaFailedMessage {
   implicit val rw: ReadWriter[MediaFailedMessage] = macroRW

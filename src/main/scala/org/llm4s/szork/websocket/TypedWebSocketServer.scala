@@ -23,9 +23,9 @@ import org.llm4s.szork.spi.STTClient
   * Each game is a [[GameSession]] whose work - turns, saves - runs one task at a time on the session's own serial
   * executor, never on the WebSocket I/O thread. A session outlives its connection: a client that reconnects re-attaches
   * with `resumeSession`, and sessions with no connection expire after `sessionTtlMillis`. A game has at most one
-  * session, so loading a game that is already open joins its session rather than starting a second writer to its saves.
-  * Media generation runs on `mediaEC` and `musicEC` and is delivered to whichever connection the session has when it
-  * finishes.
+  * session, so loading a game that is already open joins its session rather than starting a second writer to its saves;
+  * the connection that played it is told with `sessionTakenOver`. Media generation runs on `mediaEC` and `musicEC` and
+  * is delivered to whichever connection the session has when it finishes.
   *
   * @param address
   *   Address to listen on
@@ -60,6 +60,10 @@ class TypedWebSocketServer(
   // Which session each connection plays, and the connection each session currently has
   private val connectionSessions = TrieMap[WebSocket, String]()
   private val sessionConnections = TrieMap[String, WebSocket]()
+
+  // Every feature the server can provide: engines get the clients for all of them, and each session uses the ones its
+  // current features allow
+  private val engineFeatures = SessionFeatures.requested(capabilities, None, None, None, None)
 
   private val sweeper: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r =>
     val t = new Thread(r, "szork-session-sweeper")
@@ -105,8 +109,9 @@ class TypedWebSocketServer(
   override def onError(conn: WebSocket, ex: Exception): Unit =
     logger.error("WebSocket error", ex)
 
-  /** Makes `conn` the connection of `session`, taking it from any connection that had it. A session the connection
-    * played before is left without a connection, to expire unless it is resumed or its game is loaded again.
+  /** Makes `conn` the connection of `session`, taking it from any connection that had it; that connection is told with
+    * [[SessionTakenOverMessage]], so it stops resuming the session. A session `conn` played before is left without a
+    * connection, to expire unless it is resumed or its game is loaded again.
     */
   private def attach(conn: WebSocket, session: GameSession): Unit = {
     connectionSessions.put(conn, session.id).filter(_ != session.id).foreach { previous =>
@@ -114,7 +119,13 @@ class TypedWebSocketServer(
       sessionManager.getSession(previous).foreach(_.touch())
       logger.info(s"Connection left session $previous for ${session.id}")
     }
-    sessionConnections.put(session.id, conn).filter(_ != conn).foreach(connectionSessions.remove)
+    sessionConnections.put(session.id, conn).filter(_ != conn).foreach { displaced =>
+      // Only if it still plays this session: it may have moved to another meanwhile
+      if (connectionSessions.remove(displaced, session.id)) {
+        logger.info(s"[${session.id}] Session taken over by another connection")
+        send(displaced, SessionTakenOverMessage(session.id, session.gameId))
+      }
+    }
     session.touch()
   }
 
@@ -159,7 +170,7 @@ class TypedWebSocketServer(
     case ListGamesRequest() => runForConnection(conn)(listGames(conn))
     case CommandRequest(command) => withSession(conn)(s => runFor(s)(playCommand(s, command)))
     case request: StreamCommandRequest => withSession(conn)(s => runFor(s)(playStreamCommand(s, request)))
-    case AudioCommandRequest(audio) => withSession(conn)(s => runFor(s)(playAudioCommand(s, audio)))
+    case request: AudioCommandRequest => withSession(conn)(s => runFor(s)(playAudioCommand(s, request)))
     case PingMessage(_) => ()
   }
 
@@ -245,7 +256,7 @@ class TypedWebSocketServer(
         request.music)
       .copy(autoSave = autoSave)
 
-    engineFactory.create(sessionId, request.theme, request.artStyle, outline, features) match {
+    engineFactory.create(sessionId, request.theme, request.artStyle, outline, engineFeatures) match {
       case Left(error) =>
         send(conn, ErrorMessage("Failed to start game", Some(error)))
 
@@ -290,11 +301,17 @@ class TypedWebSocketServer(
     }
   }
 
+  /** The features a load asks for, limited to what the server can provide. */
+  private def requestedFeatures(request: LoadGameRequest): SessionFeatures =
+    SessionFeatures
+      .requested(capabilities, request.tts, request.stt, request.image, request.music)
+      .copy(autoSave = autoSave)
+
   private def loadGame(conn: WebSocket, request: LoadGameRequest): Unit =
     sessionManager.joinGame(request.gameId) { live =>
       attach(conn, live); live
     } match {
-      case Some(live) => sendLiveGame(live)
+      case Some(live) => sendLiveGame(live, requestedFeatures(request))
       case None => loadSavedGame(conn, request)
     }
 
@@ -306,15 +323,13 @@ class TypedWebSocketServer(
 
       case Right(gameState) =>
         val sessionId = IdGenerator.sessionId()
-        val features = SessionFeatures
-          .requested(capabilities, request.tts, request.stt, request.image, request.music)
-          .copy(autoSave = autoSave)
+        val features = requestedFeatures(request)
         engineFactory.create(
           sessionId,
           gameState.theme.map(_.prompt),
           gameState.artStyle.map(_.id),
           gameState.adventureOutline,
-          features) match {
+          engineFeatures) match {
           case Left(error) =>
             send(conn, ErrorMessage("Failed to load game", Some(error)))
 
@@ -328,13 +343,14 @@ class TypedWebSocketServer(
             val session = sessionManager.registerOrJoin(loaded) { s =>
               attach(conn, s); s
             }
-            if (session ne loaded) sendLiveGame(session)
+            if (session ne loaded) sendLiveGame(session, features)
             else
               send(
                 conn,
                 GameLoadedMessage(
                   sessionId = sessionId,
                   gameId = request.gameId,
+                  messageIndex = engine.getMessageCount,
                   conversation = gameState.conversationHistory.map(e => ConversationEntry(e.role, e.content)),
                   currentLocation = gameState.currentScene.map(_.locationId),
                   currentScene = gameState.currentScene.map(convertScene),
@@ -347,18 +363,21 @@ class TypedWebSocketServer(
         }
     }
 
-  /** Sends the game as its live session has it, after any turn in progress, to the session's connection. A joined
-    * session keeps the features it was started with.
+  /** Switches a joined session to the `features` its new connection asked for, then sends the game as the session has
+    * it to that connection. Both run after any turn in progress, so no turn sees the features change part-way; media
+    * already under way for an earlier turn still arrives.
     */
-  private def sendLiveGame(session: GameSession): Unit =
+  private def sendLiveGame(session: GameSession, features: SessionFeatures): Unit =
     runFor(session) {
+      session.updateFeatures(features)
       val state = session.engine.getGameState(session.gameId, session.theme, session.artStyle)
-      logger.info(s"[${session.id}] Joined the live session of game ${session.gameId}")
+      logger.info(s"[${session.id}] Joined the live session of game ${session.gameId} with $features")
       sendTo(
         session,
         GameLoadedMessage(
           sessionId = session.id,
           gameId = session.gameId,
+          messageIndex = session.engine.getMessageCount,
           conversation = state.conversationHistory.map(e => ConversationEntry(e.role, e.content)),
           currentLocation = state.currentScene.map(_.locationId),
           currentScene = state.currentScene.map(convertScene),
@@ -388,11 +407,11 @@ class TypedWebSocketServer(
 
   // ============= Turns =============
 
-  private def playCommand(session: GameSession, command: String): Unit = {
+  private def playCommand(session: GameSession, command: String, imageWanted: Boolean = true): Unit = {
     val start = System.currentTimeMillis()
     session.engine.processCommand(command, generateAudio = session.features.tts) match {
       case Right(response) =>
-        val turn = turnMedia(session, imageWanted = true)
+        val turn = turnMedia(session, imageWanted)
         sendTo(
           session,
           CommandResponseMessage(
@@ -444,17 +463,17 @@ class TypedWebSocketServer(
     }
   }
 
-  private def playAudioCommand(session: GameSession, audio: String): Unit =
+  private def playAudioCommand(session: GameSession, request: AudioCommandRequest): Unit =
     (if (session.features.stt) sttClient else None) match {
       case None =>
         sendTo(session, ErrorMessage("Speech-to-Text is not available"))
       case Some(stt) =>
-        Try(java.util.Base64.getDecoder.decode(audio)).toEither.left
+        Try(java.util.Base64.getDecoder.decode(request.audio)).toEither.left
           .map(_ => "audio is not valid base64")
           .flatMap(bytes => stt.transcribeBytes(bytes).left.map(_.message)) match {
           case Right(transcription) =>
             sendTo(session, TranscriptionMessage(transcription))
-            playCommand(session, transcription)
+            playCommand(session, transcription, imageWanted = request.imageGeneration.getOrElse(true))
           case Left(error) =>
             sendTo(session, ErrorMessage("Failed to transcribe audio", Some(error)))
         }
@@ -504,11 +523,11 @@ class TypedWebSocketServer(
   private def startMedia(session: GameSession, turn: TurnMedia): Unit =
     turn.scene.foreach { scene =>
       if (turn.hasImage)
-        deliverMedia(session, turn.messageIndex, "image", mediaEC) {
+        deliverMedia(session, turn.messageIndex, MediaKind.Image, mediaEC) {
           session.engine.generateSceneImage(scene, Some(session.gameId)).map(ImageReadyMessage(turn.messageIndex, _))
         }
       if (turn.hasMusic)
-        deliverMedia(session, turn.messageIndex, "music", musicEC) {
+        deliverMedia(session, turn.messageIndex, MediaKind.Music, musicEC) {
           session.engine
             .generateBackgroundMusic(scene, Some(session.gameId))
             .map { case (music, mood) => MusicReadyMessage(turn.messageIndex, music, mood) }
@@ -516,14 +535,14 @@ class TypedWebSocketServer(
     }
 
   /** Generates media on `ec`; the client gets the result, or a failure notice so it stops waiting. */
-  private def deliverMedia(session: GameSession, messageIndex: Int, kind: String, ec: ExecutionContext)(
+  private def deliverMedia(session: GameSession, messageIndex: Int, kind: MediaKind, ec: ExecutionContext)(
     generate: => Option[ServerMessage]): Unit =
     Future(generate)(ec).onComplete { result =>
       result match {
         case Success(Some(message)) => sendTo(session, message)
         case Success(None) => sendTo(session, MediaFailedMessage(messageIndex, kind))
         case Failure(e) =>
-          logger.error(s"[${session.id}] $kind generation failed", e)
+          logger.error(s"[${session.id}] ${kind.wireName} generation failed", e)
           sendTo(session, MediaFailedMessage(messageIndex, kind))
       }
     }(ExecutionContext.parasitic)

@@ -6,9 +6,12 @@ import org.llm4s.szork.game.{
   AdventureOutline,
   CharacterOutline,
   DungeonMasterOutput,
+  GameTools,
   ItemOutline,
   LocationOutline,
-  PromptBuilder
+  PlayerInventory,
+  PromptBuilder,
+  WorldState
 }
 
 class PromptBuilderSpec extends AnyFunSuite with Matchers {
@@ -44,19 +47,22 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt should include("Process ALL player commands")
   }
 
-  test("fullSystemPrompt clarifies tools are rare and only for inventory") {
+  test("fullSystemPrompt says when to use every tool, and that their state outlasts the conversation") {
     val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("=== TOOL USAGE - RARE, INVENTORY-ONLY ===")
-    prompt should include("You have THREE inventory tools but should RARELY use them")
-    prompt should include("You do NOT need special functions or tools for most gameplay")
+    prompt should include("=== TOOLS - THE GAME'S MEMORY ===")
+    prompt should not include "RARELY"
+    prompt should include("older turns are dropped from what you see")
+    val tools = (GameTools.forInventory(new PlayerInventory()) ++ GameTools.forWorld(new WorldState())).map(_.name)
+    tools should contain allOf ("get_location_state", "set_exit_state", "record_npc_met", "update_quest_progress")
+    tools.foreach(name => withClue(name)(prompt should include(s"- $name:")))
   }
 
-  test("fullSystemPrompt has critical rules for tool usage") {
+  test("fullSystemPrompt has rules for tool usage") {
     val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("CRITICAL TOOL RULES:")
+    prompt should include("TOOL RULES:")
     prompt should include("Movement commands (north/south/east/west/up/down/in/out)")
-    prompt should include("Movement/examination/interaction = JSON response ONLY, NO TOOLS")
-    prompt should include("When in doubt: Generate JSON response, DON'T use tools!")
+    prompt should include("Movement needs no tool: your fullScene answer moves the player")
+    prompt should include("call set_exit_state")
   }
 
   test("fullSystemPrompt establishes LLM as full game engine") {

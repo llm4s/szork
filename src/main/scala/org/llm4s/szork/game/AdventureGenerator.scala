@@ -247,7 +247,8 @@ object AdventureGenerator {
       |items are placed where they make sense, and characters appear at appropriate times. The player
       |should be able to discover and complete the main quest through exploration and interaction.
       |Keep the planned exits: one that is not open stays impassable until the player overcomes its obstacle
-      |or discovers it.
+      |or discovers it. The exit states above are how the adventure starts; the world state (get_location_state)
+      |holds how they stand now.
       |""".stripMargin
   }
 
@@ -258,7 +259,7 @@ object AdventureGenerator {
       s"    - ${e.direction} to ${e.targetId} (${e.state}$blocked): ${e.description}"
     }
     val details = List(
-      Option.when(exits.nonEmpty)(("  Exits:" :: exits).mkString("\n")),
+      Option.when(exits.nonEmpty)(("  Exits (as the adventure starts):" :: exits).mkString("\n")),
       Option.when(loc.interactables.nonEmpty)(s"  Interactables: ${loc.interactables.mkString(", ")}"),
       loc.puzzles.map(p => s"  Puzzles: $p"),
       loc.secrets.map(s => s"  Secrets: $s")

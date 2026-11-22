@@ -73,7 +73,12 @@ in character with a `refused` `GameResponse` that changes nothing and is not sav
 
 **game/DungeonMasterOutput.scala** - The structured output schema every turn answers with (narration first, then the
 scene or simple response). **game/PromptBuilder.scala** builds the system prompt; **game/GameTools.scala** builds the
-inventory tools per game over a `PlayerInventory`.
+tools per game: inventory tools over a `PlayerInventory`, and world-state tools (`get_location_state`, `set_exit_state`,
+`set_location_flag`, `record_npc_met`, `update_quest_progress`, `get_world_summary`) over a `WorldState`.
+
+**game/WorldState.scala** - The game's memory beyond the context window: exit states (`ExitState` enum), location
+flags, visits, characters met and quest progress. Seeded from the outline (`WorldSnapshot.fromOutline`); scene answers
+record visits (there is no move tool); saved in `GameState.worldState`.
 
 **game/AdventureGenerator.scala** - Designs a new game's `AdventureOutline` (locations with their planned exits,
 interactables, puzzles and secrets; items; characters) with a second llm4s agent, built with

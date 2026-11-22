@@ -111,6 +111,8 @@ szork/
 ### How a turn works
 The game is one llm4s agent **thread**: each command is the next turn on it. The Dungeon Master may call the inventory tools, then answers with a JSON object matching `DungeonMasterOutput.schema` (llm4s validates it and asks the model to correct an invalid answer). Its `narrationText` streams to the player as it is written; the scene drives image and music generation. Each turn is saved as a step under `szork-saves/`.
 
+The thread keeps the whole game, but each model call is sent only the system prompt (with the adventure outline) and the most recent conversation that fits the context window: llm4s's `ContextWindowMiddleware` drops the oldest turns, never splits a tool call from its result and always sends the current turn whole. Saves hold the whole thread, so a loaded game is pruned the same way.
+
 ## 🛠️ Development
 
 ### Hot Reload Development
@@ -151,6 +153,8 @@ Set in `.env` (see `.env.example`) or the environment:
 |---|---|---|
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `LLAMA_BASE_URL` | – | LLM provider credentials (OpenAI also powers DALL-E, TTS and Whisper) |
 | `SZORK_LLM_PROVIDER`, `SZORK_LLM_MODEL` | from the keys present; `gpt-4o` / `claude-sonnet-5-5` | Dungeon Master provider and model |
+| `SZORK_DM_CONTEXT_MAX_TOKENS` | `24000` | Conversation tokens sent with each Dungeon Master call, besides the system prompt (oldest turns are dropped first; capped at half the model's context window; `0` or `off` sends the whole game) |
+| `SZORK_DM_CONTEXT_MAX_MESSAGES` | – | Limit each call by conversation messages instead of tokens |
 | `SZORK_HOST`, `SZORK_PORT`, `SZORK_WS_PORT` | `127.0.0.1`, `8090`, `9002` | Where the HTTP and WebSocket servers listen |
 | `SZORK_ALLOWED_ORIGINS` | the dev frontend and this server | Browser origins allowed to open the WebSocket (comma-separated) |
 | `SZORK_IMAGE_GENERATION_ENABLED`, `SZORK_IMAGE_PROVIDER` | `true`, `none` | Scene images (`dalle3`, `dalle2`, `huggingface`, `huggingface-sdxl`, `local`) |

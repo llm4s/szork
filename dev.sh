@@ -22,52 +22,72 @@ FRONTEND_DIR="frontend"
 BACKEND_PID=""
 FRONTEND_PID=""
 
-# Cleanup function
+# Kill the processes listening on a TCP port; clients connected to it (such as a browser) are left alone
+kill_listeners() {
+    local port=$1
+    local pids
+    pids=$(lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null || true)
+    # $pids is deliberately unquoted: it can hold several PIDs
+    # shellcheck disable=SC2086
+    if [ -n "$pids" ]; then
+        kill -TERM $pids 2>/dev/null || true
+        sleep 1
+        pids=$(lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null || true)
+        if [ -n "$pids" ]; then
+            kill -9 $pids 2>/dev/null || true
+        fi
+    fi
+}
+
+# True when something is listening on a TCP port
+listening() {
+    lsof -ti "tcp:$1" -sTCP:LISTEN > /dev/null 2>&1
+}
+
+# Cleanup function (runs on exit); the script exits with the status it was going to exit with
 cleanup() {
+    local status=$?
+    trap - EXIT INT TERM
     echo -e "\n${YELLOW}Shutting down development servers...${NC}"
 
     # Kill frontend
-    if [ ! -z "$FRONTEND_PID" ]; then
+    if [ -n "$FRONTEND_PID" ]; then
         echo -e "${YELLOW}Stopping frontend (PID: $FRONTEND_PID)...${NC}"
         kill -TERM "$FRONTEND_PID" 2>/dev/null || true
         wait "$FRONTEND_PID" 2>/dev/null || true
     fi
 
-    # Kill backend (sbt can be tricky, kill the whole process group)
-    if [ ! -z "$BACKEND_PID" ]; then
+    # Kill backend: sbt and the server it forked
+    if [ -n "$BACKEND_PID" ]; then
         echo -e "${YELLOW}Stopping backend (PID: $BACKEND_PID)...${NC}"
-        # Kill the entire process group to catch sbt and its children
         pkill -P "$BACKEND_PID" 2>/dev/null || true
         kill -TERM "$BACKEND_PID" 2>/dev/null || true
         wait "$BACKEND_PID" 2>/dev/null || true
     fi
 
-    # Force kill any remaining processes on our ports
+    # Anything still listening on our ports
     echo -e "${YELLOW}Cleaning up any remaining processes...${NC}"
-    lsof -ti:${BACKEND_PORT} | xargs kill -9 2>/dev/null || true
-    lsof -ti:${WEBSOCKET_PORT} | xargs kill -9 2>/dev/null || true
-    lsof -ti:${FRONTEND_PORT} | xargs kill -9 2>/dev/null || true
-
-    # Kill any remaining sbt processes related to szork
-    pkill -f "sbt.*szork" 2>/dev/null || true
+    kill_listeners ${BACKEND_PORT}
+    kill_listeners ${WEBSOCKET_PORT}
+    kill_listeners ${FRONTEND_PORT}
 
     echo -e "${GREEN}Cleanup complete${NC}"
-    exit 0
+    exit "$status"
 }
 
-# Trap signals for clean shutdown
-trap cleanup SIGINT SIGTERM EXIT
+# Clean up on every exit; Ctrl+C and SIGTERM exit with the conventional signal statuses
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo -e "${GREEN}=== Szork Development Environment ===${NC}"
 echo ""
 
 # Step 1: Kill any existing instances
 echo -e "${YELLOW}Killing any existing instances...${NC}"
-lsof -ti:${BACKEND_PORT} | xargs kill -9 2>/dev/null || true
-lsof -ti:${WEBSOCKET_PORT} | xargs kill -9 2>/dev/null || true
-lsof -ti:${FRONTEND_PORT} | xargs kill -9 2>/dev/null || true
-pkill -f "sbt.*szork" 2>/dev/null || true
-sleep 1
+kill_listeners ${BACKEND_PORT}
+kill_listeners ${WEBSOCKET_PORT}
+kill_listeners ${FRONTEND_PORT}
 echo -e "${GREEN}✓ Cleaned up old instances${NC}"
 echo ""
 
@@ -80,7 +100,7 @@ echo -e "${GREEN}✓ Backend starting (PID: $BACKEND_PID)${NC}"
 # Wait for backend to be ready
 echo -e "${YELLOW}Waiting for backend to be ready on port ${BACKEND_PORT}...${NC}"
 for i in {1..30}; do
-    if lsof -ti:${BACKEND_PORT} > /dev/null 2>&1; then
+    if listening ${BACKEND_PORT}; then
         echo -e "${GREEN}✓ Backend is ready!${NC}"
         break
     fi
@@ -93,7 +113,7 @@ for i in {1..30}; do
     echo -n "."
 done
 
-if ! lsof -ti:${BACKEND_PORT} > /dev/null 2>&1; then
+if ! listening ${BACKEND_PORT}; then
     echo -e "\n${RED}✗ Backend failed to start within 30 seconds${NC}"
     echo -e "${YELLOW}Last 20 lines of backend.log:${NC}"
     tail -20 backend.log
@@ -112,7 +132,7 @@ echo -e "${GREEN}✓ Frontend starting (PID: $FRONTEND_PID)${NC}"
 # Wait for frontend to be ready
 echo -e "${YELLOW}Waiting for frontend to be ready on port ${FRONTEND_PORT}...${NC}"
 for i in {1..30}; do
-    if lsof -ti:${FRONTEND_PORT} > /dev/null 2>&1; then
+    if listening ${FRONTEND_PORT}; then
         echo -e "${GREEN}✓ Frontend is ready!${NC}"
         break
     fi
@@ -125,7 +145,7 @@ for i in {1..30}; do
     echo -n "."
 done
 
-if ! lsof -ti:${FRONTEND_PORT} > /dev/null 2>&1; then
+if ! listening ${FRONTEND_PORT}; then
     echo -e "\n${RED}✗ Frontend failed to start within 30 seconds${NC}"
     echo -e "${YELLOW}Last 20 lines of frontend.log:${NC}"
     tail -20 frontend.log

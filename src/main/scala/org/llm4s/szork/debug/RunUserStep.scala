@@ -1,7 +1,7 @@
 package org.llm4s.szork.debug
 
 import org.llm4s.szork.game._
-import org.llm4s.szork.persistence.{StepData, StepPersistence, GameMetadataHelper}
+import org.llm4s.szork.persistence.{StepData, StepPersistence}
 import org.llm4s.szork.api.SzorkConfig
 import org.slf4j.LoggerFactory
 import scala.util.{Try, Success, Failure}
@@ -142,24 +142,13 @@ object RunUserStep {
 
       // Save step data
       println(s"\nSaving step $nextStep...")
-      StepPersistence.saveStep(stepData) match {
-        case Right(_) => println(s"✓ Step $nextStep saved")
+      // As the server saves a turn
+      StepPersistence.saveNextStep(stepData, executionTime) match {
+        case Right(_) => println(s"✓ Step $nextStep saved and game metadata updated")
         case Left(error) =>
           println(s"ERROR: Failed to save step: ${error.message}")
           System.exit(1)
           return
-      }
-
-      // Update game metadata
-      StepPersistence.loadGameMetadata(config.gameId) match {
-        case Right(metadata) =>
-          val updated = GameMetadataHelper.afterStep(metadata, nextStep, executionTime)
-          StepPersistence.saveGameMetadata(updated) match {
-            case Right(_) => println("✓ Game metadata updated")
-            case Left(error) => println(s"WARNING: Failed to update metadata: ${error.message}")
-          }
-        case Left(error) =>
-          println(s"WARNING: Failed to load metadata for update: ${error.message}")
       }
 
       // Print summary

@@ -4,7 +4,7 @@
 - `src/main/scala/org/llm4s/szork/` — backend source (server, game engine, LLM integration).
 - `src/test/scala/` — ScalaTest suites (unit/behavior tests).
 - `frontend/` — Vue 3 + Vite + TypeScript UI (Vuetify). Static assets in `frontend/public/`.
-- `assets/`, `talk/` — assets and talk materials; not runtime dependencies.
+- `assets/` — assets; not a runtime dependency. Talk material lives in [llm4s/szork-talks](https://github.com/llm4s/szork-talks).
 - `szork-cache/`, `szork-saves/` — runtime caches/saves (do not commit).
 
 ## Build, Test, and Development Commands

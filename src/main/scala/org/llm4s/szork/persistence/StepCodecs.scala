@@ -28,8 +28,8 @@ object GameMetadataCodec {
     lastSaved = json("lastSaved").num.toLong,
     lastPlayed = json("lastPlayed").num.toLong,
     totalPlayTime = json("totalPlayTime").num.toLong,
-    currentStep = json.obj.get("currentStep").map(_.num.toInt).getOrElse(1),
-    totalSteps = json.obj.get("totalSteps").map(_.num.toInt).getOrElse(1)
+    currentStep = json("currentStep").num.toInt,
+    totalSteps = json("totalSteps").num.toInt
   )
 }
 

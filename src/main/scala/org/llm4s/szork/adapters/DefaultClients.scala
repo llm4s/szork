@@ -35,9 +35,9 @@ class DefaultMusicClient extends MusicClient {
     context: String,
     gameId: Option[String],
     locationId: Option[String]): SzorkResult[String] = {
-    // Map mood string into MusicGeneration's moods
-    val m = impl.detectMoodFromText(mood) // fallback; actual engine passes structured mood
-    impl.generateMusicWithCache(m, context, gameId, locationId) // Already returns SzorkResult
+    // Scenes name one of the moods the validator allows; anything else plays as exploration
+    val musicMood = impl.MusicMoods.byName(mood).getOrElse(impl.MusicMoods.EXPLORATION)
+    impl.generateMusicWithCache(musicMood, context, gameId, locationId)
   }
 }
 

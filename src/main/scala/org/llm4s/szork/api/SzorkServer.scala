@@ -147,8 +147,13 @@ object SzorkServer extends cask.Main with cask.Routes {
   @post("/api/game/validate-theme")
   def validateTheme(request: Request): ujson.Value = {
     if (!isJson(request)) return notJson
-    val json = ujson.read(request.text())
-    val themeDescription = json("theme").str
+    scala.util.Try(ujson.read(request.text())("theme").str).toOption match {
+      case None => ujson.Obj("valid" -> false, "message" -> "Request must be a JSON object with a \"theme\" string")
+      case Some(themeDescription) => validateThemeDescription(themeDescription)
+    }
+  }
+
+  private def validateThemeDescription(themeDescription: String): ujson.Value = {
 
     logger.info(s"Validating custom theme: ${themeDescription.take(100)}...")
 
@@ -207,16 +212,18 @@ object SzorkServer extends cask.Main with cask.Routes {
               )
             } catch {
               case _: Exception =>
-                // If parsing fails, assume it's valid
+                // The validator's answer was unreadable: let the player proceed with their theme
                 ujson.Obj(
+                  "validated" -> false,
                   "valid" -> true,
                   "message" -> "",
                   "enhancedTheme" -> themeDescription
                 )
             }
           } else {
-            // Default to valid if no JSON found
+            // The validator gave no JSON: let the player proceed with their theme
             ujson.Obj(
+              "validated" -> false,
               "valid" -> true,
               "message" -> "",
               "enhancedTheme" -> themeDescription
@@ -225,6 +232,7 @@ object SzorkServer extends cask.Main with cask.Routes {
         case Left(error) =>
           logger.error(s"Failed to validate theme: $error")
           ujson.Obj(
+            "validated" -> false,
             "valid" -> true,
             "message" -> "",
             "enhancedTheme" -> themeDescription

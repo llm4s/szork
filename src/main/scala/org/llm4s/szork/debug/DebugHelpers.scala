@@ -1,7 +1,7 @@
 package org.llm4s.szork.debug
 
 import org.llm4s.szork.game._
-import org.llm4s.szork.persistence.{StepData, ToolCallInfo, SceneResponse, ActionResponse}
+import org.llm4s.szork.persistence.{StepData, ToolCallInfo, SceneResponse}
 import org.llm4s.llmconnect.model._
 
 /** Debugging utilities for game development and testing.
@@ -126,8 +126,6 @@ object DebugHelpers {
         println(s"Exits: ${scene.exits.map(_.direction).mkString(", ")}")
         if (scene.items.nonEmpty) println(s"Items: ${scene.items.mkString(", ")}")
         if (scene.npcs.nonEmpty) println(s"NPCs: ${scene.npcs.mkString(", ")}")
-      case Some(ActionResponse(_, locationId, action)) =>
-        println(s"\nAction: $action at $locationId")
       case None =>
         println("\nNo structured response")
     }

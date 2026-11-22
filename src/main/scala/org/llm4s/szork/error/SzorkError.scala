@@ -10,8 +10,6 @@ sealed trait SzorkError {
   def retryable: Boolean = false
   def userMessage: String = message // Safe message to show users
 
-  /** Convert to a simple string for backwards compatibility */
-  def toSimpleString: String = message
 }
 
 // Category: LLM and AI-related errors
@@ -110,15 +108,6 @@ case class ConfigurationError(
   override def userMessage: String = "The game is not properly configured. Please contact support."
 }
 
-// Category: WebSocket errors
-case class WebSocketError(
-  message: String,
-  connectionId: Option[String] = None,
-  override val cause: Option[Throwable] = None
-) extends SzorkError {
-  override def userMessage: String = "Connection lost. Please refresh the page."
-}
-
 // Category: Not found errors
 case class NotFoundError(
   message: String
@@ -143,36 +132,4 @@ case class LLMError(
   override val retryable: Boolean = true
 ) extends SzorkError {
   override def userMessage: String = "The AI service is temporarily unavailable."
-}
-
-// Category: Session errors
-case class SessionError(
-  message: String,
-  sessionId: Option[String] = None
-) extends SzorkError {
-  override def userMessage: String = "Your session has expired. Please start a new game."
-}
-
-// Companion object with factory methods
-object SzorkError {
-
-  /** Create an error from a simple string message */
-  def fromString(message: String): SzorkError =
-    GameStateError(message)
-
-  /** Create an error from a throwable */
-  def fromThrowable(throwable: Throwable): SzorkError =
-    GameStateError(throwable.getMessage, Some(throwable))
-
-  /** Create an error from an LLM error */
-  def fromLLMError(error: LLM4SError): SzorkError =
-    AIError(error.message, retryable = true, llmError = Some(error))
-
-  /** Create a validation error from a list of issues */
-  def validation(issues: List[String]): SzorkError =
-    ValidationError(issues)
-
-  /** Create a validation error from a single issue */
-  def validation(issue: String): SzorkError =
-    ValidationError(List(issue))
 }

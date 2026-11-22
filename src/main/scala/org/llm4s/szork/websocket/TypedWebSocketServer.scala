@@ -211,7 +211,7 @@ class TypedWebSocketServer(
     val sessionId = IdGenerator.sessionId()
     val gameId = IdGenerator.gameId()
     val outline = request.adventureOutline.flatMap { json =>
-      Try(GamePersistence.parseAdventureOutlineFromJson(json)) match {
+      Try(AdventureGenerator.outlineFromJson(json)) match {
         case Success(parsed) => Some(parsed)
         case Failure(e) =>
           logger.warn(s"Ignoring unparseable adventure outline: ${e.getMessage}")
@@ -485,7 +485,6 @@ class TypedWebSocketServer(
       narrationText = text,
       scene = session.engine.getCurrentScene,
       outline = outline,
-      agentMessages = session.engine.getMessages.toList,
       executionTimeMs = 0L
     )
     val saved = StepPersistence.saveGameMetadata(metadata).flatMap(_ => StepPersistence.saveStep(stepData))

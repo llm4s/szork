@@ -118,7 +118,6 @@ object RunUserStep {
             narrationText = s"ERROR: ${error.message}",
             response = None,
             toolCalls = Nil,
-            agentMessages = engine.getMessages.toList,
             executionTimeMs = executionTime,
             success = false,
             error = Some(error.message)
@@ -154,7 +153,6 @@ object RunUserStep {
         narrationText = response.text,
         response = gameResponse,
         toolCalls = toolCalls,
-        agentMessages = allMessages.toList,
         executionTimeMs = executionTime
       )
 

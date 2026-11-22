@@ -162,6 +162,27 @@ class MusicGeneration {
       "peaceful resting place, soft piano, gentle strings, calm breathing space, meditative atmosphere",
       duration = 12,
       temperature = 1.0)
+
+    val all: List[MusicMood] = List(
+      ENTRANCE,
+      EXPLORATION,
+      COMBAT,
+      VICTORY,
+      DUNGEON,
+      FOREST,
+      TOWN,
+      MYSTERY,
+      CASTLE,
+      UNDERWATER,
+      TEMPLE,
+      BOSS,
+      STEALTH,
+      TREASURE,
+      DANGER,
+      PEACEFUL)
+
+    /** The mood called `name` (as the Dungeon Master's scenes name them). */
+    def byName(name: String): Option[MusicMood] = all.find(_.name.equalsIgnoreCase(name.trim))
   }
 
   def generateMusic(mood: MusicMood, context: String = ""): SzorkResult[String] =
@@ -353,96 +374,6 @@ class MusicGeneration {
         logger.error("Error downloading audio", e)
         Left(NetworkError(s"Failed to download audio: ${e.getMessage}", "audio-download", retryable = true))
     }
-
-  def detectMoodFromText(text: String): MusicMood = {
-    val lowerText = text.toLowerCase
-
-    // Priority-based mood detection with weighted scoring
-    val moodScores = scala.collection.mutable.Map[MusicMood, Int]()
-
-    // Combat scenarios
-    if (lowerText.contains("boss") || lowerText.contains("final battle") || lowerText.contains("powerful enemy")) {
-      moodScores(MusicMoods.BOSS) = 10
-    }
-    if (lowerText.contains("battle") || lowerText.contains("attack") || lowerText.contains("fight") ||
-      lowerText.contains("combat") || lowerText.contains("enemy")) {
-      moodScores(MusicMoods.COMBAT) = 8
-    }
-
-    // Victory and achievement
-    if (lowerText.contains("victory") || lowerText.contains("defeated") || lowerText.contains("won") ||
-      lowerText.contains("triumph") || lowerText.contains("conquered")) {
-      moodScores(MusicMoods.VICTORY) = 9
-    }
-    if (lowerText.contains("treasure") || lowerText.contains("gold") || lowerText.contains("reward") ||
-      lowerText.contains("chest") || lowerText.contains("loot")) {
-      moodScores(MusicMoods.TREASURE) = 8
-    }
-
-    // Locations - Dungeon/Cave
-    if (lowerText.contains("dungeon") || lowerText.contains("dark") || lowerText.contains("cave") ||
-      lowerText.contains("underground") || lowerText.contains("cavern")) {
-      moodScores(MusicMoods.DUNGEON) = 7
-    }
-
-    // Locations - Natural
-    if (lowerText.contains("forest") || lowerText.contains("trees") || lowerText.contains("woods") ||
-      lowerText.contains("grove") || lowerText.contains("nature")) {
-      moodScores(MusicMoods.FOREST) = 7
-    }
-    if (lowerText.contains("underwater") || lowerText.contains("lake") || lowerText.contains("ocean") ||
-      lowerText.contains("river") || lowerText.contains("aquatic")) {
-      moodScores(MusicMoods.UNDERWATER) = 8
-    }
-
-    // Locations - Civilized
-    if (lowerText.contains("castle") || lowerText.contains("throne") || lowerText.contains("palace") ||
-      lowerText.contains("royal") || lowerText.contains("court")) {
-      moodScores(MusicMoods.CASTLE) = 7
-    }
-    if (lowerText.contains("temple") || lowerText.contains("shrine") || lowerText.contains("altar") ||
-      lowerText.contains("sacred") || lowerText.contains("holy")) {
-      moodScores(MusicMoods.TEMPLE) = 7
-    }
-    if (lowerText.contains("town") || lowerText.contains("village") || lowerText.contains("market") ||
-      lowerText.contains("inn") || lowerText.contains("tavern")) {
-      moodScores(MusicMoods.TOWN) = 6
-    }
-
-    // Atmosphere and situations
-    if (lowerText.contains("sneak") || lowerText.contains("stealth") || lowerText.contains("hide") ||
-      lowerText.contains("quietly") || lowerText.contains("silent")) {
-      moodScores(MusicMoods.STEALTH) = 8
-    }
-    if (lowerText.contains("danger") || lowerText.contains("warning") || lowerText.contains("trap") ||
-      lowerText.contains("careful") || lowerText.contains("threat")) {
-      moodScores(MusicMoods.DANGER) = 7
-    }
-    if (lowerText.contains("puzzle") || lowerText.contains("mystery") || lowerText.contains("riddle") ||
-      lowerText.contains("strange") || lowerText.contains("mysterious")) {
-      moodScores(MusicMoods.MYSTERY) = 6
-    }
-    if (lowerText.contains("rest") || lowerText.contains("safe") || lowerText.contains("peaceful") ||
-      lowerText.contains("calm") || lowerText.contains("relax")) {
-      moodScores(MusicMoods.PEACEFUL) = 7
-    }
-
-    // Entry points
-    if (lowerText.contains("entrance") || lowerText.contains("begin") || lowerText.contains("start") ||
-      lowerText.contains("doorway") || lowerText.contains("threshold")) {
-      moodScores(MusicMoods.ENTRANCE) = 5
-    }
-
-    // Default exploration mood gets a base score
-    moodScores(MusicMoods.EXPLORATION) = 3
-
-    // Return the mood with the highest score
-    if (moodScores.isEmpty) {
-      MusicMoods.EXPLORATION
-    } else {
-      moodScores.maxBy(_._2)._1
-    }
-  }
 }
 
 object MusicGeneration {

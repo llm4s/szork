@@ -3,12 +3,10 @@ package org.llm4s.szork.tools
 import org.llm4s.szork.media.ImageGeneration
 import java.nio.file.{Files, Paths}
 import java.util.Base64
-import scala.concurrent.{Future, Await}
-import scala.concurrent.duration._
-import scala.concurrent.ExecutionContext.Implicits.global
 
-/** Script to generate sample images for each art style to display on the style selection page Run with: sbt
-  * "szork/runMain org.llm4s.szork.GenerateStyleSamples"
+/** Generates the sample image for each art style shown on the style selection page.
+  *
+  * Run from the repository root: `sbt "runMain org.llm4s.szork.tools.GenerateStyleSamples"`
   */
 object GenerateStyleSamples {
 
@@ -49,7 +47,7 @@ object GenerateStyleSamples {
   def main(args: Array[String]): Unit = {
     println("Starting style sample generation...")
 
-    val outputDir = Paths.get("szork/frontend/public/style-samples")
+    val outputDir = Paths.get("frontend/public/style-samples")
     if (!Files.exists(outputDir)) {
       Files.createDirectories(outputDir)
       println(s"Created directory: $outputDir")
@@ -61,44 +59,34 @@ object GenerateStyleSamples {
         ImageGeneration()
       catch {
         case _: IllegalStateException =>
-          println("ERROR: OpenAI API key not configured!")
-          println("Please set the OPENAI_API_KEY environment variable")
+          println("ERROR: the configured image provider has no credentials (see SZORK_IMAGE_PROVIDER)")
           sys.exit(1)
       }
 
-    // Generate images sequentially to avoid rate limits
-    val futures = styles.map { style =>
-      Future {
-        println(s"\nGenerating ${style.name} sample...")
-        val fullPrompt = s"${style.sceneDescription}, rendered in ${style.stylePrompt}"
-
-        println(s"  Prompt: ${fullPrompt.take(100)}...")
-
-        imageGen.generateScene(fullPrompt, ImageGeneration.STYLE_FANTASY) match {
-          case Right(base64Image) =>
-            // Save the base64 image to a file
-            val imageData = Base64.getDecoder.decode(base64Image)
-            val outputPath = outputDir.resolve(s"${style.id}-sample.png")
-            Files.write(outputPath, imageData)
-            println(s"  ✓ Saved ${style.name} sample to: $outputPath")
-            println(s"    Size: ${imageData.length / 1024} KB")
-            Some((style.id, outputPath.toString))
-
-          case Left(error) =>
-            println(s"  ✗ Failed to generate ${style.name} sample: $error")
-            None
-        }
-      }
-    }
-
-    // Process futures sequentially with delays to respect rate limits
-    val results = futures.zipWithIndex.flatMap { case (future, index) =>
+    // One request at a time, with a pause between them, to stay within provider rate limits
+    val results = styles.zipWithIndex.flatMap { case (style, index) =>
       if (index > 0) {
-        println(s"  Waiting 3 seconds before next request (rate limit)...")
-        Thread.sleep(3000) // 3 second delay between requests
+        println("  Waiting 3 seconds before next request (rate limit)...")
+        Thread.sleep(3000)
       }
-      val result = Await.result(future, 30.seconds)
-      result
+      println(s"\nGenerating ${style.name} sample...")
+      val fullPrompt = s"${style.sceneDescription}, rendered in ${style.stylePrompt}"
+      println(s"  Prompt: ${fullPrompt.take(100)}...")
+
+      imageGen.generateScene(fullPrompt) match {
+        case Right(base64Image) if base64Image.nonEmpty =>
+          val imageData = Base64.getDecoder.decode(base64Image)
+          val outputPath = outputDir.resolve(s"${style.id}-sample.png")
+          Files.write(outputPath, imageData)
+          println(s"  ✓ Saved ${style.name} sample to: $outputPath (${imageData.length / 1024} KB)")
+          Some((style.id, outputPath.toString))
+        case Right(_) =>
+          println(s"  ✗ Image generation is disabled; set SZORK_IMAGE_PROVIDER and its credentials")
+          None
+        case Left(error) =>
+          println(s"  ✗ Failed to generate ${style.name} sample: ${error.message}")
+          None
+      }
     }
 
     println("\n" + "=" * 60)
@@ -112,7 +100,7 @@ object GenerateStyleSamples {
       }
 
       println("\nTo use these images in the frontend:")
-      println("1. The images have been saved to: szork/frontend/public/style-samples/")
+      println(s"1. The images have been saved to: $outputDir")
       println("2. Update AdventureSetup.vue to reference these images")
       println("3. Images can be accessed as: /style-samples/[style-id]-sample.png")
 

@@ -3,7 +3,6 @@
 ## Directory Structure
 
 - **`design/`** - Current design notes and ideas
-- **`archive/`** - Historical plans and reports (may not reflect the current codebase)
 
 ## Current Documentation
 
@@ -15,10 +14,6 @@
 ### Design Documents
 - [AGENTS.md](design/AGENTS.md) - Repository guidelines for contributors and coding agents
 - [ideas.md](design/ideas.md) - Future feature ideas and brainstorming
-
-### Archived Documentation
-`archive/` holds completed plans, old code reviews and reports about earlier llm4s versions (0.1.x), kept for
-reference.
 
 ## Main Documentation
 

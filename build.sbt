@@ -31,9 +31,10 @@ lazy val root = (project in file("."))
       "-feature",
       "-unchecked",
       "-deprecation",
-      "-source:3.3",
-      // Suppress exhaustiveness warnings that are false positives with cask annotations
-      "-Wconf:msg=match may not be exhaustive:s"
+      // TypedWebSocketServer still has old-style implicit arguments and an if/else Option match the exhaustivity
+      // checker cannot see through; silence those two warnings for that file only until it is updated.
+      "-Wconf:src=.*/websocket/TypedWebSocketServer\\.scala&msg=Implicit parameters should be provided with a `using` clause:s",
+      "-Wconf:src=.*/websocket/TypedWebSocketServer\\.scala&msg=match may not be exhaustive:s"
     ),
     
     // Dependencies
@@ -54,19 +55,14 @@ lazy val root = (project in file("."))
       "com.lihaoyi" %% "cask" % "0.11.3",
       
       // Core dependencies
-      "org.typelevel" %% "cats-core"       % "2.13.0",
       "com.lihaoyi"   %% "upickle"         % "4.4.3",
       "ch.qos.logback" % "logback-classic" % "1.5.34",
       "io.github.cdimascio"           %  "dotenv-java"     % "3.2.0",
-      "org.slf4j"      % "log4j-over-slf4j" % "2.0.18",
       
       // HTTP and WebSocket
       "com.lihaoyi"       %% "requests"        % "0.9.0",
       "org.java-websocket" % "Java-WebSocket"  % "1.6.0",
-      "com.lihaoyi"                   %% "ujson" % "4.4.3",
       
-      // Document processing (none currently needed)
-      // Environment configuration (already added above)
       
       // Testing
       "org.scalatest" %% "scalatest" % "3.2.19" % Test

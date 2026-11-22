@@ -178,7 +178,7 @@ object StepPersistence {
 
       // Save tool calls (if any)
       if (stepData.toolCalls.nonEmpty) {
-        val toolCallsJson = ujson.Arr(stepData.toolCalls.map(ToolCallCodec.toJson): _*)
+        val toolCallsJson = ujson.Arr(stepData.toolCalls.map(ToolCallCodec.toJson)*)
         saveJson(stepDir.resolve("tool-calls.json"), toolCallsJson)
       }
 

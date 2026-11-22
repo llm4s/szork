@@ -63,7 +63,7 @@ object GameTools {
     .withProperty(Schema.property("item", Schema.string("The name of the item (REQUIRED)")))
 
   /** The inventory tools, reading and changing `inventory`. */
-  def forInventory(inventory: PlayerInventory): Seq[ToolFunction[_, _]] = {
+  def forInventory(inventory: PlayerInventory): Seq[ToolFunction[?, ?]] = {
     val listInventoryTool = orThrow(
       ToolBuilder[Map[String, Any], InventoryListResult](
         "list_inventory",

@@ -103,7 +103,7 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
     engine.initialize().isRight shouldBe true
     engine.processCommand("go north", generateAudio = false).isRight shouldBe true
 
-    val transcript = engine.getGameState("g", None, None).conversationHistory.map(e => e.role -> e.content)
+    val transcript = engine.getTranscript.map(e => e.role -> e.content)
     transcript.map(_._1) shouldBe List("assistant", "user", "assistant")
     transcript.last._2 should include("small hall")
   }
@@ -138,6 +138,20 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
       .toOption
       .get
       .audioBase64 shouldBe None
+  }
+
+  test("narration is spoken in the voice the engine is given") {
+    var voices = List.empty[String]
+    val tts = new FakeTTSClient {
+      override def synthesizeToBase64(text: String, voice: String) = {
+        voices :+= voice; super.synthesizeToBase64(text, voice)
+      }
+    }
+    val engine = GameEngine.create(ScriptedDm(), sessionId = "voice", ttsClient = Some(tts), narrationVoice = "onyx")
+    engine.initialize().isRight shouldBe true
+    engine.processCommand("look", generateAudio = true).isRight shouldBe true
+    engine.narrate("Hello")
+    voices shouldBe List("onyx", "onyx")
   }
 
   test("step data records only the tool calls of the latest turn") {

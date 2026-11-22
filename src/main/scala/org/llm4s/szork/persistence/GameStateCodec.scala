@@ -32,8 +32,6 @@ object GameStateCodec {
         }
         .getOrElse(Null),
       "visitedLocations" -> state.visitedLocations.toList,
-      "conversationHistory" -> state.conversationHistory.map(e =>
-        Obj("role" -> e.role, "content" -> e.content, "timestamp" -> ts(e.timestamp))),
       "inventory" -> state.inventory,
       "createdAt" -> ts(state.createdAt),
       "lastSaved" -> ts(state.lastSaved),
@@ -89,9 +87,6 @@ object GameStateCodec {
             ))
       },
       visitedLocations = json("visitedLocations").arr.map(_.str).toSet,
-      conversationHistory = json("conversationHistory").arr
-        .map(e => ConversationEntry(e("role").str, e("content").str, readTs(e("timestamp"))))
-        .toList,
       inventory = json("inventory").arr.map(_.str).toList,
       createdAt = readTs(json("createdAt")),
       lastSaved = readTs(json("lastSaved")),

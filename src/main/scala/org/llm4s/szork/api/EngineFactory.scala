@@ -48,6 +48,7 @@ object EngineFactory {
           adventureOutline = outline,
           clock = SystemClock,
           ttsClient = Option.when(features.tts)(new DefaultTTSClient(config.speech)),
+          narrationVoice = config.speech.ttsVoice,
           imageClient = imageClient.filter(_ => features.image),
           musicClient = Option.when(features.music)(new DefaultMusicClient(config.mediaNetwork, config.musicPoll)),
           tracing = tracing,

@@ -8,6 +8,7 @@
     "preview": "vite preview",
     "lint": "eslint . --fix",
     "lint:check": "eslint .",
+    "test": "vitest run",
     "format": "prettier .  --write"
   },
   "dependencies": {
@@ -37,6 +38,7 @@
     "unplugin-fonts": "^1.4.0",
     "vite": "^7.3.5",
     "vite-plugin-vuetify": "^2.1.3",
+    "vitest": "^3.2.4",
     "vue-eslint-parser": "^10.4.1",
     "vue-tsc": "^3.3.5"
   }

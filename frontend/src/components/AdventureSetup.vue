@@ -33,43 +33,15 @@
           </div>
 
           <div class="setup-scrollable">
-            <div class="theme-grid">
-              <div
-                v-for="theme in predefinedThemes"
-                :key="theme.id"
-                class="theme-card"
-                :class="{ selected: selectedTheme === theme.id }"
-                @click="selectTheme(theme.id)"
-              >
-                <div class="theme-icon">{{ theme.icon }}</div>
-                <h3 class="theme-name">{{ theme.name }}</h3>
-                <p class="theme-description">{{ theme.description }}</p>
-              </div>
-
-              <!-- Custom Theme Option -->
-              <div
-                class="theme-card custom-theme"
-                :class="{ selected: selectedTheme === 'custom' }"
-                @click="selectTheme('custom')"
-              >
-                <div class="theme-icon">✨</div>
-                <h3 class="theme-name">Custom Adventure</h3>
-                <p class="theme-description">Create your own unique adventure setting</p>
-              </div>
-            </div>
-
-            <!-- Custom Theme Input -->
-            <div v-if="selectedTheme === 'custom'" class="custom-theme-input">
-              <v-text-field
-                v-model="customThemeInput"
-                label="Describe your adventure theme"
-                placeholder="e.g., A steampunk airship exploring floating islands..."
-                variant="outlined"
-                :error-messages="customThemeError"
-                :loading="validatingCustomTheme"
-                @blur="validateCustomTheme"
-              />
-            </div>
+            <ThemePicker
+              :themes="predefinedThemes"
+              :selected="selectedTheme"
+              v-model:custom-theme="customThemeInput"
+              :custom-theme-error="customThemeError"
+              :validating="validatingCustomTheme"
+              @select="selectTheme"
+              @validate="validateCustomTheme"
+            />
           </div>
 
           <div class="action-buttons-sticky">
@@ -91,27 +63,7 @@
           </div>
 
           <div class="setup-scrollable">
-            <div class="style-grid">
-              <div
-                v-for="style in artStyles"
-                :key="style.id"
-                class="style-card"
-                :class="{ selected: selectedStyle === style.id }"
-                @click="selectStyle(style.id)"
-              >
-                <div class="style-preview">
-                  <img
-                    v-if="style.sampleImage"
-                    :src="style.sampleImage"
-                    :alt="style.name + ' sample'"
-                    class="style-sample-image"
-                  />
-                  <div v-else class="style-gradient" :style="{ background: style.gradient }"></div>
-                </div>
-                <h3 class="style-name">{{ style.name }}</h3>
-                <p class="style-description">{{ style.description }}</p>
-              </div>
-            </div>
+            <StylePicker :styles="artStyles" :selected="selectedStyle" @select="selectStyle" />
           </div>
 
           <div class="action-buttons-sticky">
@@ -184,6 +136,9 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, watch } from "vue";
 import axios from "axios";
+import ThemePicker from "@/components/ThemePicker.vue";
+import StylePicker from "@/components/StylePicker.vue";
+import { ART_STYLES, CUSTOM_THEME_ID, PREDEFINED_THEMES } from "@/data/adventureThemes";
 import type {
   AdventureConfig,
   AdventureOutline,
@@ -196,24 +151,9 @@ import type {
 // The shortest custom theme description worth validating
 const MIN_CUSTOM_THEME_LENGTH = 10;
 
-interface Theme {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  prompt: string;
-}
-
-interface ArtStyle {
-  id: string;
-  name: string;
-  description: string;
-  gradient: string;
-  sampleImage?: string;
-}
-
 export default defineComponent({
   name: "AdventureSetup",
+  components: { ThemePicker, StylePicker },
   emits: {
     "adventure-ready": (config: AdventureConfig) => !!config,
     "back-to-selection": () => true,
@@ -245,111 +185,11 @@ export default defineComponent({
     const enableTTS = ref(true);
     const enableSTT = ref(true);
 
-    const predefinedThemes: Theme[] = [
-      {
-        id: "underground",
-        name: "Underground Realm",
-        icon: "⛏️",
-        description:
-          "Cave systems, mines, and subterranean kingdoms filled with crystals, ancient ruins, and hidden treasures",
-        prompt:
-          "underground caverns with glowing crystals, ancient dwarven ruins, underground rivers, and mysterious tunnels",
-      },
-      {
-        id: "ancient",
-        name: "Ancient Mysteries",
-        icon: "🏛️",
-        description:
-          "Pyramids, temples, enchanted forests, and mystical ruins with hieroglyphic puzzles, nature magic, and archaeological treasures",
-        prompt:
-          "ancient temples, mystical forests, magical ruins, hieroglyphic puzzles, and archaeological discoveries",
-      },
-      {
-        id: "estate",
-        name: "Abandoned Estate",
-        icon: "🏰",
-        description: "Mansions, castles, and towers with secret passages, mysterious artifacts, and family treasures",
-        prompt: "gothic mansion with secret passages, mysterious artifacts, haunted rooms, and family secrets",
-      },
-      {
-        id: "island",
-        name: "Lost Island",
-        icon: "🏝️",
-        description: "Tropical or arctic expeditions featuring shipwrecks, pirate gold, and survival challenges",
-        prompt: "mysterious island with shipwrecks, pirate treasures, jungle temples, and survival challenges",
-      },
-      {
-        id: "space",
-        name: "Space Frontier",
-        icon: "🚀",
-        description:
-          "Space stations and alien worlds with technology puzzles, resource management, and cosmic mysteries",
-        prompt: "space station orbiting alien worlds, advanced technology, cosmic mysteries, and alien encounters",
-      },
-      {
-        id: "nautical",
-        name: "Nautical Depths",
-        icon: "🌊",
-        description:
-          "Underwater adventures in submarines or sunken cities, with pressure puzzles and oceanic treasures",
-        prompt:
-          "underwater exploration in sunken cities, submarine adventures, oceanic treasures, and deep sea mysteries",
-      },
-      {
-        id: "noir",
-        name: "Noir City",
-        icon: "🕵️",
-        description:
-          "Rain-slicked streets, speakeasies, and office buildings hiding criminal treasures, coded messages, and conspiracy puzzles",
-        prompt:
-          "noir detective story in rain-slicked city streets, speakeasies, criminal underworld, and conspiracy mysteries",
-      },
-      {
-        id: "cyberpunk",
-        name: "Cyberpunk Metropolis",
-        icon: "🌃",
-        description:
-          "Neon-lit corporate towers, digital vaults, and underground networks with hacking puzzles and data treasures",
-        prompt: "cyberpunk metropolis with neon lights, corporate towers, digital networks, and hacking challenges",
-      },
-    ];
-
-    const artStyles: ArtStyle[] = [
-      {
-        id: "pixel",
-        name: "Pixel Art",
-        description: "Classic retro-style scenes with detailed pixelated environments, like 16-bit era adventure games",
-        gradient: "linear-gradient(45deg, #8B4513, #228B22, #4169E1)",
-        sampleImage: "/style-samples/pixel-sample.png",
-      },
-      {
-        id: "illustration",
-        name: "Pencil Art",
-        description:
-          "Professional pencil drawings with detailed shading, realistic textures, and fine graphite work - like an artist's sketchbook",
-        gradient: "linear-gradient(45deg, #F5F5F5, #B8B8B8, #4A4A4A)",
-        sampleImage: "/style-samples/illustration-sample.png",
-      },
-      {
-        id: "painting",
-        name: "Painting",
-        description:
-          "Fully rendered atmospheric scenes with realistic lighting, textures, and depth - like concept art or fantasy book covers",
-        gradient: "linear-gradient(45deg, #4B0082, #800080, #FF69B4)",
-        sampleImage: "/style-samples/painting-sample.png",
-      },
-      {
-        id: "comic",
-        name: "Comic/Graphic Novel",
-        description:
-          "Bold lines with cel-shaded coloring, dramatic perspectives, and stylized environments that pop off the screen",
-        gradient: "linear-gradient(45deg, #FF0000, #FFD700, #000000)",
-        sampleImage: "/style-samples/comic-sample.png",
-      },
-    ];
+    const predefinedThemes = PREDEFINED_THEMES;
+    const artStyles = ART_STYLES;
 
     const canProceedFromTheme = computed(() => {
-      if (selectedTheme.value === "custom") {
+      if (selectedTheme.value === CUSTOM_THEME_ID) {
         return (
           customThemeInput.value.trim().length >= MIN_CUSTOM_THEME_LENGTH &&
           !customThemeError.value &&
@@ -361,7 +201,7 @@ export default defineComponent({
 
     const selectTheme = (themeId: string) => {
       selectedTheme.value = themeId;
-      if (themeId !== "custom") {
+      if (themeId !== CUSTOM_THEME_ID) {
         customThemeError.value = "";
         validatedCustomTheme.value = "";
       }
@@ -408,7 +248,7 @@ export default defineComponent({
     };
 
     const proceedToStyle = () => {
-      if (selectedTheme.value === "custom" && !validatedCustomTheme.value) {
+      if (selectedTheme.value === CUSTOM_THEME_ID && !validatedCustomTheme.value) {
         validateCustomTheme().then(() => {
           if (validatedCustomTheme.value) {
             currentStep.value = "style";
@@ -514,9 +354,9 @@ export default defineComponent({
 
       // Get the theme and style details
       let themeData: ThemeChoice;
-      if (selectedTheme.value === "custom") {
+      if (selectedTheme.value === CUSTOM_THEME_ID) {
         themeData = {
-          id: "custom",
+          id: CUSTOM_THEME_ID,
           name: "Custom Adventure",
           prompt: validatedCustomTheme.value || customThemeInput.value,
         };
@@ -632,93 +472,6 @@ export default defineComponent({
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
 }
 
-.theme-grid,
-.style-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.theme-card,
-.style-card {
-  background: rgba(255, 255, 255, 0.05);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 1.5rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
-}
-
-.theme-card:hover,
-.style-card:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-}
-
-.theme-card.selected,
-.style-card.selected {
-  background: rgba(33, 150, 243, 0.2);
-  border-color: #2196f3;
-  box-shadow: 0 0 20px rgba(33, 150, 243, 0.3);
-}
-
-.theme-icon {
-  font-size: 3rem;
-  text-align: center;
-  margin-bottom: 1rem;
-}
-
-.theme-name,
-.style-name {
-  font-size: 1.3rem;
-  margin-bottom: 0.5rem;
-  color: #fff;
-}
-
-.theme-description,
-.style-description {
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.7);
-  line-height: 1.4;
-}
-
-.style-preview {
-  height: 150px;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  overflow: hidden;
-  background: #1a1a1a;
-}
-
-.style-sample-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.style-gradient {
-  width: 100%;
-  height: 100%;
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.custom-theme-input {
-  max-width: 600px;
-  margin: 2rem auto;
-}
-
-.action-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 1rem;
-  margin-top: 3rem;
-}
-
 .action-buttons-sticky {
   position: fixed;
   bottom: 0;
@@ -756,15 +509,6 @@ export default defineComponent({
   }
 }
 
-/* Responsive Design */
-@media (max-width: 1024px) {
-  .theme-grid,
-  .style-grid {
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 1rem;
-  }
-}
-
 @media (max-width: 768px) {
   .setup-header {
     padding: 1rem 1rem 0.5rem;
@@ -775,35 +519,9 @@ export default defineComponent({
     padding-bottom: 100px;
   }
 
-  .theme-grid,
-  .style-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 0.75rem;
-  }
-
   .setup-title {
     font-size: 1.8rem;
     margin-bottom: 0.75rem;
-  }
-
-  .theme-card,
-  .style-card {
-    padding: 1rem;
-  }
-
-  .theme-icon {
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .theme-name,
-  .style-name {
-    font-size: 1.1rem;
-  }
-
-  .theme-description,
-  .style-description {
-    font-size: 0.85rem;
   }
 
   .action-buttons-sticky {
@@ -814,18 +532,6 @@ export default defineComponent({
   .begin-adventure-btn {
     font-size: 0.9rem;
     padding: 0 16px !important;
-  }
-}
-
-@media (max-width: 480px) {
-  .theme-grid,
-  .style-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .theme-card,
-  .style-card {
-    padding: 1.25rem;
   }
 }
 
@@ -1022,11 +728,5 @@ export default defineComponent({
 
 .setup-scrollable::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
-}
-
-/* Ensure custom theme input is always visible when selected */
-.custom-theme-input {
-  position: relative;
-  z-index: 10;
 }
 </style>

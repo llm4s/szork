@@ -96,28 +96,25 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
 
   test("a response over the narration length guideline is used, with a warning") {
     val longNarration = "You wade deeper. " * 40 // > 500 characters
-    val answer = s"""$longNarration
-      |<<<JSON>>>
-      |{"responseType":"simple","locationId":"cavern_entrance","actionTaken":"wade"}""".stripMargin
+    val answer = org.llm4s.szork.stubs.DmAnswers.simple(longNarration, "cavern_entrance", "wade")
     val engine = GameEngine.create(new FixedAnswerLLM(answer), sessionId = "long")
     engine.initialize().isRight shouldBe true
 
     val response = engine.processCommand("test", generateAudio = false)
-    response.toOption.get.text shouldBe longNarration.trim
+    response.toOption.get.text shouldBe longNarration
     engine.popValidationIssues().get.mkString should include("narrationText too long")
   }
 
-  test("an unusable response shows its narration, never raw JSON") {
-    val answer = """The floor gives way beneath you!
-      |<<<JSON>>>
-      |{"responseType":"fullScene","locationId":"Bad Id!","locationName":"Pit","exits":[]}""".stripMargin
+  test("a response that breaks the game's rules shows its narration, never raw JSON") {
+    val answer =
+      org.llm4s.szork.stubs.DmAnswers.scene("The floor gives way beneath you!", "Bad Id!", "Pit", Seq("down" -> "pit"))
     val engine = GameEngine.create(new FixedAnswerLLM(answer), sessionId = "bad")
     engine.initialize().isRight shouldBe true
     val before = engine.getCurrentScene
 
     val text = engine.processCommand("test", generateAudio = false).toOption.get.text
     text shouldBe "The floor gives way beneath you!"
-    text should not include "<<<JSON>>>"
+    text should not include "{"
     engine.getCurrentScene shouldBe before // the invalid scene is not applied
   }
 

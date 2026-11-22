@@ -10,51 +10,20 @@ import org.llm4s.error.LLMError
 class FakeLLMClient extends LLMClient {
   private def replyFor(conversation: Conversation): Completion = {
     val lastUser = conversation.messages.reverse.collectFirst { case u: UserMessage => u.content }.getOrElse("")
-    val (narration, json) =
+    val content =
       if (lastUser
           .toLowerCase()
-          .startsWith("look") || lastUser.toLowerCase().contains("start adventure") || lastUser.isEmpty) {
-        (
-          "You are at the cavern entrance.",
-          ujson.Obj(
-            "responseType" -> "fullScene",
-            "locationId" -> "cavern_entrance",
-            "locationName" -> "Cavern Entrance",
-            "imageDescription" -> "A rough cavern mouth",
-            "musicDescription" -> "Calm ambient",
-            "musicMood" -> "exploration",
-            "exits" -> ujson.Arr(ujson.Obj("direction" -> "north", "locationId" -> "hall")),
-            "items" -> ujson.Arr(),
-            "npcs" -> ujson.Arr()
-          )
-        )
-      } else if (lastUser.toLowerCase().startsWith("go")) {
-        (
+          .startsWith("look") || lastUser.toLowerCase().contains("start adventure") || lastUser.isEmpty)
+        DmAnswers.scene("You are at the cavern entrance.", "cavern_entrance", "Cavern Entrance", Seq("north" -> "hall"))
+      else if (lastUser.toLowerCase().startsWith("go"))
+        DmAnswers.scene(
           "You walk north into a small hall.",
-          ujson.Obj(
-            "responseType" -> "fullScene",
-            "locationId" -> "hall",
-            "locationName" -> "Small Hall",
-            "imageDescription" -> "A dim hall",
-            "musicDescription" -> "Eerie",
-            "musicMood" -> "mystery",
-            "exits" -> ujson.Arr(ujson.Obj("direction" -> "south", "locationId" -> "cavern_entrance")),
-            "items" -> ujson.Arr(),
-            "npcs" -> ujson.Arr()
-          )
-        )
-      } else {
-        (
-          "You examine it closely.",
-          ujson.Obj(
-            "responseType" -> "simple",
-            "locationId" -> "cavern_entrance",
-            "actionTaken" -> "examine"
-          )
-        )
-      }
+          "hall",
+          "Small Hall",
+          Seq("south" -> "cavern_entrance"),
+          mood = "mystery")
+      else DmAnswers.simple("You examine it closely.", "cavern_entrance", "examine")
 
-    val content = s"$narration\n<<<JSON>>>\n${ujson.write(json)}"
     Completion(
       id = java.util.UUID.randomUUID().toString,
       created = java.time.Instant.now(),

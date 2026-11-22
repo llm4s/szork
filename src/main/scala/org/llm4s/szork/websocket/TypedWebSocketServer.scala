@@ -370,6 +370,7 @@ class TypedWebSocketServer(
         sendTo(
           session,
           StreamCompleteMessage(
+            text = response.text,
             messageIndex = turn.messageIndex,
             totalChunks = chunkCount,
             duration = duration,

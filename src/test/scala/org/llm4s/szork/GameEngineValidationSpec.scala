@@ -6,7 +6,7 @@ import org.llm4s.szork.stubs.FakeLLMClientInvalid
 import org.llm4s.szork.game.GameEngine
 
 class GameEngineValidationSpec extends AnyFunSuite with Matchers {
-  test("engine records validation issues for invalid exit directions") {
+  test("engine records validation issues for responses that break the game's rules") {
     implicit val llm = new FakeLLMClientInvalid()
     val engine = GameEngine.create(llmClient = llm, sessionId = "val-test", theme = Some("underground realm"))
 
@@ -15,7 +15,7 @@ class GameEngineValidationSpec extends AnyFunSuite with Matchers {
 
     val issuesOpt = engine.popValidationIssues()
     issuesOpt.isDefined shouldBe true
-    issuesOpt.get.mkString(" ").toLowerCase should include("invalid exit direction")
+    issuesOpt.get.mkString(" ") should include("must match [a-z0-9_-]+")
 
     // ensure issues are cleared after pop
     engine.popValidationIssues() shouldBe None

@@ -3,75 +3,37 @@ package org.llm4s.szork
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.llm4s.szork.game.{GameResponseParser, GameScene, SimpleResponse}
+import org.llm4s.szork.stubs.DmAnswers
 
 class ParserValidatorSpec extends AnyFunSuite with Matchers {
 
-  test("parse and validate full scene with exits") {
-    val response =
-      """
-        You enter a dim cavern lit by glowing fungi.
-        <<<JSON>>>
-        {
-          "responseType": "fullScene",
-          "locationId": "cavern_entrance",
-          "locationName": "Cavern Entrance",
-          "imageDescription": "A rocky cavern with glowing fungi on the walls",
-          "musicDescription": "Calm ambient tones with dripping water",
-          "musicMood": "exploration",
-          "exits": [
-            {"direction": "north", "locationId": "narrow_passage"},
-            {"direction": "east", "locationId": "side_chamber"}
-          ],
-          "items": ["lantern"],
-          "npcs": []
-        }
-      """.stripMargin
-
-    val parsed = GameResponseParser.parseAndValidate(response)
-    parsed.isRight shouldBe true
-    val scene = parsed.toOption.get.asInstanceOf[GameScene]
+  test("parse and validate a full scene") {
+    val response = DmAnswers.scene(
+      "You stand at a cavern entrance.",
+      "cavern_entrance",
+      "Cavern Entrance",
+      Seq("north" -> "narrow_passage", "east" -> "side_chamber"))
+    val scene = GameResponseParser.parseAndValidate(response).toOption.get.asInstanceOf[GameScene]
     scene.locationId shouldBe "cavern_entrance"
-    scene.exits.map(_.direction).toSet should contain allOf ("north", "east")
-    scene.narrationText.toLowerCase should include("cavern")
+    scene.exits.map(_.direction).toSet shouldBe Set("north", "east")
+    scene.exits.head.description shouldBe None // null description
+    scene.narrationText should include("cavern")
   }
 
-  test("reject invalid exit direction") {
-    val response =
-      """
-        A strange hallway extends into darkness.
-        <<<JSON>>>
-        {
-          "responseType": "fullScene",
-          "locationId": "strange_hall",
-          "locationName": "Strange Hall",
-          "imageDescription": "",
-          "musicDescription": "",
-          "musicMood": "exploration",
-          "exits": [
-            {"direction": "north-east", "locationId": "unknown"}
-          ]
-        }
-      """.stripMargin
-
+  test("reject an invalid exit direction") {
+    val response = DmAnswers.scene("A strange hallway.", "strange_hall", "Strange Hall", Seq("north-east" -> "unknown"))
     val parsed = GameResponseParser.parseAndValidate(response)
-    parsed.isLeft shouldBe true
     parsed.left.toOption.get.message.toLowerCase should include("invalid exit direction")
   }
 
-  test("parse and validate simple response") {
-    val response =
-      """
-        You examine the lantern closely.
-        <<<JSON>>>
-        {
-          "responseType": "simple",
-          "locationId": "cavern_entrance",
-          "actionTaken": "examine"
-        }
-      """.stripMargin
+  test("parse and validate a simple response, ignoring its null scene fields") {
+    val parsed =
+      GameResponseParser.parseAndValidate(DmAnswers.simple("You examine the lantern.", "cavern_entrance", "examine"))
+    parsed.toOption.get shouldBe SimpleResponse("You examine the lantern.", "cavern_entrance", "examine")
+  }
 
-    val parsed = GameResponseParser.parseAndValidate(response)
-    parsed.isRight shouldBe true
-    parsed.toOption.get.isInstanceOf[SimpleResponse] shouldBe true
+  test("a JSON answer wrapped in prose is still read") {
+    val response = "Here is the scene:\n" + DmAnswers.simple("You wait.", "hall", "wait")
+    GameResponseParser.parseAndValidate(response).toOption.get.narrationText shouldBe "You wait."
   }
 }

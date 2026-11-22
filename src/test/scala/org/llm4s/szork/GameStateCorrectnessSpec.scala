@@ -124,18 +124,18 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
   test("scene media is requested only when the player moves to a new location") {
     val engine = GameEngine.create(new FakeLLMClient(), sessionId = "media")
     engine.initialize().isRight shouldBe true
-    engine.shouldGenerateSceneImage("") shouldBe true // first scene
+    engine.locationChangedLastTurn shouldBe true // first scene
 
     engine.processCommand("go north", generateAudio = false).isRight shouldBe true
-    engine.shouldGenerateSceneImage("") shouldBe true
-    engine.shouldGenerateBackgroundMusic("") shouldBe true
+    engine.locationChangedLastTurn shouldBe true
+    engine.locationChangedLastTurn shouldBe true
 
     engine.processCommand("examine wall", generateAudio = false).isRight shouldBe true
-    engine.shouldGenerateSceneImage("") shouldBe false
-    engine.shouldGenerateBackgroundMusic("") shouldBe false
+    engine.locationChangedLastTurn shouldBe false
+    engine.locationChangedLastTurn shouldBe false
 
     engine.processCommand("go north", generateAudio = false).isRight shouldBe true // same hall again
-    engine.shouldGenerateSceneImage("") shouldBe false
+    engine.locationChangedLastTurn shouldBe false
   }
 
   test("each narration is recorded once in the transcript") {

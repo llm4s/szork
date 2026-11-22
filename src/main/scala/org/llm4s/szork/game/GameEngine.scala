@@ -77,12 +77,12 @@ class GameEngine(
   private var threadId: Option[ThreadId] = None
   // The conversation as of the last successful turn: the thread's full history, without the
   // system prompt (the agent sends that on every model call).
-  private var history: Vector[Message] = Vector.empty
+  @volatile private var history: Vector[Message] = Vector.empty
   private var coreState: CoreState = CoreState()
   private var lastValidationIssues: Option[List[String]] = None
   // Whether the last turn moved the player to a new location (or opened the first scene);
   // scene images and location music are generated only then
-  private var lastTurnChangedLocation: Boolean = false
+  @volatile private var lastTurnChangedLocation: Boolean = false
   // Index into `history` where the last turn's messages begin
   private var lastTurnStart: Int = 0
   private val createdAt: Long = clock.now()
@@ -91,7 +91,7 @@ class GameEngine(
   private var adventureTitle: Option[String] = outline.map(_.title)
 
   // Enhanced state tracking
-  private var mediaCache: Map[String, MediaCacheEntry] = Map.empty
+  @volatile private var mediaCache: Map[String, MediaCacheEntry] = Map.empty
   private var currentStepNumber: Int = 1 // Current step number for persistence
 
   /** Initializes a new game session with opening scene generation.
@@ -277,6 +277,8 @@ class GameEngine(
   }
 
   /** Narrates `text` with the configured text-to-speech client, if there is one. */
+  def narrate(text: String): Option[String] = synthesize(text)
+
   private def synthesize(text: String): Option[String] =
     ttsClient.filter(_ => text.nonEmpty).flatMap { client =>
       val start = System.currentTimeMillis()
@@ -395,93 +397,43 @@ class GameEngine(
     * @return
     *   true if image generation is appropriate
     */
-  def shouldGenerateSceneImage(responseText: String): Boolean = {
-    val _ = responseText
-    lastTurnChangedLocation
-  }
+  /** Whether the last turn moved the player to a new location (or opened the first scene). */
+  def locationChangedLastTurn: Boolean = lastTurnChangedLocation
 
-  /** Generates a scene image based on current location or response text.
+  /** Generates (or fetches from cache) the image for `scene`.
     *
-    * @param responseText
-    *   Narrative text describing the scene
-    * @param gameId
-    *   Optional game ID for caching
+    * Reads no mutable engine state, so it can run while the next turn is in progress.
+    *
     * @return
-    *   Base64-encoded image, or None if generation fails
+    *   Base64-encoded image, or None if there is no image client or generation fails
     */
-  def generateSceneImage(responseText: String, gameId: Option[String] = None): Option[String] = {
-    // Use detailed description from current scene if available
-    val _ = responseText
-    val (imagePrompt, locationId) = coreState.currentScene match {
-      case Some(scene) => (scene.imageDescription, Some(scene.locationId))
-      case None => return None
-    }
-
-    // Include art style prominently in the image prompt with detailed direction
-    val styledPrompt = MediaPlanner.styledImagePrompt(artStyle, imagePrompt, artStyleDescription)
-    logger.info(s"[$sessionId] Generating scene image with prompt: ${styledPrompt.take(100)}...")
-    imageClient match {
-      case Some(client) =>
-        val artStyleForCache = artStyle.getOrElse("fantasy")
-        client.generateScene(styledPrompt, artStyleForCache, gameId, locationId) match {
-          case Right(image) =>
-            logger.info(s"[$sessionId] Scene image generated/retrieved, base64: ${image.length}")
-            Some(image)
-          case Left(error) =>
-            logger.error(s"[$sessionId] Failed to generate image: $error")
-            None
-        }
-      case None =>
-        logger.info(s"[$sessionId] Image client not configured; skipping image generation")
-        None
-    }
-  }
-
-  // isNewScene moved to CoreEngine
-
-  // scene description extraction moved to MediaPlanner
-
-  def shouldGenerateBackgroundMusic(responseText: String): Boolean = {
-    val _ = responseText
-    lastTurnChangedLocation
-  }
-
-  def generateBackgroundMusic(responseText: String, gameId: Option[String] = None): Option[(String, String)] =
-    if (shouldGenerateBackgroundMusic(responseText)) {
-      logger.info(s"[$sessionId] Checking if background music should be generated")
-      try {
-        // Check if music generation is available
-        if (musicClient.isEmpty || !musicClient.get.isAvailable) {
-          logger.info(s"[$sessionId] Music generation disabled or unavailable")
-          return None
-        }
-
-        // Use structured mood and description if available
-        val (mood, contextText, locationId) = coreState.currentScene match {
-          case Some(scene) => (scene.musicMood, scene.musicDescription, Some(scene.locationId))
-          case None => return None
-        }
-
-        logger.info(s"[$sessionId] Generating background music with mood: $mood")
-        musicClient.get.generate(mood, contextText, gameId, locationId) match {
-          case Right(musicBase64) =>
-            logger.info(
-              s"[$sessionId] Background music generated/retrieved for mood: $mood, base64: ${musicBase64.length}")
-            Some((musicBase64, mood))
-          case Left(error) =>
-            logger.warn(s"[$sessionId] Music generation not available: $error")
-            None
-        }
-      } catch {
-        case e: Exception =>
-          logger.warn(s"[$sessionId] Music generation disabled due to error: ${e.getMessage}")
+  def generateSceneImage(scene: GameScene, gameId: Option[String]): Option[String] =
+    imageClient.flatMap { client =>
+      val styledPrompt = MediaPlanner.styledImagePrompt(artStyle, scene.imageDescription, artStyleDescription)
+      logger.info(s"[$sessionId] Generating scene image for ${scene.locationId}: ${styledPrompt.take(100)}...")
+      client.generateScene(styledPrompt, artStyle.getOrElse("fantasy"), gameId, Some(scene.locationId)) match {
+        case Right(image) if image.nonEmpty => Some(image)
+        case Right(_) => None
+        case Left(error) =>
+          logger.error(s"[$sessionId] Failed to generate image: ${error.message}")
           None
       }
-    } else {
-      None
     }
 
-  // mood detection moved to MediaPlanner
+  /** Generates (or fetches from cache) background music for `scene`; returns the music and its mood.
+    *
+    * Reads no mutable engine state, so it can run while the next turn is in progress.
+    */
+  def generateBackgroundMusic(scene: GameScene, gameId: Option[String]): Option[(String, String)] =
+    musicClient.filter(_.isAvailable).flatMap { client =>
+      logger.info(s"[$sessionId] Generating music for ${scene.locationId}: mood=${scene.musicMood}")
+      client.generate(scene.musicMood, scene.musicDescription, gameId, Some(scene.locationId)) match {
+        case Right(music) => Some((music, scene.musicMood))
+        case Left(error) =>
+          logger.warn(s"[$sessionId] Music generation failed: ${error.message}")
+          None
+      }
+    }
 
   def getCurrentScene: Option[GameScene] = coreState.currentScene
 

@@ -1,72 +1,51 @@
 package org.llm4s.szork.media
 
-import org.slf4j.{Logger, LoggerFactory}
-import requests._
-import org.llm4s.config.EnvLoader
 import java.util.Base64
+import org.slf4j.{Logger, LoggerFactory}
+import org.llm4s.config.{ConfigReader, EnvLoader}
+import org.llm4s.security.Secret
+import org.llm4s.speech.AudioFormat
+import org.llm4s.speech.config.TTSConfig
+import org.llm4s.speech.tts.TTSOptions
+import org.llm4s.speech.tts.provider.OpenAITTSClient
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
-import org.llm4s.szork.api.MediaNetworkConfig
 
-class TextToSpeech {
+/** Narration via llm4s-speech's OpenAI text-to-speech client.
+  *
+  * Configured by OPENAI_API_KEY, SZORK_TTS_MODEL (default tts-1) and SZORK_TTS_VOICE (default nova).
+  */
+final class TextToSpeech private (client: OpenAITTSClient, val defaultVoice: String) {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
-  private val net = MediaNetworkConfig.instance
-  private val apiKey = EnvLoader
-    .get("OPENAI_API_KEY")
-    .getOrElse(
-      throw new IllegalStateException("OPENAI_API_KEY not found in environment")
-    )
 
-  def synthesize(text: String, voice: String = "nova"): SzorkResult[Array[Byte]] = {
-    logger.info(s"Synthesizing speech for text (${text.length} chars): ${text.take(50)}...")
-    logger.debug(s"Using voice: $voice")
-
-    try {
-      val response = post(
-        "https://api.openai.com/v1/audio/speech",
-        headers = Map(
-          "Authorization" -> s"Bearer $apiKey",
-          "Content-Type" -> "application/json"
-        ),
-        data = ujson
-          .Obj(
-            "model" -> "tts-1",
-            "input" -> text,
-            "voice" -> voice,
-            "response_format" -> "mp3"
-          )
-          .toString,
-        readTimeout = net.readTimeoutMs,
-        connectTimeout = net.connectTimeoutMs
-      )
-
-      if (response.statusCode == 200) {
-        logger.info(s"Speech synthesis successful, size: ${response.bytes.length} bytes")
-        Right(response.bytes)
-      } else {
-        val errorMsg = s"TTS failed with status ${response.statusCode}: ${response.text()}"
-        logger.error(errorMsg)
-        Left(AudioGenerationError(errorMsg, retryable = response.statusCode >= 500))
-      }
-    } catch {
-      case e: Exception =>
-        logger.error("Error during text-to-speech", e)
-        Left(AudioGenerationError(s"TTS error: ${e.getMessage}", Some(e), retryable = true))
-    }
+  /** Speaks `text` as MP3. */
+  def synthesize(text: String, voice: String = defaultVoice): SzorkResult[Array[Byte]] = {
+    logger.info(s"Synthesizing speech (${text.length} chars, voice $voice)")
+    client
+      .synthesize(text, TTSOptions(voice = Some(voice), outputFormat = AudioFormat.Mp3))
+      .map(_.data)
+      .left
+      .map(error => AudioGenerationError(s"TTS failed: ${error.message}", retryable = true))
   }
 
-  def synthesizeToBase64(text: String, voice: String = "nova"): SzorkResult[String] =
-    synthesize(text, voice).map(bytes => Base64.getEncoder.encodeToString(bytes))
+  def synthesizeToBase64(text: String, voice: String = defaultVoice): SzorkResult[String] =
+    synthesize(text, voice).map(Base64.getEncoder.encodeToString)
 }
 
 object TextToSpeech {
-  def apply(): TextToSpeech = new TextToSpeech()
 
-  // Available voices
-  val VOICE_ALLOY = "alloy"
-  val VOICE_ECHO = "echo"
-  val VOICE_FABLE = "fable"
-  val VOICE_ONYX = "onyx"
-  val VOICE_NOVA = "nova"
-  val VOICE_SHIMMER = "shimmer"
+  /** A client from configuration, or a ConfigurationError if OPENAI_API_KEY is not set. */
+  def create(reader: ConfigReader = EnvLoader): SzorkResult[TextToSpeech] =
+    reader.get("OPENAI_API_KEY").filter(_.nonEmpty).toRight(ConfigurationError("OPENAI_API_KEY is not set")).map {
+      key =>
+        val voice = reader.get("SZORK_TTS_VOICE").filter(_.nonEmpty).getOrElse("nova")
+        val config = TTSConfig(
+          provider = "openai",
+          model = reader.get("SZORK_TTS_MODEL").filter(_.nonEmpty).getOrElse(TTSConfig.DEFAULT_OPENAI_MODEL),
+          voice = voice,
+          apiKey = Secret(key),
+          baseUrl = TTSConfig.DEFAULT_OPENAI_BASE_URL
+        )
+        new TextToSpeech(new OpenAITTSClient(config), voice)
+    }
 }

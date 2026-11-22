@@ -28,7 +28,8 @@ object EngineFactory {
         clock = SystemClock,
         ttsClient = Option.when(features.tts)(new DefaultTTSClient()),
         imageClient = Option.when(features.image)(new DefaultImageClient()),
-        musicClient = Option.when(features.music)(new DefaultMusicClient())
+        musicClient = Option.when(features.music)(new DefaultMusicClient()),
+        tracing = AgentTracing.fromEnvironment
       )(llmClient)
     }
 }

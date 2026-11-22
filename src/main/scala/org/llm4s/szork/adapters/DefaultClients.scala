@@ -5,15 +5,16 @@ import org.llm4s.szork.spi._
 import org.llm4s.szork.error.ErrorHandling._
 
 class DefaultTTSClient extends TTSClient {
-  private val impl = TextToSpeech()
+  // A missing key is reported on use, as an error, rather than thrown here
+  private val impl = TextToSpeech.create()
   override def synthesizeToBase64(text: String, voice: String): SzorkResult[String] =
-    impl.synthesizeToBase64(text, voice) // Already returns SzorkResult
+    impl.flatMap(_.synthesizeToBase64(text, voice))
 }
 
 class DefaultSTTClient extends STTClient {
-  private val impl = SpeechToText()
+  private val impl = SpeechToText.create()
   override def transcribeBytes(audioBytes: Array[Byte], filename: String): SzorkResult[String] =
-    impl.transcribeBytes(audioBytes, filename) // Already returns SzorkResult
+    impl.flatMap(_.transcribeBytes(audioBytes, filename))
 }
 
 class DefaultImageClient extends ImageClient {

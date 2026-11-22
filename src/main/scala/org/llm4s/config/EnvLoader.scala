@@ -54,6 +54,12 @@ object EnvLoader extends ConfigReader {
   def get(key: String): Option[String] =
     Option(dotenv.get(key))
 
+  /** Every variable: those in .env and the process environment. */
+  def entries: Map[String, String] = {
+    import scala.jdk.CollectionConverters._
+    dotenv.entries().asScala.map(e => e.getKey -> e.getValue).toMap
+  }
+
   override def getOrElse(key: String, default: String): String =
     get(key).getOrElse(default)
 }

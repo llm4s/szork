@@ -23,7 +23,8 @@ class DefaultImageClient extends ImageClient {
     style: String,
     gameId: Option[String],
     locationId: Option[String]): SzorkResult[String] =
-    impl.generateSceneWithCache(prompt, style, gameId, locationId)
+    // The engine sends a fully styled prompt; `style` (the art style id) is not appended to it again
+    impl.generateSceneWithCache(prompt, "", gameId, locationId)
 }
 
 class DefaultMusicClient extends MusicClient {

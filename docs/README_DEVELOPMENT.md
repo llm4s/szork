@@ -54,7 +54,7 @@ RUN_INTEGRATION=true sbt "testOnly *AdventureIntegrationSpec"   # 20 turns again
 cd frontend && npm test                    # Frontend tests (Vitest)
 ```
 
-CI also compiles with `-Werror`, checks formatting (`sbt scalafmtCheckAll`) and runs `npm run lint:check`.
+CI also compiles main and test sources with `-Werror`, checks formatting (`sbt scalafmtCheckAll`) and runs `npm run lint:check`.
 
 ## Architecture
 

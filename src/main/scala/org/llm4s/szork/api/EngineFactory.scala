@@ -43,5 +43,5 @@ object EngineFactory {
           musicClient = Option.when(features.music)(new DefaultMusicClient()),
           tracing = tracing,
           contextWindow = contextWindow
-        )(llmClient))
+        )(using llmClient))
 }

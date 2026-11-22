@@ -651,5 +651,5 @@ object GameEngine {
       imageClient,
       musicClient,
       tracing,
-      contextWindow)(llmClient)
+      contextWindow)(using llmClient)
 }

@@ -4,6 +4,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 import java.nio.file.{Files, Path}
+import scala.compiletime.uninitialized
 import scala.jdk.CollectionConverters._
 import org.llm4s.llmconnect.model.{UserMessage, AssistantMessage}
 import org.llm4s.szork.api.{ArtStyle, GameTheme}
@@ -14,8 +15,8 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
 
   // Saves go to a fresh temporary directory, never the developer's real szork-saves
   private val saveRoot: Path = Files.createTempDirectory("szork-saves-test")
-  var testGameDir: Path = _
-  var testGameId: String = _
+  var testGameDir: Path = uninitialized
+  var testGameId: String = uninitialized
 
   override def beforeAll(): Unit = {
     super.beforeAll()
@@ -61,11 +62,11 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
 
     // Save metadata
     val saveResult = StepPersistence.saveGameMetadata(metadata)
-    saveResult shouldBe a[Right[_, _]]
+    saveResult shouldBe a[Right[?, ?]]
 
     // Load metadata
     val loadResult = StepPersistence.loadGameMetadata(testGameId)
-    loadResult shouldBe a[Right[_, _]]
+    loadResult shouldBe a[Right[?, ?]]
 
     val loaded = loadResult.getOrElse(fail("Failed to load metadata"))
     loaded.gameId shouldBe testGameId
@@ -146,11 +147,11 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
 
     // Save step
     val saveResult = StepPersistence.saveStep(stepData)
-    saveResult shouldBe a[Right[_, _]]
+    saveResult shouldBe a[Right[?, ?]]
 
     // Load step
     val loadResult = StepPersistence.loadStep(testGameId, 1)
-    loadResult shouldBe a[Right[_, _]]
+    loadResult shouldBe a[Right[?, ?]]
 
     val loaded = loadResult.getOrElse(fail("Failed to load step"))
     loaded.metadata.gameId shouldBe testGameId
@@ -221,7 +222,7 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
 
     // Load latest step
     val loadResult = StepPersistence.loadLatestStep(testGameId)
-    loadResult shouldBe a[Right[_, _]]
+    loadResult shouldBe a[Right[?, ?]]
 
     val loaded = loadResult.getOrElse(fail("Failed to load latest step"))
     loaded.metadata.stepNumber shouldBe 3
@@ -369,7 +370,7 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
 
     // Delete game
     val deleteResult = StepPersistence.deleteGame(testGameId)
-    deleteResult shouldBe a[Right[_, _]]
+    deleteResult shouldBe a[Right[?, ?]]
 
     // Verify game no longer exists
     StepPersistence.gameExists(testGameId) shouldBe false

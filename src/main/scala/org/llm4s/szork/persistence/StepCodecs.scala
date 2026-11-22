@@ -106,7 +106,7 @@ object MessageCodec {
             "name" -> tc.name,
             "arguments" -> tc.arguments
           )
-        }: _*)
+        }*)
       )
 
     case system: SystemMessage =>

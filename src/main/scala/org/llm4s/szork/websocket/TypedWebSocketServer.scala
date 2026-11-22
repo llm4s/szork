@@ -196,19 +196,19 @@ class TypedWebSocketServer(
 
   /** Runs `body` on the session's serial executor, reporting a failure to the player (the details only to the log). */
   private def runFor(session: GameSession)(body: => Unit): Unit =
-    Future { session.touch(); body }(session.executor).onComplete {
+    Future { session.touch(); body }(using session.executor).onComplete {
       case Failure(e) =>
         logger.error(s"[${session.id}] Session task failed", e)
         sendTo(session, ErrorMessage("Internal server error"))
       case Success(_) => session.touch()
-    }(ExecutionContext.parasitic)
+    }(using ExecutionContext.parasitic)
 
   /** Runs `body` off the WebSocket thread, reporting a failure to `conn` (the details only to the log). */
   private def runForConnection(conn: WebSocket)(body: => Unit): Unit =
-    Future(body)(workEC).failed.foreach { e =>
+    Future(body)(using workEC).failed.foreach { e =>
       logger.error("Request failed", e)
       send(conn, ErrorMessage("Internal server error"))
-    }(ExecutionContext.parasitic)
+    }(using ExecutionContext.parasitic)
 
   /** A session for `engine`, not yet registered. */
   private def makeSession(
@@ -227,11 +227,11 @@ class TypedWebSocketServer(
     */
   def endGame[A](gameId: String)(body: => A): Future[A] =
     sessionManager.removeGame(gameId) match {
-      case None => Future(body)(workEC)
+      case None => Future(body)(using workEC)
       case Some(session) =>
         sessionConnections.remove(session.id).foreach(connectionSessions.remove)
         logger.info(s"[${session.id}] Session ended for game $gameId")
-        Future(body)(session.executor)
+        Future(body)(using session.executor)
     }
 
   // ============= Games =============
@@ -464,7 +464,7 @@ class TypedWebSocketServer(
   }
 
   private def playAudioCommand(session: GameSession, request: AudioCommandRequest): Unit =
-    (if (session.features.stt) sttClient else None) match {
+    sttClient.filter(_ => session.features.stt) match {
       case None =>
         sendTo(session, ErrorMessage("Speech-to-Text is not available"))
       case Some(stt) =>
@@ -537,7 +537,7 @@ class TypedWebSocketServer(
   /** Generates media on `ec`; the client gets the result, or a failure notice so it stops waiting. */
   private def deliverMedia(session: GameSession, messageIndex: Int, kind: MediaKind, ec: ExecutionContext)(
     generate: => Option[ServerMessage]): Unit =
-    Future(generate)(ec).onComplete { result =>
+    Future(generate)(using ec).onComplete { result =>
       result match {
         case Success(Some(message)) => sendTo(session, message)
         case Success(None) => sendTo(session, MediaFailedMessage(messageIndex, kind))
@@ -545,7 +545,7 @@ class TypedWebSocketServer(
           logger.error(s"[${session.id}] ${kind.wireName} generation failed", e)
           sendTo(session, MediaFailedMessage(messageIndex, kind))
       }
-    }(ExecutionContext.parasitic)
+    }(using ExecutionContext.parasitic)
 
   // ============= Persistence =============
 

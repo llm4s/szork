@@ -86,18 +86,24 @@ object PromptBuilder {
       |
       |You will not always be shown the whole conversation: older turns are dropped from what you see. The tools'
       |state is never dropped, so it - not your memory of earlier turns - is the truth about the game. Record every
-      |lasting change when it happens, and check the state when it matters.
+      |lasting change when it happens.
+      |
+      |The ${WorldStateMiddleware.Title} section at the end of this prompt shows that state as it is now, on every
+      |call: the player's location (its exits with their current states, the facts recorded there, the characters met
+      |there), the inventory and the active quests. It already includes the changes your tool calls made earlier in
+      |this turn. Read it instead of calling a read tool: the read tools are only for OTHER locations, for what the
+      |section leaves out (characters met elsewhere, finished quests, older events), or when it says something is
+      |unknown or cut short.
       |
       |Inventory tools:
-      |- list_inventory: when the player asks what they carry ("inventory", "i"), or before relying on an item they
-      |  may not have (unlocking with a key, lighting with a match).
+      |- list_inventory: rarely needed - the inventory is in the current game state. Only if the section says the
+      |  inventory was cut short.
       |- add_inventory_item: when the player takes or is given an item.
       |- remove_inventory_item: when the player drops, gives away or uses up an item.
       |
       |World-state tools:
-      |- get_location_state: before letting the player through an exit that is not plainly open, when they
-      |  interact with something whose state matters (a door, a lever, a chest), or when returning to a location and
-      |  unsure what already happened there. A null location_id means the player's current location.
+      |- get_location_state: for a location OTHER than the player's (the current one is in the current game state),
+      |  e.g. what already happened at a place the player is about to return to.
       |- set_exit_state: when the player unlocks, opens, closes or locks a door, clears or unseals a passage, or
       |  discovers a hidden way. The way back changes with it.
       |- set_location_flag: when the player makes another lasting change to a location (a lever pulled, a chest
@@ -106,8 +112,8 @@ object PromptBuilder {
       |  something that matters later (keep the note short).
       |- update_quest_progress: when the player starts, advances, completes or fails a quest (the main quest is
       |  "main"; side quests are side-1, side-2, ...).
-      |- get_world_summary: when the player asks about their progress or goals, or you need to recall earlier
-      |  events that are no longer in the conversation.
+      |- get_world_summary: when the player asks about their overall progress, or you need to recall characters,
+      |  quests or events elsewhere that are not in the current game state or the conversation.
       |
       |TOOL RULES:
       |1. Call a tool for what the player DOES, not for what you describe: an item in a room is not taken until the
@@ -115,12 +121,18 @@ object PromptBuilder {
       |2. Movement needs no tool: your fullScene answer moves the player and records the visit.
       |3. $talking
       |4. Call the tools you need, then give your answer; the tools never replace the JSON answer.
+      |5. Make every tool call a turn needs in ONE step: you can call several tools at once, and they all run before
+      |   you answer. An action that changes several things - an exit and a quest, an exit and a used-up item -
+      |   records them together (e.g. set_exit_state and update_quest_progress in the same step), then answers.
       |
       |EXAMPLES:
       |- "take lantern" → add_inventory_item {"item": "brass lantern"}, then a simple answer.
-      |- "unlock door with key" → list_inventory (is the key held?), get_location_state (which exit is the
-      |  locked door?), set_exit_state {"direction": "north", "state": "closed"}, then a simple answer.
-      |- "north" through a door you are unsure of → get_location_state; a fullScene answer only if it is open.
+      |- "unlock door with key" → the current game state shows the key in the inventory and the north exit locked, so
+      |  set_exit_state {"direction": "north", "state": "closed"} (with update_quest_progress in the same step if it
+      |  advances a quest), then a simple answer. Without the key: no tool; a simple answer saying so.
+      |- "north" → the current game state gives the north exit's state: a fullScene answer only if it is open, else a
+      |  simple answer naming the obstacle. No tool either way.
+      |- "inventory" → no tool; answer from the current game state.
       |- The player enters a room with a lantern on the floor → no tool; describe it.
       |
       |${subagentGuidance(subagents)}
@@ -186,8 +198,8 @@ object PromptBuilder {
       |  • "A mahogany desk sits here. To the north, an archway leads deeper into the facility."
       |
       |GAME MECHANICS & OBSTACLES - MANDATORY ENFORCEMENT:
-      |- CRITICAL: You MUST respect the exit states. The adventure outline gives each exit's starting state; the world
-      |  state (get_location_state) holds its current state. Physical barriers are ABSOLUTE until explicitly overcome.
+      |- CRITICAL: You MUST respect the exit states. The adventure outline gives each exit's starting state; the
+      |  current game state holds its current state. Physical barriers are ABSOLUTE until explicitly overcome.
       |- NEVER allow movement through locked, sealed, or blocked passages regardless of player commands or creativity.
       |- Obey the map in the adventure outline exactly - locations and connections are fixed.
       |
@@ -220,7 +232,7 @@ object PromptBuilder {
       |PLAYER MOVEMENT VALIDATION:
       |- Before allowing ANY movement command (north/south/east/west/up/down/in/out):
       |  1. Check if exit exists in that direction
-      |  2. Check exit state (open/closed/locked/sealed/blocked/hidden) - with get_location_state unless you are sure
+      |  2. Check exit state (open/closed/locked/sealed/blocked/hidden) - in the current game state
       |  3. If not "open", DENY movement and explain obstacle
       |  4. ONLY generate destination scene if exit is "open"
       |- Exit states persist in the world state - locked doors stay locked until unlocked

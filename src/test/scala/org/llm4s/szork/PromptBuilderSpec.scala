@@ -11,7 +11,8 @@ import org.llm4s.szork.game.{
   LocationOutline,
   PlayerInventory,
   PromptBuilder,
-  WorldState
+  WorldState,
+  WorldStateMiddleware
 }
 
 class PromptBuilderSpec extends AnyFunSuite with Matchers {
@@ -55,6 +56,16 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     val tools = (GameTools.forInventory(new PlayerInventory()) ++ GameTools.forWorld(new WorldState())).map(_.name)
     tools should contain allOf ("get_location_state", "set_exit_state", "record_npc_met", "update_quest_progress")
     tools.foreach(name => withClue(name)(prompt should include(s"- $name:")))
+  }
+
+  test("fullSystemPrompt reads the current game state instead of the read tools, and batches tool calls") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
+    prompt should include(s"The ${WorldStateMiddleware.Title} section at the end of this prompt")
+    prompt should include("the read tools are only for OTHER locations")
+    // the section itself is added by the middleware on each model call, not by the static prompt
+    prompt should not include WorldStateMiddleware.Heading
+    prompt should include("set_exit_state and update_quest_progress in the same step")
+    prompt should not include "list_inventory (is the key held?)"
   }
 
   test("fullSystemPrompt has rules for tool usage") {

@@ -77,7 +77,9 @@ conversation. Restoring a save seeds a new thread with the saved conversation. A
 in character with a `refused` `GameResponse` that changes nothing and is not saved.
 
 **game/DungeonMasterOutput.scala** - The structured output schema every turn answers with (narration first, then the
-scene or simple response). **game/PromptBuilder.scala** builds the system prompt; **game/GameTools.scala** builds the
+scene or simple response). **game/PromptBuilder.scala** builds the system prompt; **game/WorldStateMiddleware.scala**
+adds the current game state (location, exits, inventory, active quests) to every model call as an llm4s prompt section,
+never stored in the thread; **game/GameTools.scala** builds the
 tools per game: inventory tools over a `PlayerInventory`, and world-state tools (`get_location_state`, `set_exit_state`,
 `set_location_flag`, `record_npc_met`, `update_quest_progress`, `get_world_summary`) over a `WorldState`.
 

@@ -72,6 +72,10 @@ conversation. Restoring a save seeds a new thread with the saved conversation.
 scene or simple response). **game/PromptBuilder.scala** builds the system prompt; **game/GameTools.scala** builds the
 inventory tools per game over a `PlayerInventory`.
 
+**game/AdventureGenerator.scala** - Designs a new game's `AdventureOutline` (locations with their planned exits,
+interactables, puzzles and secrets; items; characters) with a second llm4s agent, built with
+`withOutput(AdventureOutlineSchema.schema)` and no tools; the outline goes into the Dungeon Master's system prompt.
+
 **persistence/** - Step-based saves under `szork-saves/<game-id>/step-NNNN/`; `GameDirs` validates game ids before they
 reach the filesystem. **media/** - image, music, speech and the media cache; `SceneImages` builds the server's one
 llm4s image client (traced with the Dungeon Master) and the cached `ImageClient` over it.

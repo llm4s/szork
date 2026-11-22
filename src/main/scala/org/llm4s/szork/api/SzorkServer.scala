@@ -349,20 +349,18 @@ object SzorkServer extends cask.Main with cask.Routes {
       case Left(message) =>
         logger.warn(s"Rejected generate-adventure request: $message")
         ujson.Obj("status" -> "error", "message" -> message)
-      case Right((theme, artStyle)) =>
-        generateAdventureFor(theme, artStyle)
+      case Right((theme, _)) =>
+        generateAdventureFor(theme)
     }
   }
 
-  private def generateAdventureFor(theme: Option[GameTheme], artStyle: Option[ArtStyle]): ujson.Value = {
+  private def generateAdventureFor(theme: Option[GameTheme]): ujson.Value = {
     logger.info("Generating adventure outline")
     val themePrompt = theme.map(_.prompt).getOrElse("classic fantasy adventure")
-    val artStyleId = artStyle.map(_.id).getOrElse("fantasy")
 
     logger.info(s"Generating adventure for theme: ${theme.map(_.name).getOrElse("default")}")
 
-    given LLMClient = llmClient
-    AdventureGenerator.generateAdventureOutline(themePrompt, artStyleId) match {
+    AdventureGenerator.generateAdventureOutline(themePrompt, tracing)(using llmClient) match {
       case Right(outline) =>
         logger.info(s"Adventure outline generated: ${outline.title}")
         ujson.Obj(

@@ -1,22 +1,7 @@
 package org.llm4s.szork.media
 
+/** Builds image prompts in the game's art style. */
 object MediaPlanner {
-  def extractSceneDescription(response: String): String = {
-    val sentences = response.split("[.!?]").filter(_.trim.nonEmpty)
-    val visualSentences = sentences.filter { s =>
-      val lower = s.toLowerCase
-      lower.contains("see") || lower.contains("before") ||
-      lower.contains("stand") || lower.contains("enter") ||
-      lower.contains("room") || lower.contains("cave") ||
-      lower.contains("forest") || lower.contains("dungeon") ||
-      lower.contains("hall") || lower.contains("chamber")
-    }
-
-    val description =
-      if (visualSentences.nonEmpty) visualSentences.mkString(". ")
-      else sentences.headOption.getOrElse(response.take(100))
-    description.replaceAll("You ", "A fantasy adventurer ").replaceAll("you ", "the adventurer ")
-  }
   def styledImagePrompt(artStyle: Option[String], baseDescription: String, artStyleDescription: String): String =
     artStyle match {
       case Some("pixel") =>
@@ -30,17 +15,4 @@ object MediaPlanner {
       case _ =>
         s"$baseDescription, rendered in $artStyleDescription"
     }
-
-  def detectMoodFromText(text: String): String = {
-    val t = text.toLowerCase
-    if (t.contains("battle") || t.contains("attack") || t.contains("fight")) "combat"
-    else if (t.contains("victory") || t.contains("triumph")) "victory"
-    else if (t.contains("dungeon") || t.contains("cavern") || t.contains("crypt")) "dungeon"
-    else if (t.contains("forest") || t.contains("grove") || t.contains("woods")) "forest"
-    else if (t.contains("temple") || t.contains("altar") || t.contains("sacred")) "temple"
-    else if (t.contains("stealth") || t.contains("sneak")) "stealth"
-    else if (t.contains("treasure") || t.contains("chest") || t.contains("gold")) "treasure"
-    else if (t.contains("danger") || t.contains("threat") || t.contains("trap")) "danger"
-    else "exploration"
-  }
 }

@@ -16,7 +16,7 @@ import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.szork.debug.DebugHelpers
 import org.llm4s.szork.api.{GameTheme, ArtStyle}
 import org.llm4s.szork.media.MediaPlanner
-import org.llm4s.szork.persistence.{StepData, GameState, MediaCacheEntry, MessageCodec, StepMetadata}
+import org.llm4s.szork.persistence.{StepData, GameState, StepMetadata}
 import org.llm4s.szork.streaming.StreamingTextParser
 
 /** Core game engine managing AI-driven text adventure gameplay.
@@ -91,7 +91,6 @@ class GameEngine(
   private var adventureTitle: Option[String] = outline.map(_.title)
 
   // Enhanced state tracking
-  @volatile private var mediaCache: Map[String, MediaCacheEntry] = Map.empty
   private var currentStepNumber: Int = 1 // Current step number for persistence
 
   /** Initializes a new game session with opening scene generation.
@@ -437,45 +436,9 @@ class GameEngine(
 
   def getCurrentScene: Option[GameScene] = coreState.currentScene
 
-  // Track media generation in cache
-  def addMediaCacheEntry(locationId: String, entry: MediaCacheEntry): Unit = {
-    mediaCache = mediaCache + (locationId -> entry)
-    logger.debug(s"Added media cache entry for location: $locationId")
-  }
-
-  def updateMediaCacheImage(locationId: String, imagePrompt: String, imageCacheId: String): Unit = {
-    val existing = mediaCache
-      .get(locationId)
-      .getOrElse(
-        MediaCacheEntry(locationId, None, None, None, None, System.currentTimeMillis())
-      )
-    val updated = existing.copy(
-      imagePrompt = Some(imagePrompt),
-      imageCacheId = Some(imageCacheId),
-      generatedAt = System.currentTimeMillis()
-    )
-    mediaCache = mediaCache + (locationId -> updated)
-    logger.debug(s"Updated image cache for location: $locationId")
-  }
-
-  def updateMediaCacheMusic(locationId: String, musicPrompt: String, musicCacheId: String): Unit = {
-    val existing = mediaCache
-      .get(locationId)
-      .getOrElse(
-        MediaCacheEntry(locationId, None, None, None, None, System.currentTimeMillis())
-      )
-    val updated = existing.copy(
-      musicPrompt = Some(musicPrompt),
-      musicCacheId = Some(musicCacheId),
-      generatedAt = System.currentTimeMillis()
-    )
-    mediaCache = mediaCache + (locationId -> updated)
-    logger.debug(s"Updated music cache for location: $locationId")
-  }
-
   /** Extracts complete game state for persistence.
     *
-    * Captures conversation history, inventory, media cache, and agent state for save/load functionality.
+    * Captures the transcript, inventory, scene and the Dungeon Master's conversation for save/load.
     *
     * @param gameId
     *   Unique game identifier
@@ -488,9 +451,6 @@ class GameEngine(
     */
   def getGameState(gameId: String, gameTheme: Option[GameTheme], gameArtStyle: Option[ArtStyle]): GameState = {
     val currentSessionTime = clock.now() - sessionStartTime
-
-    // Convert all agent messages to JSON for complete state persistence
-    val agentMessagesJson = history.map(MessageCodec.toJson).toList
 
     GameState(
       gameId = gameId,
@@ -506,9 +466,7 @@ class GameEngine(
       lastPlayed = clock.now(),
       totalPlayTime = totalPlayTime + currentSessionTime,
       adventureTitle = adventureTitle,
-      agentMessages = agentMessagesJson, // Complete agent state
-      mediaCache = mediaCache, // Media cache entries
-      systemPrompt = Some(systemPrompt)
+      agentMessages = history.toList
     )
   }
 
@@ -530,51 +488,32 @@ class GameEngine(
     totalPlayTime = state.totalPlayTime
     sessionStartTime = clock.now() // Reset session timer when restoring
     adventureTitle = state.adventureTitle
-    mediaCache = state.mediaCache // Restore media cache
     // Note: currentStepNumber should be restored from GameMetadata by the caller
 
-    // Restore the conversation. The agent holds the system prompt, so a save made with a
-    // different prompt gets agents built for it; the saved messages then seed a new thread
-    // when the next turn runs.
-    if (state.agentMessages.nonEmpty) {
-      // Convert JSON messages back to Message objects. The system prompt is the agent's,
-      // so any system message in an older save is dropped.
-      val messages = state.agentMessages
-        .map(MessageCodec.fromJson)
-        .filterNot(_.isInstanceOf[SystemMessage])
-        .toVector
-
-      // The Dungeon Master's prompt is rebuilt from the saved outline
-      outline = state.adventureOutline
-      systemPrompt = PromptBuilder.fullSystemPrompt(theme, artStyle, outline)
-      agents = buildAgents(systemPrompt)
-      restoreConversation(messages)
-      logger.info(s"[$sessionId] Game state restored with ${messages.size} agent messages")
-    } else if (state.conversationHistory.nonEmpty) {
-      // Fallback to old restoration method for backwards compatibility
-      val messages = state.conversationHistory.flatMap { entry =>
-        entry.role match {
-          case "user" => Some(UserMessage(content = entry.content))
-          case "assistant" => Some(AssistantMessage(contentOpt = Some(entry.content)))
-          case _ => None
-        }
-      }.toVector
-
-      restoreConversation(messages)
-      logger.info(
-        s"[$sessionId] Game state restored (legacy) with ${coreState.conversationHistory.size} conversation entries")
-    } else {
-      // No history to restore, initialize normally
-      initialize()
-    }
+    // The Dungeon Master's prompt is rebuilt from the saved outline, and the saved conversation
+    // seeds a new llm4s thread when the next turn runs.
+    outline = state.adventureOutline
+    systemPrompt = PromptBuilder.fullSystemPrompt(theme, artStyle, outline)
+    agents = buildAgents(systemPrompt)
+    restoreConversation(state.agentMessages.toVector)
+    logger.info(s"[$sessionId] Game state restored with ${history.size} agent messages")
   }
 
-  /** Seeds the next turn with restored `messages`, checking they form a conversation llm4s will accept. */
+  /** Seeds the next turn with restored `messages`.
+    *
+    * llm4s refuses to seed a thread with an invalid conversation - for example one saved mid-turn, ending in a tool
+    * call that has no result - so such a history is cut back to its longest valid prefix.
+    */
   private def restoreConversation(messages: Vector[Message]): Unit = {
-    Message.validateConversation(messages.toList).left.foreach { error =>
-      logger.warn(s"[$sessionId] Restored conversation may be refused by the agent: ${error.message}")
-    }
-    startNewConversation(messages)
+    val valid = Iterator
+      .iterate(messages)(_.dropRight(1))
+      .takeWhile(_.nonEmpty)
+      .find(prefix => Message.validateConversation(prefix.toList).isRight)
+      .getOrElse(Vector.empty)
+    if (valid.length < messages.length)
+      logger.warn(
+        s"[$sessionId] Dropped ${messages.length - valid.length} trailing messages to restore a valid conversation")
+    startNewConversation(valid)
   }
 
   /** Returns the adventure title if set. */
@@ -659,7 +598,6 @@ class GameEngine(
       narrationText = narrationText,
       response = gameResponseOpt,
       toolCalls = toolCalls,
-      agentMessages = history.toList,
       outline = if (currentStepNumber == 1) outline else None
     )
   }

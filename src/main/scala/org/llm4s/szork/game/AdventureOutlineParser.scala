@@ -108,15 +108,7 @@ object AdventureOutlineParser {
         logger.info(s"JSON preview: ${json.take(300)}")
         logger.info(s"JSON ending: ...${json.takeRight(200)}")
 
-        // Debug: Save extracted JSON to temp file for inspection
-        try {
-          val debugFile = java.nio.file.Paths.get("debug-extracted-json.txt")
-          java.nio.file.Files.write(debugFile, json.getBytes(java.nio.charset.StandardCharsets.UTF_8))
-          logger.info(s"Saved extracted JSON to: ${debugFile.toAbsolutePath}")
-        } catch {
-          case e: Exception => logger.warn(s"Failed to save debug JSON: ${e.getMessage}")
-        }
-
+        logger.debug(s"Extracted outline JSON: $json")
         json
       case None =>
         val preview = if (response.length > 200) response.take(200) + "..." else response

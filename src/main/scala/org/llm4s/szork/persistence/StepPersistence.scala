@@ -173,13 +173,6 @@ object StepPersistence {
               "type" -> "scene",
               "scene" -> ujson.read(GameScene.toJson(scene))
             )
-          case ActionResponse(text, locId, action) =>
-            ujson.Obj(
-              "type" -> "action",
-              "narrationText" -> text,
-              "locationId" -> locId,
-              "action" -> action
-            )
         }
         saveJson(stepDir.resolve("response.json"), responseJson)
       }
@@ -189,10 +182,6 @@ object StepPersistence {
         val toolCallsJson = ujson.Arr(stepData.toolCalls.map(ToolCallCodec.toJson): _*)
         saveJson(stepDir.resolve("tool-calls.json"), toolCallsJson)
       }
-
-      // Save agent messages
-      val messagesJson = ujson.Arr(stepData.agentMessages.map(MessageCodec.toJson): _*)
-      saveJson(stepDir.resolve("messages.json"), messagesJson)
 
       // Save adventure outline (step 1 only)
       stepData.outline.foreach { outline =>
@@ -242,13 +231,6 @@ object StepPersistence {
                 logger.warn(s"Failed to parse scene in step $stepNumber for game $gameId: ${error.message}")
                 None
             }
-          case Some("action") =>
-            Some(
-              ActionResponse(
-                narrationText = json("narrationText").str,
-                locationId = json("locationId").str,
-                action = json("action").str
-              ))
           case _ => None
         }
       } else None
@@ -259,17 +241,14 @@ object StepPersistence {
         loadJson(toolCallsPath).arr.map(ToolCallCodec.fromJson).toList
       } else Nil
 
-      // Load agent messages
-      val agentMessages = loadJson(stepDir.resolve("messages.json")).arr.map(MessageCodec.fromJson).toList
-
       // Load adventure outline (if present)
       val outlinePath = stepDir.resolve("outline.json")
       val outline = if (Files.exists(outlinePath)) {
-        Some(GamePersistence.parseAdventureOutlineFromJson(loadJson(outlinePath)))
+        Some(AdventureGenerator.outlineFromJson(loadJson(outlinePath)))
       } else None
 
       logger.debug(s"Loaded step $stepNumber for game $gameId")
-      Right(StepData(metadata, gameState, userCommand, narrationText, response, toolCalls, agentMessages, outline))
+      Right(StepData(metadata, gameState, userCommand, narrationText, response, toolCalls, outline))
     } catch {
       case e: Exception =>
         logger.error(s"Failed to load step $stepNumber for game $gameId", e)

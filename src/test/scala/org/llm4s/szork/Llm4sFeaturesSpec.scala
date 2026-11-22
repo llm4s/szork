@@ -4,7 +4,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.llm4s.config.ConfigReader
 import org.llm4s.testkit.{Reply, ScriptedLLMClient}
-import org.llm4s.szork.api.AgentTracing
+import org.llm4s.szork.api.{AgentTracing, SpeechConfig}
 import org.llm4s.szork.error.{ConfigurationError, ValidationError}
 import org.llm4s.szork.game.{GameConstants, GameEngine}
 import org.llm4s.szork.media.{SpeechToText, TextToSpeech}
@@ -46,19 +46,18 @@ class Llm4sFeaturesSpec extends AnyFunSuite with Matchers {
   }
 
   test("speech clients report a missing key as an error instead of throwing") {
-    TextToSpeech.create(Reader(Map.empty)).left.toOption.get shouldBe a[ConfigurationError]
-    SpeechToText.create(Reader(Map.empty)).left.toOption.get shouldBe a[ConfigurationError]
-    val stt = SpeechToText.create(Reader(Map("OPENAI_API_KEY" -> "sk-test"))).toOption.get
+    TextToSpeech.create(SpeechConfig(), Reader(Map.empty)).left.toOption.get shouldBe a[ConfigurationError]
+    SpeechToText.create(SpeechConfig(), Reader(Map.empty)).left.toOption.get shouldBe a[ConfigurationError]
+    val stt = SpeechToText.create(SpeechConfig(), Reader(Map("OPENAI_API_KEY" -> "sk-test"))).toOption.get
     stt.transcribeBytes(Array.emptyByteArray).left.toOption.get shouldBe a[ValidationError]
   }
 
   test("the narration voice and models are configurable") {
-    TextToSpeech
-      .create(Reader(Map("OPENAI_API_KEY" -> "sk-test", "SZORK_TTS_VOICE" -> "onyx")))
-      .toOption
-      .get
-      .defaultVoice shouldBe "onyx"
-    TextToSpeech.create(Reader(Map("OPENAI_API_KEY" -> "sk-test"))).toOption.get.defaultVoice shouldBe "nova"
+    val key = Reader(Map("OPENAI_API_KEY" -> "sk-test"))
+    val onyx = SpeechConfig.load(Reader(Map("SZORK_TTS_VOICE" -> "onyx", "SZORK_TTS_MODEL" -> "tts-1-hd")))
+    onyx shouldBe SpeechConfig(ttsModel = "tts-1-hd", ttsVoice = "onyx")
+    TextToSpeech.create(onyx, key).toOption.get.defaultVoice shouldBe "onyx"
+    TextToSpeech.create(SpeechConfig.load(Reader(Map.empty)), key).toOption.get.defaultVoice shouldBe "nova"
   }
 
   private val Prose = "You look around the dusty room. Nothing happens."

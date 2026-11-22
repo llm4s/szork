@@ -3,6 +3,7 @@ package org.llm4s.szork.debug
 import org.llm4s.szork.game._
 import org.llm4s.szork.persistence.{StepData, StepPersistence}
 import org.llm4s.szork.api.SzorkConfig
+import org.llm4s.szork.api.SzorkConfig.ConfigOps
 import org.slf4j.LoggerFactory
 import scala.util.{Try, Success, Failure}
 
@@ -40,6 +41,9 @@ object RunUserStep {
     println()
 
     try {
+      // The save directory (SZORK_SAVES_DIR) and media cache the server uses
+      SzorkConfig.instance.useStorage()
+
       // Load previous game state
       println(s"Loading game state from step ${config.previousStep}...")
       val previousStepData = StepPersistence.loadStep(config.gameId, config.previousStep) match {

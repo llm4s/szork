@@ -136,7 +136,8 @@ class TypedWebSocketServer(
       sessionManager.getSession(sid).foreach(_.touch())
     }
 
-  private def expireSessions(): Unit =
+  /** Removes sessions with no connection that have been idle for longer than `sessionTtlMillis`; runs every minute. */
+  private[szork] def expireSessions(): Unit =
     try {
       val expired =
         sessionManager.expireIdle(System.currentTimeMillis(), sessionTtlMillis, sessionConnections.contains)

@@ -36,9 +36,8 @@ import scala.jdk.CollectionConverters._
   */
 object StepPersistence {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
-  // Where games are saved: SZORK_SAVES_DIR, default "szork-saves". Tests point it at a temporary directory.
-  @volatile private var saveRoot: Path =
-    Paths.get(org.llm4s.config.EnvLoader.get("SZORK_SAVES_DIR").getOrElse("szork-saves"))
+  // Where games are saved: the server's SzorkConfig.savesDirectory, set at startup. Tests use a temporary directory.
+  @volatile private var saveRoot: Path = Paths.get("szork-saves")
 
   /** Saves games under `dir` from now on. */
   private[szork] def useSaveDirectory(dir: Path): Unit = saveRoot = dir

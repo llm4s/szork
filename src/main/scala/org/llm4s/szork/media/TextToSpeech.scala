@@ -6,6 +6,7 @@ import org.llm4s.config.{ConfigReader, EnvLoader}
 import org.llm4s.security.Secret
 import org.llm4s.speech.AudioFormat
 import org.llm4s.speech.config.TTSConfig
+import org.llm4s.szork.api.SpeechConfig
 import org.llm4s.speech.tts.TTSOptions
 import org.llm4s.speech.tts.provider.OpenAITTSClient
 import org.llm4s.szork.error._
@@ -13,7 +14,7 @@ import org.llm4s.szork.error.ErrorHandling._
 
 /** Narration via llm4s-speech's OpenAI text-to-speech client.
   *
-  * Configured by OPENAI_API_KEY, SZORK_TTS_MODEL (default tts-1) and SZORK_TTS_VOICE (default nova).
+  * Configured by OPENAI_API_KEY and the [[SpeechConfig]] model and voice.
   */
 final class TextToSpeech private (client: OpenAITTSClient, val defaultVoice: String) {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
@@ -34,18 +35,17 @@ final class TextToSpeech private (client: OpenAITTSClient, val defaultVoice: Str
 
 object TextToSpeech {
 
-  /** A client from configuration, or a ConfigurationError if OPENAI_API_KEY is not set. */
-  def create(reader: ConfigReader = EnvLoader): SzorkResult[TextToSpeech] =
+  /** A client for `speech`'s model and voice, or a ConfigurationError if OPENAI_API_KEY is not set in `reader`. */
+  def create(speech: SpeechConfig, reader: ConfigReader = EnvLoader): SzorkResult[TextToSpeech] =
     reader.get("OPENAI_API_KEY").filter(_.nonEmpty).toRight(ConfigurationError("OPENAI_API_KEY is not set")).map {
       key =>
-        val voice = reader.get("SZORK_TTS_VOICE").filter(_.nonEmpty).getOrElse("nova")
         val config = TTSConfig(
           provider = "openai",
-          model = reader.get("SZORK_TTS_MODEL").filter(_.nonEmpty).getOrElse(TTSConfig.DEFAULT_OPENAI_MODEL),
-          voice = voice,
+          model = speech.ttsModel,
+          voice = speech.ttsVoice,
           apiKey = Secret(key),
           baseUrl = TTSConfig.DEFAULT_OPENAI_BASE_URL
         )
-        new TextToSpeech(new OpenAITTSClient(config), voice)
+        new TextToSpeech(new OpenAITTSClient(config), speech.ttsVoice)
     }
 }

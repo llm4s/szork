@@ -123,52 +123,37 @@ class GameEngine(
     }
   }
 
-  /** Response containing narrative text and optional generated media.
+  /** Plays a player's command as one turn of the Dungeon Master.
     *
-    * @param text
-    *   Narrative response text from the AI
-    * @param audioBase64
-    *   Base64-encoded audio narration
-    * @param imageBase64
-    *   Base64-encoded scene image
-    * @param backgroundMusicBase64
-    *   Base64-encoded background music
-    * @param musicMood
-    *   Mood descriptor for the music
-    * @param scene
-    *   Structured scene data if location changed
-    */
-  case class GameResponse(
-    text: String,
-    audioBase64: Option[String] = None,
-    imageBase64: Option[String] = None,
-    backgroundMusicBase64: Option[String] = None,
-    musicMood: Option[String] = None,
-    scene: Option[GameScene] = None
-  )
-
-  /** Processes a player command and generates AI response with optional media.
+    * With `onTextChunk`, the turn streams: the narration is passed to it piece by piece as the model writes it (the
+    * returned response has the complete, final narration). Without, the turn runs without streaming.
     *
     * @param command
     *   Player's text command
     * @param generateAudio
-    *   Whether to generate TTS narration
+    *   Whether to narrate the response with text-to-speech
+    * @param onTextChunk
+    *   Receives each piece of narration as it streams, if the turn should stream
     * @return
-    *   Game response with text and media, or an error
+    *   The narration, its audio and the current scene, or an error
     */
-  def processCommand(command: String, generateAudio: Boolean = true): SzorkResult[GameResponse] = {
-    logger.debug(s"[$sessionId] Processing command: $command")
+  def processCommand(
+    command: String,
+    generateAudio: Boolean = true,
+    onTextChunk: Option[String => Unit] = None
+  ): SzorkResult[GameResponse] = {
+    logger.debug(s"[$sessionId] Processing command (streaming=${onTextChunk.isDefined}): $command")
 
     // Track user command in conversation history (pure core state)
     coreState = CoreEngine.trackUser(coreState, command)
 
     val textStartTime = System.currentTimeMillis()
-    runTurn(command, listener = None) match {
+    runTurn(command, onTextChunk.map(narrationListener)) match {
       case Right(result) =>
-        logger.debug(s"[$sessionId] Text generation completed in ${System.currentTimeMillis() - textStartTime}ms")
+        logger.debug(s"[$sessionId] Turn completed in ${System.currentTimeMillis() - textStartTime}ms")
         val outcome = completeTurn(result)
         val audio = if (generateAudio) synthesize(outcome.narration) else None
-        Right(GameResponse(outcome.narration, audio, None, None, None, outcome.scene.orElse(coreState.currentScene)))
+        Right(GameResponse(outcome.narration, audio, outcome.scene.orElse(coreState.currentScene)))
 
       case Left(error) =>
         val szorkError = AIError(s"Error processing command: ${error.message}", llmError = Some(error))
@@ -177,49 +162,23 @@ class GameEngine(
     }
   }
 
-  /** Processes a command with real-time streaming of narrative text.
+  /** A listener for a streaming turn's events that passes the narration to `onTextChunk` as it streams.
     *
-    * Streams text chunks as they're generated for real-time display. Final response includes complete text and optional
-    * media.
-    *
-    * @param command
-    *   Player's text command
-    * @param onTextChunk
-    *   Callback for each narrative text chunk
-    * @param generateAudio
-    *   Whether to generate TTS narration after completion
-    * @return
-    *   Complete game response, or an error
+    * The narration is extracted from the JSON answer as it streams. The extractor is reset when a model call starts: a
+    * tool call produces no text, and if llm4s asks the model to correct an invalid answer the corrected narration
+    * streams again (the final narration, sent with streamComplete, is what the client keeps). Events reach the listener
+    * one at a time, and the run's await() returns only once the listener has handled the last one.
     */
-  def processCommandStreaming(
-    command: String,
-    onTextChunk: String => Unit,
-    generateAudio: Boolean = true
-  ): SzorkResult[GameResponse] = {
-    logger.debug(s"[$sessionId] Processing command with streaming: $command")
-
-    // Track user command in conversation history
-    coreState = CoreEngine.trackUser(coreState, command)
-
-    // Extracts the narration from the JSON answer as it streams. It is reset when a model call
-    // starts: a tool call produces no text, and if llm4s asks the model to correct an invalid
-    // answer the corrected narration streams again (the final narration, sent with streamComplete,
-    // is what the client keeps). Events reach the listener one at a time, and the run's await()
-    // returns only once the listener has handled the last one.
+  private def narrationListener(onTextChunk: String => Unit): StreamEvent => Unit = {
     var textParser = new StreamingJsonParser()
-    var chunkCount = 0
     var narrativeChunkCount = 0
 
-    val listener: StreamEvent => Unit = {
+    {
       case AgentEvents.ModelCallStarted(call) =>
         logger.debug(s"[$sessionId] Model call started (agent=${call.agent}, attempt=${call.attempt})")
         textParser = new StreamingJsonParser()
 
       case AgentEvents.TextDelta(delta) =>
-        chunkCount += 1
-        logger.debug(s"[$sessionId] Received chunk #$chunkCount: ${delta.text.take(50)}...")
-
-        // Try to extract narration text and stream it to the user
         textParser.processChunk(delta.text).foreach { narrationText =>
           narrativeChunkCount += 1
           logger.debug(s"[$sessionId] Streaming narrative chunk #$narrativeChunkCount: ${narrationText.take(50)}...")
@@ -230,25 +189,6 @@ class GameEngine(
         logger.info(s"[$sessionId] Tool call: ${call.tool} (id=${call.toolCallId}) arguments=${call.arguments}")
 
       case _ => ()
-    }
-
-    // Run the turn with streaming
-    val textStartTime = System.currentTimeMillis()
-    logger.info(s"[$sessionId] Starting streaming text generation for command: '$command'")
-
-    runTurn(command, Some(listener)) match {
-      case Right(result) =>
-        logger.debug(
-          s"[$sessionId] Streaming completed: $chunkCount chunks, $narrativeChunkCount narrative chunks in ${System
-              .currentTimeMillis() - textStartTime}ms")
-        val outcome = completeTurn(result)
-        val audio = if (generateAudio) synthesize(outcome.narration) else None
-        Right(GameResponse(outcome.narration, audio, None, None, None, outcome.scene.orElse(coreState.currentScene)))
-
-      case Left(error) =>
-        val szorkError = AIError(s"Error in streaming command: ${error.message}", llmError = Some(error))
-        Logging.logError(s"[$sessionId] Streaming command")(Left(szorkError))
-        Left(szorkError)
     }
   }
 
@@ -394,13 +334,6 @@ class GameEngine(
     v
   }
 
-  /** Determines if a scene image should be generated based on response text.
-    *
-    * @param responseText
-    *   The narrative response text
-    * @return
-    *   true if image generation is appropriate
-    */
   /** Whether the last turn moved the player to a new location (or opened the first scene). */
   def locationChangedLastTurn: Boolean = lastTurnChangedLocation
 

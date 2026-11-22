@@ -15,7 +15,7 @@ import scala.util.{Failure, Success, Try}
 import org.llm4s.szork.websocket.protocol._
 import org.llm4s.szork.api._
 import org.llm4s.szork.game._
-import org.llm4s.szork.persistence.{ConversationEntry => _, _}
+import org.llm4s.szork.persistence.{ConversationEntry => _, GameResponse => _, _}
 import org.llm4s.szork.spi.STTClient
 
 /** WebSocket server for gameplay.
@@ -414,13 +414,13 @@ class TypedWebSocketServer(
   private def playStreamCommand(session: GameSession, request: StreamCommandRequest): Unit = {
     val start = System.currentTimeMillis()
     var chunkCount = 0
-    session.engine.processCommandStreaming(
+    session.engine.processCommand(
       request.command,
-      onTextChunk = chunk => {
+      generateAudio = session.features.tts,
+      onTextChunk = Some { chunk =>
         chunkCount += 1
         sendTo(session, TextChunkMessage(chunk, chunkCount))
-      },
-      generateAudio = session.features.tts
+      }
     ) match {
       case Right(response) =>
         val duration = System.currentTimeMillis() - start
@@ -478,7 +478,7 @@ class TypedWebSocketServer(
     session: GameSession,
     turn: TurnMedia,
     command: String,
-    response: GameEngine#GameResponse,
+    response: GameResponse,
     durationMs: Long): Unit = {
     session.engine.popValidationIssues().foreach { issues =>
       logger.warn(s"[${session.id}] Response issues: ${issues.mkString("; ")}")
@@ -492,7 +492,7 @@ class TypedWebSocketServer(
         gameArtStyle = session.artStyle,
         userCommand = Some(command),
         narrationText = response.text,
-        response = Some(response.asInstanceOf[session.engine.GameResponse]),
+        response = Some(response),
         executionTimeMs = durationMs
       )
       saveStep(session, stepData, durationMs)

@@ -87,10 +87,10 @@ object RunUserStep {
       // Process the user command
       println(s"\nProcessing command: '${config.command}'...")
       val startTime = System.currentTimeMillis()
-      val response: engine.GameResponse = engine.processCommandStreaming(
+      val response: GameResponse = engine.processCommand(
         config.command,
-        onTextChunk = text => print(text), // Print streaming text chunks
-        generateAudio = false
+        generateAudio = false,
+        onTextChunk = Some(text => print(text)) // Print streaming text chunks
       ) match {
         case Right(resp) =>
           val elapsed = System.currentTimeMillis() - startTime

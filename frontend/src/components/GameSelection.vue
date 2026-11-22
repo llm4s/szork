@@ -73,10 +73,6 @@
                   <v-icon small>mdi-timer</v-icon>
                   <span>Play Time: {{ formatPlayTime(game.totalPlayTime) }}</span>
                 </div>
-                <div v-if="isDebugMode" class="stat debug-stat">
-                  <v-icon small>mdi-debug-step-over</v-icon>
-                  <span>Step: {{ game.currentStep }} / {{ game.totalSteps }}</span>
-                </div>
               </div>
             </v-card-text>
             <v-card-actions>
@@ -120,28 +116,17 @@
 import { defineComponent, ref, onMounted } from "vue";
 import axios from "axios";
 import { useRouter } from "vue-router";
-
-interface SavedGame {
-  gameId: string;
-  title: string;
-  theme: string;
-  artStyle: string;
-  createdAt: number;
-  lastPlayed: number;
-  totalPlayTime: number;
-  currentStep: number;
-  totalSteps: number;
-}
+import type { FeatureFlags, SavedGameSummary } from "@/types/api";
 
 export default defineComponent({
   name: "GameSelection",
   emits: ["start-new-game", "load-game"],
   setup(props, { emit }) {
     const router = useRouter();
-    const savedGames = ref<SavedGame[]>([]);
+    const savedGames = ref<SavedGameSummary[]>([]);
     const loading = ref(true);
     const featureFlagsLoaded = ref(false);
-    const featureFlags = ref<any>({
+    const featureFlags = ref<FeatureFlags>({
       llm: { provider: "", available: false },
       image: { enabled: true, provider: "", available: false },
       music: { enabled: true, available: false },
@@ -149,18 +134,16 @@ export default defineComponent({
       stt: { enabled: true, available: false },
     });
     const deleteDialog = ref(false);
-    const gameToDelete = ref<SavedGame | null>(null);
-    const isDebugMode = import.meta.env.DEV; // Show step numbers in development mode
+    const gameToDelete = ref<SavedGameSummary | null>(null);
 
     const loadSavedGames = async () => {
       try {
         loading.value = true;
         const response = await axios.get("/api/games");
         if (response.data.status === "success") {
-          // Map adventureTitle from API to title field
-          savedGames.value = response.data.games.map((game: any) => ({
+          savedGames.value = (response.data.games as SavedGameSummary[]).map((game) => ({
             ...game,
-            title: game.adventureTitle || "Untitled Adventure",
+            title: game.title || "Untitled Adventure",
           }));
         }
       } catch (error) {
@@ -217,7 +200,7 @@ export default defineComponent({
       return `${minutes}m`;
     };
 
-    const selectGame = (game: SavedGame) => {
+    const selectGame = (game: SavedGameSummary) => {
       emit("load-game", game.gameId);
     };
 
@@ -225,7 +208,7 @@ export default defineComponent({
       router.push(`/game/${gameId}`);
     };
 
-    const confirmDelete = (game: SavedGame) => {
+    const confirmDelete = (game: SavedGameSummary) => {
       gameToDelete.value = game;
       deleteDialog.value = true;
     };
@@ -266,7 +249,6 @@ export default defineComponent({
       loadGame,
       confirmDelete,
       deleteGame,
-      isDebugMode,
     };
   },
 });
@@ -399,17 +381,6 @@ export default defineComponent({
 
 .stat .v-icon {
   color: #777;
-}
-
-.debug-stat {
-  color: #ff9800;
-  border-top: 1px solid #333;
-  padding-top: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-.debug-stat .v-icon {
-  color: #ff9800;
 }
 
 .no-games {

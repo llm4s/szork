@@ -6,6 +6,7 @@
  */
 
 import type { ClientMessage, ServerMessage, FeatureRequest } from "@/types/WebSocketProtocol";
+import type { AdventureOutline } from "@/types/api";
 
 /** Callback handler for server messages of a specific type. */
 export type MessageHandler<T extends ServerMessage> = (message: T) => void;
@@ -18,7 +19,7 @@ export type ConnectionListener = (connected: boolean, reconnected: boolean) => v
  * Checks VITE_WS_URL env var, then dev proxy, then defaults to port 9002.
  */
 function deriveWsUrl(): string {
-  const envWs = (import.meta as any)?.env?.VITE_WS_URL as string | undefined;
+  const envWs = import.meta.env.VITE_WS_URL;
   if (envWs && envWs.trim().length > 0) return envWs.trim();
 
   try {
@@ -39,7 +40,7 @@ export class WebSocketClient {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private messageHandlers = new Map<string, Set<MessageHandler<any>>>();
+  private messageHandlers = new Map<string, Set<MessageHandler<ServerMessage>>>();
   private connectionListeners = new Set<ConnectionListener>();
   private isConnecting = false;
   private isConnected = false;
@@ -49,7 +50,7 @@ export class WebSocketClient {
   private messageQueue: ClientMessage[] = [];
   private pingInterval: ReturnType<typeof setInterval> | null = null;
 
-  private debug = (import.meta as any)?.env?.MODE !== "production";
+  private debug = import.meta.env.MODE !== "production";
 
   constructor(url?: string) {
     this.url = url ?? deriveWsUrl();
@@ -157,11 +158,11 @@ export class WebSocketClient {
   /** Register a handler for a server message type. */
   on<T extends ServerMessage>(type: T["type"], handler: MessageHandler<T>): void {
     if (!this.messageHandlers.has(type)) this.messageHandlers.set(type, new Set());
-    this.messageHandlers.get(type)?.add(handler);
+    this.messageHandlers.get(type)?.add(handler as MessageHandler<ServerMessage>);
   }
 
   off<T extends ServerMessage>(type: T["type"], handler: MessageHandler<T>): void {
-    this.messageHandlers.get(type)?.delete(handler);
+    this.messageHandlers.get(type)?.delete(handler as MessageHandler<ServerMessage>);
   }
 
   /** Register a listener for the connection opening or closing. */
@@ -214,7 +215,7 @@ export class WebSocketClient {
     theme?: string,
     artStyle?: string,
     imageGeneration = true,
-    adventureOutline?: any,
+    adventureOutline?: AdventureOutline | null,
     features?: FeatureRequest
   ): void {
     this.send({ type: "newGame", theme, artStyle, imageGeneration, adventureOutline, ...features });

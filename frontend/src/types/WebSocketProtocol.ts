@@ -6,6 +6,8 @@
  * Server fields marked optional are omitted when absent; all others are always sent.
  */
 
+import type { AdventureOutline } from "./api";
+
 // ============= Client Messages (sent to server) =============
 
 export interface FeatureRequest {
@@ -20,7 +22,7 @@ export interface NewGameRequest extends FeatureRequest {
   theme?: string;
   artStyle?: string;
   imageGeneration?: boolean;
-  adventureOutline?: any;
+  adventureOutline?: AdventureOutline | null;
 }
 
 export interface LoadGameRequest extends FeatureRequest {

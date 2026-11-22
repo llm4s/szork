@@ -47,22 +47,69 @@ final class GameSession(
   def lastActive: Long = lastActiveAt
 }
 
-/** Thread-safe registry of active game sessions. */
+/** Thread-safe registry of active game sessions, with at most one session per game.
+  *
+  * A game must have one writer: two sessions playing the same game would save over each other's steps. Changes that
+  * must not interleave - registering or ending a game's session, expiring idle sessions, and attaching a connection
+  * (through `withSession`, `joinGame` and `registerOrJoin`) - run under one lock. The functions passed in run under it
+  * too, so they must be quick and must not block.
+  */
 class SessionManager {
   private val sessions = TrieMap[String, GameSession]()
+  // The session playing each game
+  private val games = TrieMap[String, GameSession]()
 
   def getSession(sessionId: String): Option[GameSession] = sessions.get(sessionId)
 
-  def createSession(session: GameSession): Unit = sessions(session.id) = session
+  /** The session playing `gameId`, if it has one. */
+  def sessionForGame(gameId: String): Option[GameSession] = games.get(gameId)
 
-  def removeSession(sessionId: String): Unit = sessions.remove(sessionId)
+  /** Registers the session of a new game. */
+  def createSession(session: GameSession): Unit = synchronized {
+    sessions(session.id) = session
+    games(session.gameId) = session
+  }
+
+  def removeSession(sessionId: String): Unit = synchronized {
+    sessions.remove(sessionId).foreach(s => games.remove(s.gameId, s))
+  }
 
   def getAllSessions(): Map[String, GameSession] = sessions.toMap
 
+  /** Runs `f` on session `sessionId`, if it exists, so that it cannot expire while `f` runs. */
+  def withSession[A](sessionId: String)(f: GameSession => A): Option[A] = synchronized {
+    sessions.get(sessionId).map(f)
+  }
+
+  /** Runs `f` on the session playing `gameId`, if there is one, so that it cannot expire while `f` runs. */
+  def joinGame[A](gameId: String)(f: GameSession => A): Option[A] = synchronized {
+    games.get(gameId).map(f)
+  }
+
+  /** Registers `session` for its game unless the game already has a session; then runs `f` on the game's session, which
+    * is `session` only if it was registered.
+    */
+  def registerOrJoin[A](session: GameSession)(f: GameSession => A): A = synchronized {
+    val live = games.getOrElseUpdate(session.gameId, session)
+    if (live eq session) sessions(session.id) = session
+    f(live)
+  }
+
+  /** Removes the session playing `gameId` and returns it. */
+  def removeGame(gameId: String): Option[GameSession] = synchronized {
+    games.remove(gameId).map { session =>
+      sessions.remove(session.id, session)
+      session
+    }
+  }
+
   /** Removes sessions idle for longer than `ttlMillis` that `inUse` does not claim; returns their ids. */
-  def expireIdle(now: Long, ttlMillis: Long, inUse: String => Boolean): List[String] = {
-    val expired = sessions.values.filter(s => now - s.lastActive > ttlMillis && !inUse(s.id)).map(_.id).toList
-    expired.foreach(sessions.remove)
-    expired
+  def expireIdle(now: Long, ttlMillis: Long, inUse: String => Boolean): List[String] = synchronized {
+    val expired = sessions.values.filter(s => now - s.lastActive > ttlMillis && !inUse(s.id)).toList
+    expired.foreach { s =>
+      sessions.remove(s.id, s)
+      games.remove(s.gameId, s)
+    }
+    expired.map(_.id)
   }
 }

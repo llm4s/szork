@@ -44,6 +44,7 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     sttClient = None,
     workPool = workPool,
     mediaEC = ExecutionContext.fromExecutor(mediaPool),
+    musicEC = ExecutionContext.fromExecutor(mediaPool),
     autoSave = false
   )
 

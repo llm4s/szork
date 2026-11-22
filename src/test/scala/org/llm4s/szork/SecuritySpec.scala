@@ -72,6 +72,7 @@ class SecuritySpec extends AnyFunSuite with Matchers {
       sttClient = None,
       workPool = pool,
       mediaEC = ExecutionContext.fromExecutor(pool),
+      musicEC = ExecutionContext.fromExecutor(pool),
       autoSave = false,
       allowedOrigins = Some(Set("http://localhost:3090"))
     )

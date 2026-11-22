@@ -22,15 +22,19 @@ import org.llm4s.szork.spi.STTClient
   *
   * Each game is a [[GameSession]] whose work - turns, saves - runs one task at a time on the session's own serial
   * executor, never on the WebSocket I/O thread. A session outlives its connection: a client that reconnects re-attaches
-  * with `resumeSession`, and sessions with no connection expire after `sessionTtlMillis`. Media generation runs on
-  * `mediaEC` and is delivered to whichever connection the session has when it finishes.
+  * with `resumeSession`, and sessions with no connection expire after `sessionTtlMillis`. A game has at most one
+  * session, so loading a game that is already open joins its session rather than starting a second writer to its saves.
+  * Media generation runs on `mediaEC` and `musicEC` and is delivered to whichever connection the session has when it
+  * finishes.
   *
   * @param address
   *   Address to listen on
   * @param workPool
   *   Runs session work (each session's tasks in order) and other blocking handlers
   * @param mediaEC
-  *   Runs image and music generation
+  *   Runs image generation
+  * @param musicEC
+  *   Runs music generation, which blocks while it polls the provider, so slow music cannot hold up images
   * @param allowedOrigins
   *   Browser origins allowed to connect (None allows any). A handshake with another Origin header is refused, so web
   *   pages on other sites cannot drive the game (and its API credits); clients that send no Origin are allowed.
@@ -43,6 +47,7 @@ class TypedWebSocketServer(
   sttClient: Option[STTClient],
   workPool: Executor,
   mediaEC: ExecutionContext,
+  musicEC: ExecutionContext,
   autoSave: Boolean = true,
   sessionTtlMillis: Long = TypedWebSocketServer.DefaultSessionTtlMillis,
   allowedOrigins: Option[Set[String]] = None
@@ -100,12 +105,14 @@ class TypedWebSocketServer(
   override def onError(conn: WebSocket, ex: Exception): Unit =
     logger.error("WebSocket error", ex)
 
-  /** Makes `conn` the connection of `session`. A game the connection played before is abandoned. */
+  /** Makes `conn` the connection of `session`, taking it from any connection that had it. A session the connection
+    * played before is left without a connection, to expire unless it is resumed or its game is loaded again.
+    */
   private def attach(conn: WebSocket, session: GameSession): Unit = {
     connectionSessions.put(conn, session.id).filter(_ != session.id).foreach { previous =>
       sessionConnections.remove(previous, conn)
-      sessionManager.removeSession(previous)
-      logger.info(s"Session $previous abandoned for ${session.id}")
+      sessionManager.getSession(previous).foreach(_.touch())
+      logger.info(s"Connection left session $previous for ${session.id}")
     }
     sessionConnections.put(session.id, conn).filter(_ != conn).foreach(connectionSessions.remove)
     session.touch()
@@ -176,23 +183,24 @@ class TypedWebSocketServer(
       case None => send(conn, ErrorMessage("No active session"))
     }
 
-  /** Runs `body` on the session's serial executor, reporting a failure to the player. */
+  /** Runs `body` on the session's serial executor, reporting a failure to the player (the details only to the log). */
   private def runFor(session: GameSession)(body: => Unit): Unit =
     Future { session.touch(); body }(session.executor).onComplete {
       case Failure(e) =>
         logger.error(s"[${session.id}] Session task failed", e)
-        sendTo(session, ErrorMessage("Internal server error", Option(e.getMessage)))
+        sendTo(session, ErrorMessage("Internal server error"))
       case Success(_) => session.touch()
     }(ExecutionContext.parasitic)
 
-  /** Runs `body` off the WebSocket thread, reporting a failure to `conn`. */
+  /** Runs `body` off the WebSocket thread, reporting a failure to `conn` (the details only to the log). */
   private def runForConnection(conn: WebSocket)(body: => Unit): Unit =
     Future(body)(workEC).failed.foreach { e =>
       logger.error("Request failed", e)
-      send(conn, ErrorMessage("Internal server error", Option(e.getMessage)))
+      send(conn, ErrorMessage("Internal server error"))
     }(ExecutionContext.parasitic)
 
-  private def newSession(
+  /** A session for `engine`, not yet registered. */
+  private def makeSession(
     gameId: String,
     sessionId: String,
     engine: GameEngine,
@@ -200,10 +208,20 @@ class TypedWebSocketServer(
     artStyle: Option[ArtStyle],
     features: SessionFeatures): GameSession = {
     val executor = new SerialExecutor(workPool, e => logger.error(s"[$sessionId] Session task error", e))
-    val session = new GameSession(sessionId, gameId, engine, theme, artStyle, features, executor)
-    sessionManager.createSession(session)
-    session
+    new GameSession(sessionId, gameId, engine, theme, artStyle, features, executor)
   }
+
+  /** Ends the session playing `gameId`, if there is one, and runs `body` once that session's queued work (a turn and
+    * its save, say) is done, so the session saves nothing after `body`. The session's connection is detached.
+    */
+  def endGame[A](gameId: String)(body: => A): Future[A] =
+    sessionManager.removeGame(gameId) match {
+      case None => Future(body)(workEC)
+      case Some(session) =>
+        sessionConnections.remove(session.id).foreach(connectionSessions.remove)
+        logger.info(s"[${session.id}] Session ended for game $gameId")
+        Future(body)(session.executor)
+    }
 
   // ============= Games =============
 
@@ -234,7 +252,8 @@ class TypedWebSocketServer(
       case Right(engine) =>
         val theme = request.theme.map(t => GameTheme(t, t, t))
         val artStyle = request.artStyle.map(a => ArtStyle(a, a))
-        val session = newSession(gameId, sessionId, engine, theme, artStyle, features)
+        val session = makeSession(gameId, sessionId, engine, theme, artStyle, features)
+        sessionManager.createSession(session)
         attach(conn, session)
 
         runFor(session) {
@@ -272,6 +291,15 @@ class TypedWebSocketServer(
   }
 
   private def loadGame(conn: WebSocket, request: LoadGameRequest): Unit =
+    sessionManager.joinGame(request.gameId) { live =>
+      attach(conn, live); live
+    } match {
+      case Some(live) => sendLiveGame(live)
+      case None => loadSavedGame(conn, request)
+    }
+
+  /** Loads a game that has no session from its save, and plays it in a new session. */
+  private def loadSavedGame(conn: WebSocket, request: LoadGameRequest): Unit =
     GamePersistence.loadGame(request.gameId) match {
       case Left(error) =>
         send(conn, ErrorMessage("Failed to load game", Some(error.message)))
@@ -295,29 +323,59 @@ class TypedWebSocketServer(
             engine.restoreGameState(gameState)
             StepPersistence.loadGameMetadata(request.gameId).foreach(meta => engine.setStepNumber(meta.currentStep))
 
-            val session = newSession(request.gameId, sessionId, engine, gameState.theme, gameState.artStyle, features)
-            attach(conn, session)
-            send(
-              conn,
-              GameLoadedMessage(
-                sessionId = sessionId,
-                gameId = request.gameId,
-                conversation = gameState.conversationHistory.map(e => ConversationEntry(e.role, e.content)),
-                currentLocation = gameState.currentScene.map(_.locationId),
-                currentScene = gameState.currentScene.map(convertScene),
-                ttsEnabled = features.tts,
-                sttEnabled = features.stt,
-                imageEnabled = features.image,
-                musicEnabled = features.music
+            val loaded = makeSession(request.gameId, sessionId, engine, gameState.theme, gameState.artStyle, features)
+            // Another load of this game may have registered a session meanwhile; if so, this one joins it
+            val session = sessionManager.registerOrJoin(loaded) { s =>
+              attach(conn, s); s
+            }
+            if (session ne loaded) sendLiveGame(session)
+            else
+              send(
+                conn,
+                GameLoadedMessage(
+                  sessionId = sessionId,
+                  gameId = request.gameId,
+                  conversation = gameState.conversationHistory.map(e => ConversationEntry(e.role, e.content)),
+                  currentLocation = gameState.currentScene.map(_.locationId),
+                  currentScene = gameState.currentScene.map(convertScene),
+                  ttsEnabled = features.tts,
+                  sttEnabled = features.stt,
+                  imageEnabled = features.image,
+                  musicEnabled = features.music
+                )
               )
-            )
         }
     }
 
+  /** Sends the game as its live session has it, after any turn in progress, to the session's connection. A joined
+    * session keeps the features it was started with.
+    */
+  private def sendLiveGame(session: GameSession): Unit =
+    runFor(session) {
+      val state = session.engine.getGameState(session.gameId, session.theme, session.artStyle)
+      logger.info(s"[${session.id}] Joined the live session of game ${session.gameId}")
+      sendTo(
+        session,
+        GameLoadedMessage(
+          sessionId = session.id,
+          gameId = session.gameId,
+          conversation = state.conversationHistory.map(e => ConversationEntry(e.role, e.content)),
+          currentLocation = state.currentScene.map(_.locationId),
+          currentScene = state.currentScene.map(convertScene),
+          ttsEnabled = session.features.tts,
+          sttEnabled = session.features.stt,
+          imageEnabled = session.features.image,
+          musicEnabled = session.features.music
+        )
+      )
+    }
+
   private def resume(conn: WebSocket, sessionId: String): Unit =
-    sessionManager.getSession(sessionId) match {
+    // Attached while the session cannot expire, so a resume never re-attaches to a session being removed
+    sessionManager.withSession(sessionId) { s =>
+      attach(conn, s); s
+    } match {
       case Some(session) =>
-        attach(conn, session)
         send(conn, SessionResumedMessage(session.id, session.gameId, session.engine.getMessageCount))
       case None =>
         send(conn, ErrorMessage("Session expired", Some(ErrorMessage.SessionExpired)))
@@ -446,21 +504,21 @@ class TypedWebSocketServer(
   private def startMedia(session: GameSession, turn: TurnMedia): Unit =
     turn.scene.foreach { scene =>
       if (turn.hasImage)
-        deliverMedia(session, turn.messageIndex, "image") {
+        deliverMedia(session, turn.messageIndex, "image", mediaEC) {
           session.engine.generateSceneImage(scene, Some(session.gameId)).map(ImageReadyMessage(turn.messageIndex, _))
         }
       if (turn.hasMusic)
-        deliverMedia(session, turn.messageIndex, "music") {
+        deliverMedia(session, turn.messageIndex, "music", musicEC) {
           session.engine
             .generateBackgroundMusic(scene, Some(session.gameId))
             .map { case (music, mood) => MusicReadyMessage(turn.messageIndex, music, mood) }
         }
     }
 
-  /** Generates media on the media pool; the client gets the result, or a failure notice so it stops waiting. */
-  private def deliverMedia(session: GameSession, messageIndex: Int, kind: String)(
+  /** Generates media on `ec`; the client gets the result, or a failure notice so it stops waiting. */
+  private def deliverMedia(session: GameSession, messageIndex: Int, kind: String, ec: ExecutionContext)(
     generate: => Option[ServerMessage]): Unit =
-    Future(generate)(mediaEC).onComplete { result =>
+    Future(generate)(ec).onComplete { result =>
       result match {
         case Success(Some(message)) => sendTo(session, message)
         case Success(None) => sendTo(session, MediaFailedMessage(messageIndex, kind))

@@ -3,11 +3,15 @@ package org.llm4s.szork.api
 import cask._
 import org.slf4j.LoggerFactory
 import org.llm4s.config.EnvLoader
-import scala.concurrent.ExecutionContext
+import org.llm4s.llmconnect.LLMClient
+import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent.duration._
+import scala.util.Try
 import java.util.concurrent.Executors
 import org.llm4s.szork.game._
 import org.llm4s.szork.websocket.TypedWebSocketServer
 import org.llm4s.szork.persistence.GamePersistence
+import org.llm4s.szork.error.PersistenceError
 import org.llm4s.szork.media.MediaCache
 
 /** Game theme configuration with prompt text.
@@ -127,14 +131,20 @@ object SzorkServer extends cask.Main with cask.Routes {
       logger.info("Configuration validation successful")
   }
 
-  // Verify LLM client can be created; fail fast if unavailable
-  SzorkConfig.getLLMClient() match {
-    case Right(_) =>
+  // One LLM client, shared by every game and request; fail fast if it cannot be created
+  private val llmClient: LLMClient = SzorkConfig.getLLMClient() match {
+    case Right(client) =>
       logger.info("LLM client initialized successfully")
+      client
     case Left(error) =>
       logger.error(s"Failed to initialize LLM client: $error")
       throw new IllegalStateException(s"LLM initialization failed: $error")
   }
+  // The Dungeon Master agents' tracing (TRACING_MODE), shared by every game
+  private val tracing = AgentTracing.fromEnvironment
+
+  // Cask's debug mode sends exception details to clients in error responses
+  override def debugMode: Boolean = false
 
   // POST endpoints accept only JSON bodies: a cross-site page can send a "simple" text/plain POST without a CORS
   // preflight, but not an application/json one, so this stops other sites spending the server's API credits.
@@ -160,15 +170,6 @@ object SzorkServer extends cask.Main with cask.Routes {
     // Use LLM to validate and enhance the theme
     import org.llm4s.llmconnect.model.{SystemMessage, UserMessage, Conversation}
 
-    val client = SzorkConfig.getLLMClient() match {
-      case Right(c) => c
-      case Left(error) =>
-        logger.error(s"Failed to get LLM client: $error")
-        return ujson.Obj(
-          "valid" -> false,
-          "error" -> "LLM service unavailable"
-        )
-    }
     val validationPrompt =
       s"""Analyze this adventure game theme idea and determine if it would work well for a text-based adventure game:
         |
@@ -195,7 +196,7 @@ object SzorkServer extends cask.Main with cask.Routes {
           UserMessage(validationPrompt)
         ))
 
-      client.complete(conversation) match {
+      llmClient.complete(conversation) match {
         case Right(response) =>
           val responseText = response.content
           // Try to parse JSON from response
@@ -259,14 +260,12 @@ object SzorkServer extends cask.Main with cask.Routes {
       t.setDaemon(true)
       t
     })
-  // Session work (turns, saves) runs here, one task at a time per session; media generation has its own pool so
-  // slow image or music providers cannot hold up turns.
+  // Session work (turns, saves) runs here, one task at a time per session; media generation has its own pools so
+  // slow image or music providers cannot hold up turns. Music has a pool of its own because each job blocks for up
+  // to ~30s while it polls Replicate, which would otherwise hold up images.
   private val workPool = daemonPool("szork-work", 16)
   private val mediaPool = daemonPool("szork-media", 4)
-  sys.addShutdownHook {
-    try { workPool.shutdownNow(); mediaPool.shutdownNow() }
-    catch { case _: Throwable => () }
-  }
+  private val musicPool = daemonPool("szork-music", 4)
 
   // Start WebSocket server for all game communication
   private val wsPort = org.llm4s.config.EnvLoader
@@ -277,14 +276,25 @@ object SzorkServer extends cask.Main with cask.Routes {
     address = new java.net.InetSocketAddress(config.host, wsPort),
     sessionManager = sessionManager,
     capabilities = capabilities,
-    engineFactory = EngineFactory.default,
+    engineFactory = EngineFactory.default(llmClient, tracing),
     sttClient = Option.when(capabilities.stt)(new org.llm4s.szork.adapters.DefaultSTTClient()),
     workPool = workPool,
     mediaEC = ExecutionContext.fromExecutor(mediaPool),
+    musicEC = ExecutionContext.fromExecutor(musicPool),
     autoSave = config.autoSaveEnabled,
     allowedOrigins = Some(config.allowedOrigins)
   )
   wsServer.start()
+  sys.addShutdownHook {
+    def quietly(what: String)(action: => Unit): Unit =
+      try action
+      catch { case e: Throwable => logger.warn(s"Shutdown: $what failed: ${e.getMessage}") }
+    quietly("stopping the WebSocket server")(wsServer.stop(1000))
+    quietly("stopping the thread pools") { workPool.shutdownNow(); mediaPool.shutdownNow(); musicPool.shutdownNow() }
+    // Langfuse sends traces in batches: flush the last one
+    quietly("shutting down tracing")(tracing.foreach(_.shutdown()))
+    quietly("closing the LLM client")(llmClient.close())
+  }
   logger.info(s"Type-safe WebSocket server started on port $wsPort for all game communication")
   if (wsPort == config.port) {
     logger.warn(
@@ -342,38 +352,23 @@ object SzorkServer extends cask.Main with cask.Routes {
         "message" -> "LLM unavailable: server not configured for text generation"
       )
     }
+    AdventureRequest.parse(request.text()) match {
+      case Left(message) =>
+        logger.warn(s"Rejected generate-adventure request: $message")
+        ujson.Obj("status" -> "error", "message" -> message)
+      case Right((theme, artStyle)) =>
+        generateAdventureFor(theme, artStyle)
+    }
+  }
+
+  private def generateAdventureFor(theme: Option[GameTheme], artStyle: Option[ArtStyle]): ujson.Value = {
     logger.info("Generating adventure outline")
-    val json = ujson.read(request.text())
-
-    val theme = json.obj.get("theme").map { t =>
-      GameTheme(
-        id = t("id").str,
-        name = t("name").str,
-        prompt = t("prompt").str
-      )
-    }
-
-    val artStyle = json.obj.get("artStyle").map { s =>
-      ArtStyle(
-        id = s("id").str,
-        name = s("name").str
-      )
-    }
-
     val themePrompt = theme.map(_.prompt).getOrElse("classic fantasy adventure")
     val artStyleId = artStyle.map(_.id).getOrElse("fantasy")
 
     logger.info(s"Generating adventure for theme: ${theme.map(_.name).getOrElse("default")}")
 
-    implicit val llmClient: org.llm4s.llmconnect.LLMClient = SzorkConfig.getLLMClient() match {
-      case Right(c) => c
-      case Left(error) =>
-        logger.error(s"Failed to get LLM client: $error")
-        return ujson.Obj(
-          "success" -> false,
-          "error" -> "LLM service unavailable"
-        )
-    }
+    given LLMClient = llmClient
     AdventureGenerator.generateAdventureOutline(themePrompt, artStyleId) match {
       case Right(outline) =>
         logger.info(s"Adventure outline generated: ${outline.title}")
@@ -416,8 +411,12 @@ object SzorkServer extends cask.Main with cask.Routes {
       return ujson.Obj("status" -> "error", "error" -> s"Invalid game id: ${gameId.take(40)}")
     logger.info(s"Deleting game: $gameId")
 
-    // Delete the game save file
-    val deleteResult = GamePersistence.deleteGame(gameId)
+    // End any live session for the game first, so it cannot save the game again once its files are gone. The files
+    // are deleted after the session's queued work (a turn in progress, say) has finished.
+    val deleteResult =
+      Try(Await.result(wsServer.endGame(gameId)(GamePersistence.deleteGame(gameId)), 2.minutes)).toEither.left
+        .map(e => PersistenceError(s"Failed to delete game: ${e.getMessage}", Some(e), operation = "delete"))
+        .flatten
 
     // Also clear the media cache for this game
     val cacheResult = MediaCache.clearGameCache(gameId)

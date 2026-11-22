@@ -24,7 +24,7 @@ jobs:
           path: |
             ~/.ivy2/cache
             ~/.cache/coursier
-          key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
+          key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt', 'project/**') }}
       - name: Compile with warnings as errors
         run: sbt 'set ThisBuild / scalacOptions += "-Werror"' compile
       - name: Run tests
@@ -49,5 +49,7 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint:check
+      - name: Test
+        run: npm test
       - name: Build
         run: npm run build --if-present

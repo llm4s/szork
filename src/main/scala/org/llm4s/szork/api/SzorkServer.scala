@@ -136,8 +136,17 @@ object SzorkServer extends cask.Main with cask.Routes {
       throw new IllegalStateException(s"LLM initialization failed: $error")
   }
 
+  // POST endpoints accept only JSON bodies: a cross-site page can send a "simple" text/plain POST without a CORS
+  // preflight, but not an application/json one, so this stops other sites spending the server's API credits.
+  private def isJson(request: Request): Boolean =
+    request.headers.get("content-type").exists(_.exists(_.toLowerCase.startsWith("application/json")))
+
+  private val notJson: ujson.Value =
+    ujson.Obj("status" -> "error", "message" -> "Content-Type must be application/json")
+
   @post("/api/game/validate-theme")
   def validateTheme(request: Request): ujson.Value = {
+    if (!isJson(request)) return notJson
     val json = ujson.read(request.text())
     val themeDescription = json("theme").str
 
@@ -257,14 +266,15 @@ object SzorkServer extends cask.Main with cask.Routes {
     .flatMap(p => scala.util.Try(p.toInt).toOption)
     .getOrElse(9002) // Default WS port
   private val wsServer = new TypedWebSocketServer(
-    address = new java.net.InetSocketAddress(wsPort),
+    address = new java.net.InetSocketAddress(config.host, wsPort),
     sessionManager = sessionManager,
     capabilities = capabilities,
     engineFactory = EngineFactory.default,
     sttClient = Option.when(capabilities.stt)(new org.llm4s.szork.adapters.DefaultSTTClient()),
     workPool = workPool,
     mediaEC = ExecutionContext.fromExecutor(mediaPool),
-    autoSave = config.autoSaveEnabled
+    autoSave = config.autoSaveEnabled,
+    allowedOrigins = Some(config.allowedOrigins)
   )
   wsServer.start()
   logger.info(s"Type-safe WebSocket server started on port $wsPort for all game communication")
@@ -316,6 +326,7 @@ object SzorkServer extends cask.Main with cask.Routes {
 
   @post("/api/game/generate-adventure")
   def generateAdventure(request: Request): ujson.Value = {
+    if (!isJson(request)) return notJson
     if (config.llmConfig.isEmpty) {
       logger.error("Adventure generation requested but no LLM is configured")
       return ujson.Obj(
@@ -393,6 +404,8 @@ object SzorkServer extends cask.Main with cask.Routes {
 
   @delete("/api/game/:gameId")
   def deleteGame(gameId: String): ujson.Value = {
+    if (!IdGenerator.isValidGameId(gameId))
+      return ujson.Obj("status" -> "error", "error" -> s"Invalid game id: ${gameId.take(40)}")
     logger.info(s"Deleting game: $gameId")
 
     // Delete the game save file

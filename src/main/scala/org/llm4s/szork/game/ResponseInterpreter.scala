@@ -17,26 +17,42 @@ object ResponseInterpreter {
         pattern.findFirstMatchIn(response).map(_.group(1).replace("\\\"", "\"").replace("\\n", "\n"))
     }
 
-  def parseAndValidate(response: String): Either[List[String], GameResponseData] =
-    GameResponseParser.parseAndValidate(response) match {
-      case Right(data) => Right(data)
-      case Left(error: ValidationError) => Left(error.issues)
-      case Left(error) => Left(List(error.message))
+  /** A turn's answer, interpreted: the structured data if it is usable, the narration to show the player, and any
+    * problems found (errors or warnings) for diagnostics.
+    */
+  final case class Interpretation(data: Option[GameResponseData], narration: String, issues: Option[List[String]])
+
+  val FallbackNarration: String =
+    "I apologize, but there was an error processing the game response. Please try your command again."
+
+  /** Interprets an answer in the `narration <<<JSON>>> {...}` format (or bare JSON).
+    *
+    * Structured data with only warnings is used as-is. If the data has errors or cannot be parsed, the player still
+    * sees the narration: the text before the JSON marker, or the JSON's narrationText - never raw JSON.
+    */
+  def interpret(answer: String): Interpretation =
+    GameResponseParser.parse(answer) match {
+      case Right(data) =>
+        val findings = GameResponseValidator.check(data)
+        val issues = Option(findings.errors ++ findings.warnings).filter(_.nonEmpty)
+        if (findings.errors.isEmpty) Interpretation(Some(data), data.narrationText, issues)
+        else Interpretation(None, narrationOf(answer).getOrElse(data.narrationText), issues)
+      case Left(error) =>
+        Interpretation(None, narrationOf(answer).getOrElse(FallbackNarration), Some(List(error.message)))
     }
 
-  def parseToOption(response: String): (Option[GameResponseData], Option[List[String]]) = {
-    if (response == null || response.isEmpty) return (None, None)
-    parseAndValidate(response) match {
-      case Right(data) => (Some(data), None)
-      case Left(issues) => (None, Some(issues))
+  /** The narration in `answer` when it cannot be used as structured data. */
+  private def narrationOf(answer: String): Option[String] = {
+    val trimmed = answer.trim
+    trimmed.indexOf(GameResponseParser.JsonMarker) match {
+      case -1 if trimmed.startsWith("{") => extractNarrationTextFromJson(trimmed)
+      case -1 => Some(trimmed).filter(_.nonEmpty)
+      case at =>
+        Some(trimmed.substring(0, at).trim)
+          .filter(_.nonEmpty)
+          .orElse(extractNarrationTextFromJson(trimmed.substring(at + GameResponseParser.JsonMarker.length).trim))
     }
   }
-
-  def extractSceneFrom(response: String): Option[GameScene] =
-    parseAndValidate(response) match {
-      case Right(scene: GameScene) => Some(scene)
-      case _ => None
-    }
 
   /** Extract textual content from assistant messages, properly handling optional content. Returns the last non-empty
     * assistant response, or empty string if none found.

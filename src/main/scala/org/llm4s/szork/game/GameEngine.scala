@@ -15,7 +15,7 @@ import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.szork.debug.DebugHelpers
 import org.llm4s.szork.api.{GameTheme, ArtStyle}
-import org.llm4s.szork.media.{MediaPlanner, TextToSpeech}
+import org.llm4s.szork.media.MediaPlanner
 import org.llm4s.szork.persistence.{StepData, GameState, MediaCacheEntry, MessageCodec, StepMetadata}
 import org.llm4s.szork.streaming.StreamingTextParser
 
@@ -55,20 +55,22 @@ class GameEngine(
 )(implicit llmClient: LLMClient) {
   private implicit val logger: org.slf4j.Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
-  // Note: Langfuse tracing removed - the API changed in llm4s 0.2.5
-  // Tracing can be re-enabled once the new tracing API is documented
-
   private val themeDescription = PromptBuilder.themeDescription(theme)
   private val artStyleDescription = PromptBuilder.artStyleDescription(artStyle)
-  private val completeSystemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, adventureOutline)
-  private val toolRegistry = new ToolRegistry(GameTools.allTools)
+  // The adventure outline and the system prompt built from it. A restored game takes its outline from the save.
+  private var outline: Option[AdventureOutline] = adventureOutline
+  private var systemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, outline)
+
+  // This game's inventory, read and changed by the agent's tools
+  private val inventory = new PlayerInventory()
+  private val toolRegistry = new ToolRegistry(GameTools.forInventory(inventory))
 
   // The Dungeon Master is an llm4s Agent; the game's conversation is one of its threads.
   // Two agents are compiled from the same settings - one streaming, one not - over a shared
   // runtime: streaming is not part of the agent's graph version, so either can run the next
   // turn of the same thread.
   private val runtime: GraphRuntime = GraphRuntime.inMemory()
-  private var agents: Result[GameEngine.DungeonMaster] = buildAgents(completeSystemPrompt)
+  private var agents: Result[GameEngine.DungeonMaster] = buildAgents(systemPrompt)
 
   // The thread holding the conversation, once a turn has run on it. After a restore (or a
   // failed turn) it is None, and the next turn starts a new thread seeded with `history`.
@@ -78,10 +80,15 @@ class GameEngine(
   private var history: Vector[Message] = Vector.empty
   private var coreState: CoreState = CoreState()
   private var lastValidationIssues: Option[List[String]] = None
+  // Whether the last turn moved the player to a new location (or opened the first scene);
+  // scene images and location music are generated only then
+  private var lastTurnChangedLocation: Boolean = false
+  // Index into `history` where the last turn's messages begin
+  private var lastTurnStart: Int = 0
   private val createdAt: Long = clock.now()
   private var sessionStartTime: Long = clock.now()
   private var totalPlayTime: Long = 0L // Accumulated play time from previous sessions
-  private var adventureTitle: Option[String] = adventureOutline.map(_.title)
+  private var adventureTitle: Option[String] = outline.map(_.title)
 
   // Enhanced state tracking
   private var mediaCache: Map[String, MediaCacheEntry] = Map.empty
@@ -95,34 +102,18 @@ class GameEngine(
   def initialize(): SzorkResult[String] = {
     logger.info(s"[$sessionId] Initializing game with theme: $themeDescription")
 
-    // Clear inventory for new game
-    GameTools.clearInventory()
+    inventory.replaceWith(Nil)
+    coreState = CoreState()
 
     // A new game is a new thread, opened with the init adventure prompt as its first turn
     // (the trigger message is not shown to the user)
     startNewConversation(Vector.empty)
-    val initPrompt = GameConstants.Prompts.INIT_ADVENTURE
 
-    runTurn(initPrompt, listener = None) match {
+    runTurn(GameConstants.Prompts.INIT_ADVENTURE, listener = None) match {
       case Right(result) =>
-        // Extract the last textual response from the agent
-        val responseContent = ResponseInterpreter.extractLastAssistantResponse(result.messages)
-
-        // Try to parse as structured data
-        val (dataOpt, issuesOpt) = ResponseInterpreter.parseToOption(responseContent)
-        lastValidationIssues = issuesOpt
-        dataOpt match {
-          case Some(scene: GameScene) =>
-            coreState = CoreEngine.applyScene(coreState, scene)
-            logger.info(s"[$sessionId] Game initialized with scene: ${scene.locationId} - ${scene.locationName}")
-            Right(scene.narrationText)
-          case Some(simple: SimpleResponse) =>
-            logger.info(s"[$sessionId] Simple response on initialization: ${simple.actionTaken}")
-            Right(simple.narrationText)
-          case None =>
-            logger.warn(s"[$sessionId] Failed to parse structured response, using raw text")
-            Right(responseContent.take(200))
-        }
+        val outcome = completeTurn(result)
+        logger.info(s"[$sessionId] Game initialized: ${outcome.scene.map(_.locationId).getOrElse("no scene")}")
+        Right(outcome.narration)
 
       case Left(error) =>
         val szorkError = AIError(s"Failed to initialize game: ${error.message}", llmError = Some(error))
@@ -170,90 +161,13 @@ class GameEngine(
     // Track user command in conversation history (pure core state)
     coreState = CoreEngine.trackUser(coreState, command)
 
-    // Track message count before this turn, so we can pick out the turn's own messages
-    val previousMessageCount = history.length
-
-    // Run the turn on the agent
     val textStartTime = System.currentTimeMillis()
-    logger.debug(s"[$sessionId] Starting text generation for command: $command")
-
     runTurn(command, listener = None) match {
       case Right(result) =>
-        // Get only the new messages added by the agent
-        val newMessages = result.messages.drop(previousMessageCount + 1) // +1 to skip the user message
-        val response = ResponseInterpreter.extractAssistantResponses(newMessages)
-
-        // Debug: LLM response summary
-        logger.debug(s"LLM response (truncated) for '$command': ${response.take(200)}")
-        newMessages.foreach {
-          case assistant: AssistantMessage =>
-            logger.debug(s"Assistant content: ${assistant.contentOpt.map(_.take(200))}")
-            logger.debug(s"Assistant tool calls: ${assistant.toolCalls.map(_.name)}")
-          case tool: ToolMessage =>
-            logger.debug(s"Tool message id=${tool.toolCallId} content=${tool.content.take(200)}")
-          case msg =>
-            logger.debug(s"Other message type: ${msg.getClass.getSimpleName}")
-        }
-        logger.debug(s"Extracted response text (truncated): ${response.take(200)}")
-
-        val assistantMessageCount = newMessages.count(_.isInstanceOf[AssistantMessage])
-        logger.debug(s"Agent added ${newMessages.length} messages, $assistantMessageCount are assistant messages")
-
-        val textGenerationTime = System.currentTimeMillis() - textStartTime
-        logger.debug(s"[$sessionId] Text generation completed in ${textGenerationTime}ms (${response.length} chars)")
-
-        // Try to parse the response as structured JSON
-        val (responseText, sceneOpt) = {
-          val (dataOpt, issuesOpt) = ResponseInterpreter.parseToOption(response)
-          lastValidationIssues = issuesOpt
-          dataOpt match {
-            case Some(scene: GameScene) =>
-              coreState = CoreEngine.applyScene(coreState, scene)
-              logger.info(s"[$sessionId] Full scene response: ${scene.locationId} - ${scene.locationName}")
-              (scene.narrationText, Some(scene))
-
-            case Some(simple: SimpleResponse) =>
-              logger.info(s"[$sessionId] Simple response for action: ${simple.actionTaken}")
-              (simple.narrationText, coreState.currentScene) // Keep the current scene
-
-            case None =>
-              logger.warn(s"[$sessionId] Could not parse structured response, attempting to extract narrationText")
-              val narrationText = ResponseInterpreter.extractNarrationTextFromJson(response).getOrElse {
-                if (response.trim.startsWith("{")) {
-                  logger.error(s"[$sessionId] Failed to parse JSON response, showing error to user")
-                  "I apologize, but there was an error processing the game response. Please try your command again."
-                } else response
-              }
-              (narrationText, coreState.currentScene)
-          }
-        }
-
-        // Generate audio if requested
-        val audioBase64 = if (generateAudio && responseText.nonEmpty && ttsClient.isDefined) {
-          val audioStartTime = System.currentTimeMillis()
-          logger.info(s"[$sessionId] Starting audio generation (${responseText.length} chars)")
-          ttsClient.get.synthesizeToBase64(responseText, "nova") match {
-            case Right(audio) =>
-              val audioTime = System.currentTimeMillis() - audioStartTime
-              logger.info(s"[$sessionId] Audio generation completed in ${audioTime}ms (${audio.length} bytes base64)")
-              Some(audio)
-            case Left(error) =>
-              logger.error(s"[$sessionId] Failed to generate audio: $error")
-              None
-          }
-        } else {
-          logger.debug(
-            s"[$sessionId] Skipping audio (generateAudio=$generateAudio, empty=${responseText.isEmpty}, ttsClient=${ttsClient.isDefined})")
-          None
-        }
-
-        // Track assistant response in conversation history (pure core state)
-        coreState = CoreEngine.applySimpleResponse(coreState, responseText)
-
-        // Image generation is now handled asynchronously in the server
-        // Background music generation is also handled asynchronously
-
-        Right(GameResponse(responseText, audioBase64, None, None, None, sceneOpt))
+        logger.debug(s"[$sessionId] Text generation completed in ${System.currentTimeMillis() - textStartTime}ms")
+        val outcome = completeTurn(result)
+        val audio = if (generateAudio) synthesize(outcome.narration) else None
+        Right(GameResponse(outcome.narration, audio, None, None, None, outcome.scene.orElse(coreState.currentScene)))
 
       case Left(error) =>
         val szorkError = AIError(s"Error processing command: ${error.message}", llmError = Some(error))
@@ -291,7 +205,6 @@ class GameEngine(
     // result starts clean. Tool calls produce no text deltas, so only answer text arrives here.
     // Events are delivered to the listener one at a time, and the run's await() returns only
     // once the listener has handled the last one.
-    var accumulatedText = new StringBuilder()
     var textParser = new StreamingTextParser()
     var chunkCount = 0
     var narrativeChunkCount = 0
@@ -299,12 +212,10 @@ class GameEngine(
     val listener: StreamEvent => Unit = {
       case AgentEvents.ModelCallStarted(call) =>
         logger.debug(s"[$sessionId] Model call started (agent=${call.agent}, attempt=${call.attempt})")
-        accumulatedText = new StringBuilder()
         textParser = new StreamingTextParser()
 
       case AgentEvents.TextDelta(delta) =>
         chunkCount += 1
-        accumulatedText.append(delta.text)
         logger.debug(s"[$sessionId] Received chunk #$chunkCount: ${delta.text.take(50)}...")
 
         // Try to extract narration text and stream it to the user
@@ -326,76 +237,12 @@ class GameEngine(
 
     runTurn(command, Some(listener)) match {
       case Right(result) =>
-        // The final answer is authoritative; the streamed text is used to locate its JSON part
-        val responseText = result.answer.getOrElse(accumulatedText.toString)
-
-        // TEMPORARY: Log complete LLM response to console for debugging
-        logger.debug(s"Streaming LLM response for '$command' (truncated): ${responseText.take(200)}")
-
-        val textGenerationTime = System.currentTimeMillis() - textStartTime
         logger.debug(
-          s"[$sessionId] Streaming completed: $chunkCount chunks, $narrativeChunkCount narrative chunks, ${responseText.length} chars in ${textGenerationTime}ms")
-
-        // Extract the JSON portion from the response
-        val jsonResponse = textParser.getJson().getOrElse {
-          // Fallback: try to find JSON in the full response
-          val jsonMarker = "<<<JSON>>>"
-          val markerIndex = responseText.indexOf(jsonMarker)
-          if (markerIndex >= 0) {
-            responseText.substring(markerIndex + jsonMarker.length).trim
-          } else {
-            responseText // Use full response as fallback
-          }
-        }
-
-        // Try to parse the JSON response
-        val (finalText, sceneOpt) = {
-          val (dataOpt, issuesOpt) = ResponseInterpreter.parseToOption(jsonResponse)
-          lastValidationIssues = issuesOpt
-          dataOpt match {
-            case Some(scene: GameScene) =>
-              coreState = CoreEngine.applyScene(coreState, scene)
-              logger.info(s"[$sessionId] Full scene response: ${scene.locationId} - ${scene.locationName}")
-              (scene.narrationText, Some(scene))
-            case Some(simple: SimpleResponse) =>
-              logger.info(s"[$sessionId] Simple response for action: ${simple.actionTaken}")
-              (simple.narrationText, coreState.currentScene)
-            case None =>
-              logger.warn(
-                s"[$sessionId] Could not parse structured response in streaming, attempting to extract narrationText")
-              val narrationText = ResponseInterpreter.extractNarrationTextFromJson(responseText).getOrElse {
-                if (responseText.trim.startsWith("{")) {
-                  logger.error(s"[$sessionId] Failed to parse JSON response in streaming, showing error to user")
-                  "I apologize, but there was an error processing the game response. Please try your command again."
-                } else responseText
-              }
-              (narrationText, coreState.currentScene)
-          }
-        }
-
-        // Track assistant response in conversation history
-        coreState = CoreEngine.applySimpleResponse(coreState, finalText)
-
-        // Generate audio if requested (not streamed, generated after text is complete)
-        val audioBase64 = if (generateAudio && finalText.nonEmpty) {
-          val audioStartTime = System.currentTimeMillis()
-          logger.info(s"[$sessionId] Starting audio generation (${finalText.length} chars)")
-          val tts = TextToSpeech()
-          tts.synthesizeToBase64(finalText, TextToSpeech.VOICE_NOVA) match {
-            case Right(audio) =>
-              val audioTime = System.currentTimeMillis() - audioStartTime
-              logger.info(s"[$sessionId] Audio generation completed in ${audioTime}ms")
-              Some(audio)
-            case Left(error) =>
-              logger.error(s"[$sessionId] Failed to generate audio: $error")
-              None
-          }
-        } else {
-          None
-        }
-
-        // Return the complete response
-        Right(GameResponse(finalText, audioBase64, None, None, None, sceneOpt))
+          s"[$sessionId] Streaming completed: $chunkCount chunks, $narrativeChunkCount narrative chunks in ${System
+              .currentTimeMillis() - textStartTime}ms")
+        val outcome = completeTurn(result)
+        val audio = if (generateAudio) synthesize(outcome.narration) else None
+        Right(GameResponse(outcome.narration, audio, None, None, None, outcome.scene.orElse(coreState.currentScene)))
 
       case Left(error) =>
         val szorkError = AIError(s"Error in streaming command: ${error.message}", llmError = Some(error))
@@ -404,8 +251,50 @@ class GameEngine(
     }
   }
 
+  /** What a completed turn produced: the narration to show, and the scene if the turn described one. */
+  private final case class TurnOutcome(narration: String, scene: Option[GameScene])
+
+  /** Interprets a completed turn's answer and applies it to the game state.
+    *
+    * The answer is parsed and validated; a scene moves the player, and the narration is recorded once in the
+    * transcript. If the answer cannot be used as structured data, its narration is still shown.
+    */
+  private def completeTurn(result: AgentResult): TurnOutcome = {
+    val answer = result.answer.getOrElse("")
+    logger.debug(s"[$sessionId] Turn answer (truncated): ${answer.take(200)}")
+
+    val interpreted = ResponseInterpreter.interpret(answer)
+    lastValidationIssues = interpreted.issues
+    interpreted.issues.foreach(issues => logger.warn(s"[$sessionId] Response issues: ${issues.mkString("; ")}"))
+
+    val previousLocation = coreState.currentScene.map(_.locationId)
+    val scene = interpreted.data.collect { case scene: GameScene => scene }
+    scene.foreach(s => coreState = CoreEngine.applyScene(coreState, s))
+    lastTurnChangedLocation = scene.exists(s => !previousLocation.contains(s.locationId))
+    coreState = CoreEngine.trackAssistant(coreState, interpreted.narration)
+
+    TurnOutcome(interpreted.narration, scene)
+  }
+
+  /** Narrates `text` with the configured text-to-speech client, if there is one. */
+  private def synthesize(text: String): Option[String] =
+    ttsClient.filter(_ => text.nonEmpty).flatMap { client =>
+      val start = System.currentTimeMillis()
+      client.synthesizeToBase64(text, GameEngine.NarrationVoice) match {
+        case Right(audio) =>
+          logger.info(s"[$sessionId] Audio generated in ${System.currentTimeMillis() - start}ms (${text.length} chars)")
+          Some(audio)
+        case Left(error) =>
+          logger.error(s"[$sessionId] Failed to generate audio: ${error.message}")
+          None
+      }
+    }
+
   /** Returns the current count of messages in the conversation history. */
   def getMessageCount: Int = history.length
+
+  /** The items the player is carrying. */
+  def getInventory: List[String] = inventory.list
 
   /** Returns the full conversation history (without the system prompt) as of the last completed turn. */
   def getMessages: Vector[Message] = history
@@ -458,6 +347,7 @@ class GameEngine(
       }
       outcome match {
         case Right(result) =>
+          val turnStart = history.length
           result.status match {
             case AgentStatus.Suspended(_, _, _, _, _) =>
               // The game configures no approvals or breakpoints, so a parked turn is unexpected.
@@ -469,6 +359,7 @@ class GameEngine(
               // Completed, or ended at a limit or guardrail: either way the thread can take the next turn
               threadId = Some(result.threadId)
               history = result.messages
+              lastTurnStart = turnStart
               status match {
                 case AgentStatus.Completed(_) =>
                   logger.debug(
@@ -504,8 +395,10 @@ class GameEngine(
     * @return
     *   true if image generation is appropriate
     */
-  def shouldGenerateSceneImage(responseText: String): Boolean =
-    CoreEngine.shouldGenerateSceneImage(coreState, responseText)
+  def shouldGenerateSceneImage(responseText: String): Boolean = {
+    val _ = responseText
+    lastTurnChangedLocation
+  }
 
   /** Generates a scene image based on current location or response text.
     *
@@ -518,15 +411,10 @@ class GameEngine(
     */
   def generateSceneImage(responseText: String, gameId: Option[String] = None): Option[String] = {
     // Use detailed description from current scene if available
+    val _ = responseText
     val (imagePrompt, locationId) = coreState.currentScene match {
-      case Some(scene) =>
-        logger.info(s"[$sessionId] Using structured image description for ${scene.locationId}")
-        (scene.imageDescription, Some(scene.locationId))
-      case None if CoreEngine.isNewScene(responseText) =>
-        logger.info(s"[$sessionId] No structured scene, extracting from text")
-        (MediaPlanner.extractSceneDescription(responseText), None)
-      case _ =>
-        return None
+      case Some(scene) => (scene.imageDescription, Some(scene.locationId))
+      case None => return None
     }
 
     // Include art style prominently in the image prompt with detailed direction
@@ -553,8 +441,10 @@ class GameEngine(
 
   // scene description extraction moved to MediaPlanner
 
-  def shouldGenerateBackgroundMusic(responseText: String): Boolean =
-    CoreEngine.shouldGenerateBackgroundMusic(coreState, responseText)
+  def shouldGenerateBackgroundMusic(responseText: String): Boolean = {
+    val _ = responseText
+    lastTurnChangedLocation
+  }
 
   def generateBackgroundMusic(responseText: String, gameId: Option[String] = None): Option[(String, String)] =
     if (shouldGenerateBackgroundMusic(responseText)) {
@@ -568,14 +458,8 @@ class GameEngine(
 
         // Use structured mood and description if available
         val (mood, contextText, locationId) = coreState.currentScene match {
-          case Some(scene) =>
-            val moodStr = scene.musicMood
-            logger.info(s"[$sessionId] Using structured music for ${scene.locationId}: mood=$moodStr")
-            (moodStr, scene.musicDescription, Some(scene.locationId))
-          case None =>
-            val detectedMood = MediaPlanner.detectMoodFromText(responseText)
-            logger.info(s"[$sessionId] Detected mood: $detectedMood from text")
-            (detectedMood, responseText, None)
+          case Some(scene) => (scene.musicMood, scene.musicDescription, Some(scene.locationId))
+          case None => return None
         }
 
         logger.info(s"[$sessionId] Generating background music with mood: $mood")
@@ -660,11 +544,11 @@ class GameEngine(
       gameId = gameId,
       theme = gameTheme,
       artStyle = gameArtStyle,
-      adventureOutline = adventureOutline, // Include the full adventure outline
+      adventureOutline = outline, // Include the full adventure outline
       currentScene = coreState.currentScene,
       visitedLocations = coreState.visitedLocations,
       conversationHistory = coreState.conversationHistory,
-      inventory = GameTools.getInventory,
+      inventory = inventory.list,
       createdAt = createdAt,
       lastSaved = clock.now(),
       lastPlayed = clock.now(),
@@ -672,7 +556,7 @@ class GameEngine(
       adventureTitle = adventureTitle,
       agentMessages = agentMessagesJson, // Complete agent state
       mediaCache = mediaCache, // Media cache entries
-      systemPrompt = Some(completeSystemPrompt) // Complete system prompt
+      systemPrompt = Some(systemPrompt)
     )
   }
 
@@ -690,7 +574,7 @@ class GameEngine(
       visitedLocations = state.visitedLocations,
       conversationHistory = state.conversationHistory
     )
-    GameTools.setInventory(state.inventory)
+    inventory.replaceWith(state.inventory)
     totalPlayTime = state.totalPlayTime
     sessionStartTime = clock.now() // Reset session timer when restoring
     adventureTitle = state.adventureTitle
@@ -708,9 +592,10 @@ class GameEngine(
         .filterNot(_.isInstanceOf[SystemMessage])
         .toVector
 
-      state.systemPrompt.filter(_ != completeSystemPrompt).foreach { savedPrompt =>
-        agents = buildAgents(savedPrompt)
-      }
+      // The Dungeon Master's prompt is rebuilt from the saved outline
+      outline = state.adventureOutline
+      systemPrompt = PromptBuilder.fullSystemPrompt(theme, artStyle, outline)
+      agents = buildAgents(systemPrompt)
       restoreConversation(messages)
       logger.info(s"[$sessionId] Game state restored with ${messages.size} agent messages")
     } else if (state.conversationHistory.nonEmpty) {
@@ -794,7 +679,7 @@ class GameEngine(
     executionTimeMs: Long
   ): StepData = {
     // Extract tool calls from agent messages
-    val toolCalls = DebugHelpers.extractToolCalls(history)
+    val toolCalls = DebugHelpers.extractToolCalls(history.drop(lastTurnStart))
 
     // Convert response to GameResponse sealed trait
     val gameResponseOpt: Option[org.llm4s.szork.persistence.GameResponse] = response.flatMap { resp =>
@@ -823,7 +708,7 @@ class GameEngine(
       response = gameResponseOpt,
       toolCalls = toolCalls,
       agentMessages = history.toList,
-      outline = if (currentStepNumber == 1) adventureOutline else None
+      outline = if (currentStepNumber == 1) outline else None
     )
   }
 
@@ -831,6 +716,9 @@ class GameEngine(
 
 /** Factory for creating GameEngine instances. */
 object GameEngine {
+
+  /** The text-to-speech voice used for narration. */
+  val NarrationVoice: String = "nova"
 
   /** The id of the Dungeon Master agent. */
   val AgentId: String = "szork-dungeon-master"

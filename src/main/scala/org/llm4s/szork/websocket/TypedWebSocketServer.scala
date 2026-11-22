@@ -477,7 +477,7 @@ class TypedWebSocketServer(
           sessionId = sessionId,
           theme = gameState.theme.map(_.prompt),
           artStyle = gameState.artStyle.map(_.id),
-          adventureOutline = None,
+          adventureOutline = gameState.adventureOutline,
           clock = SystemClock,
           ttsClient = if (config.ttsEnabled && openAIKeyPresent) Some(new DefaultTTSClient()) else None,
           imageClient =
@@ -613,7 +613,8 @@ class TypedWebSocketServer(
                       text = chunk,
                       chunkNumber = chunkCount
                     ))
-                }
+                },
+                generateAudio = session.ttsEnabled && openAIKeyPresent
               ) match {
                 case Right(response) =>
                   val duration = System.currentTimeMillis() - startTime

@@ -2,33 +2,39 @@ package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
-import org.scalatest.BeforeAndAfterEach
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters._
 import org.llm4s.llmconnect.model.{UserMessage, AssistantMessage}
 import org.llm4s.szork.api.{ArtStyle, GameTheme}
-import org.llm4s.szork.game.{Exit, GameScene}
+import org.llm4s.szork.game.{Exit, GameScene, IdGenerator}
 import org.llm4s.szork.persistence.{GameMetadata, GameState, SceneResponse, StepData, StepMetadata, StepPersistence}
 
-class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterEach {
+class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll with BeforeAndAfterEach {
 
+  // Saves go to a fresh temporary directory, never the developer's real szork-saves
+  private val saveRoot: Path = Files.createTempDirectory("szork-saves-test")
   var testGameDir: Path = _
-  val testGameId = "test-game-persistence"
+  var testGameId: String = _
+
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+    StepPersistence.useSaveDirectory(saveRoot)
+  }
+
+  override def afterAll(): Unit = {
+    deleteRecursively(saveRoot)
+    super.afterAll()
+  }
 
   override def beforeEach(): Unit = {
     super.beforeEach()
-    // Clean up any existing test data
-    testGameDir = java.nio.file.Paths.get("szork-saves", testGameId)
-    if (Files.exists(testGameDir)) {
-      deleteRecursively(testGameDir)
-    }
+    testGameId = IdGenerator.gameId()
+    testGameDir = saveRoot.resolve(testGameId)
   }
 
   override def afterEach(): Unit = {
-    // Clean up test data
-    if (Files.exists(testGameDir)) {
-      deleteRecursively(testGameDir)
-    }
+    if (Files.exists(testGameDir)) deleteRecursively(testGameDir)
     super.afterEach()
   }
 
@@ -383,8 +389,8 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterE
 
   test("listGames returns all saved games") {
     // Create two test games
-    val gameId1 = s"$testGameId-1"
-    val gameId2 = s"$testGameId-2"
+    val gameId1 = IdGenerator.gameId()
+    val gameId2 = IdGenerator.gameId()
 
     val metadata1 = GameMetadata(
       gameId = gameId1,

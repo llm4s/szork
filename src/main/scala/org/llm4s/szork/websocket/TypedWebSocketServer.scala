@@ -3,7 +3,10 @@ package org.llm4s.szork.websocket
 import java.net.InetSocketAddress
 import java.util.concurrent.{Executor, Executors, ScheduledExecutorService, TimeUnit}
 import org.java_websocket.WebSocket
-import org.java_websocket.handshake.ClientHandshake
+import org.java_websocket.drafts.Draft
+import org.java_websocket.exceptions.InvalidDataException
+import org.java_websocket.framing.CloseFrame
+import org.java_websocket.handshake.{ClientHandshake, ServerHandshakeBuilder}
 import org.java_websocket.server.WebSocketServer
 import org.slf4j.LoggerFactory
 import scala.collection.concurrent.TrieMap
@@ -28,6 +31,9 @@ import org.llm4s.szork.spi.STTClient
   *   Runs session work (each session's tasks in order) and other blocking handlers
   * @param mediaEC
   *   Runs image and music generation
+  * @param allowedOrigins
+  *   Browser origins allowed to connect (None allows any). A handshake with another Origin header is refused, so web
+  *   pages on other sites cannot drive the game (and its API credits); clients that send no Origin are allowed.
   */
 class TypedWebSocketServer(
   address: InetSocketAddress,
@@ -38,7 +44,8 @@ class TypedWebSocketServer(
   workPool: Executor,
   mediaEC: ExecutionContext,
   autoSave: Boolean = true,
-  sessionTtlMillis: Long = TypedWebSocketServer.DefaultSessionTtlMillis
+  sessionTtlMillis: Long = TypedWebSocketServer.DefaultSessionTtlMillis,
+  allowedOrigins: Option[Set[String]] = None
 ) extends WebSocketServer(address) {
 
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
@@ -65,6 +72,19 @@ class TypedWebSocketServer(
   override def stop(timeout: Int): Unit = {
     sweeper.shutdownNow()
     super.stop(timeout)
+  }
+
+  override def onWebsocketHandshakeReceivedAsServer(
+    conn: WebSocket,
+    draft: Draft,
+    request: ClientHandshake): ServerHandshakeBuilder = {
+    val builder = super.onWebsocketHandshakeReceivedAsServer(conn, draft, request)
+    val origin = Option(request.getFieldValue("Origin")).map(_.trim).filter(_.nonEmpty)
+    if (!TypedWebSocketServer.originAllowed(origin, allowedOrigins)) {
+      logger.warn(s"Refusing WebSocket connection from origin ${origin.getOrElse("")}")
+      throw new InvalidDataException(CloseFrame.POLICY_VALIDATION, "Origin not allowed")
+    }
+    builder
   }
 
   override def onOpen(conn: WebSocket, handshake: ClientHandshake): Unit = {
@@ -125,6 +145,8 @@ class TypedWebSocketServer(
 
   private def dispatch(conn: WebSocket, message: ClientMessage): Unit = message match {
     case request: NewGameRequest => runForConnection(conn)(startNewGame(conn, request))
+    case request: LoadGameRequest if !IdGenerator.isValidGameId(request.gameId) =>
+      send(conn, ErrorMessage("Failed to load game", Some(s"Invalid game id: ${request.gameId.take(40)}")))
     case request: LoadGameRequest => runForConnection(conn)(loadGame(conn, request))
     case ResumeSessionRequest(sessionId) => resume(conn, sessionId)
     case ListGamesRequest() => runForConnection(conn)(listGames(conn))
@@ -494,6 +516,10 @@ class TypedWebSocketServer(
 
 object TypedWebSocketServer {
   val DefaultSessionTtlMillis: Long = 30L * 60 * 1000
+
+  /** Whether a handshake with `origin` may connect: always without an Origin header (non-browser clients). */
+  def originAllowed(origin: Option[String], allowed: Option[Set[String]]): Boolean =
+    origin.forall(o => allowed.forall(_.contains(o)))
 
   /** A short description of a message for logs, without large payloads. */
   private[websocket] def describe(message: WebSocketMessage): String = message match {

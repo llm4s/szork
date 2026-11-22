@@ -4,6 +4,7 @@ import org.llm4s.szork.game.{GameScene, AdventureGenerator}
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import ujson._
+import org.llm4s.szork.game.IdGenerator
 import java.nio.file.{Files, Path, Paths}
 import java.nio.charset.StandardCharsets
 import org.slf4j.{Logger, LoggerFactory}
@@ -34,14 +35,19 @@ import scala.jdk.CollectionConverters._
   */
 object StepPersistence {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
-  private val SAVE_DIR = "szork-saves"
+  // Where games are saved: SZORK_SAVES_DIR, default "szork-saves". Tests point it at a temporary directory.
+  @volatile private var saveRoot: Path =
+    Paths.get(org.llm4s.config.EnvLoader.get("SZORK_SAVES_DIR").getOrElse("szork-saves"))
+
+  /** Saves games under `dir` from now on. */
+  private[szork] def useSaveDirectory(dir: Path): Unit = saveRoot = dir
 
   /** Ensure the save directory exists. */
   private def ensureSaveDir(): Path = {
-    val dir = Paths.get(SAVE_DIR)
+    val dir = saveRoot
     if (!Files.exists(dir)) {
       Files.createDirectories(dir)
-      logger.info(s"Created save directory: $SAVE_DIR")
+      logger.info(s"Created save directory: $dir")
     }
     dir
   }
@@ -49,7 +55,7 @@ object StepPersistence {
   /** Get the game directory path. */
   private def getGameDir(gameId: String): Path = {
     ensureSaveDir()
-    Paths.get(SAVE_DIR, gameId)
+    GameDirs.resolve(saveRoot, gameId)
   }
 
   /** Get the step directory path. */
@@ -304,7 +310,7 @@ object StepPersistence {
 
   /** Check if a game exists. */
   def gameExists(gameId: String): Boolean =
-    Files.exists(getGameDir(gameId).resolve("game.json"))
+    IdGenerator.isValidGameId(gameId) && Files.exists(getGameDir(gameId).resolve("game.json"))
 
   /** Delete a game and all its steps. */
   def deleteGame(gameId: String): SzorkResult[Unit] =

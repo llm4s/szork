@@ -7,6 +7,7 @@ import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{Message, UserMessage, AssistantMessage, SystemMessage, ToolMessage}
 import org.llm4s.toolapi.ToolRegistry
+import org.llm4s.trace.Tracing
 import org.llm4s.types.Result
 import org.slf4j.LoggerFactory
 import org.llm4s.szork.core.{CoreEngine, CoreState}
@@ -51,7 +52,8 @@ class GameEngine(
   clock: Clock = SystemClock,
   ttsClient: Option[TTSClient] = None,
   imageClient: Option[ImageClient] = None,
-  musicClient: Option[MusicClient] = None
+  musicClient: Option[MusicClient] = None,
+  tracing: Option[Tracing] = None
 )(implicit llmClient: LLMClient) {
   private implicit val logger: org.slf4j.Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
@@ -302,11 +304,13 @@ class GameEngine(
 
   /** Builds the Dungeon Master agents for `systemPrompt`: one streaming, one not, sharing this engine's runtime. */
   private def buildAgents(systemPrompt: String): Result[GameEngine.DungeonMaster] = {
-    val builder = Agent
+    val base = Agent
       .builder(GameEngine.AgentId, llmClient)
       .withTools(toolRegistry)
       .withSystemPrompt(systemPrompt)
+      .withMaxSteps(GameEngine.MaxModelCallsPerTurn)
       .withRuntime(runtime)
+    val builder = tracing.fold(base)(base.withTracing)
     for {
       blocking <- builder.build()
       streaming <- builder.withStreaming().build()
@@ -607,8 +611,12 @@ class GameEngine(
 /** Factory for creating GameEngine instances. */
 object GameEngine {
 
-  /** The text-to-speech voice used for narration. */
-  val NarrationVoice: String = "nova"
+  /** Model calls allowed in one turn: enough for a few inventory tool calls and the answer, not a runaway loop. */
+  val MaxModelCallsPerTurn: Int = 8
+
+  /** The text-to-speech voice used for narration (SZORK_TTS_VOICE, default nova). */
+  val NarrationVoice: String =
+    org.llm4s.config.EnvLoader.get("SZORK_TTS_VOICE").map(_.trim).filter(_.nonEmpty).getOrElse("nova")
 
   /** The id of the Dungeon Master agent. */
   val AgentId: String = "szork-dungeon-master"
@@ -653,7 +661,9 @@ object GameEngine {
     clock: Clock = SystemClock,
     ttsClient: Option[TTSClient] = None,
     imageClient: Option[ImageClient] = None,
-    musicClient: Option[MusicClient] = None
+    musicClient: Option[MusicClient] = None,
+    tracing: Option[Tracing] = None
   ): GameEngine =
-    new GameEngine(sessionId, theme, artStyle, adventureOutline, clock, ttsClient, imageClient, musicClient)(llmClient)
+    new GameEngine(sessionId, theme, artStyle, adventureOutline, clock, ttsClient, imageClient, musicClient, tracing)(
+      llmClient)
 }

@@ -38,11 +38,17 @@ lazy val root = (project in file("."))
     
     // Dependencies
     libraryDependencies ++= Seq(
-      // LLM4S modules: agent runtime, LLM providers, and image generation
+      // LLM4S modules: agent runtime, LLM providers, image generation, speech and tracing
       "org.llm4s" %% "llm4s-agent"     % llm4sVersion,
       "org.llm4s" %% "llm4s-openai"    % llm4sVersion,
       "org.llm4s" %% "llm4s-anthropic" % llm4sVersion,
       "org.llm4s" %% "llm4s-image"     % llm4sVersion,
+      // Langfuse tracing backend (TRACING_MODE=langfuse)
+      "org.llm4s" %% "llm4s-observability" % llm4sVersion,
+      // Cloud text-to-speech and speech-to-text; the local Vosk engine (and its native libraries) is not used
+      ("org.llm4s" %% "llm4s-speech" % llm4sVersion)
+        .exclude("com.alphacephei", "vosk")
+        .exclude("net.java.dev.jna", "jna"),
       
       // Cask for web server
       "com.lihaoyi" %% "cask" % "0.11.3",

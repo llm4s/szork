@@ -1,7 +1,7 @@
 package org.llm4s.szork.debug
 
 import org.llm4s.szork.game._
-import org.llm4s.szork.api.{GameTheme, ArtStyle, SzorkConfig}
+import org.llm4s.szork.api.{AgentTracing, GameTheme, ArtStyle, SzorkConfig}
 import org.llm4s.szork.persistence.{GameMetadataHelper, StepData, StepPersistence}
 import org.slf4j.LoggerFactory
 import scala.util.{Try, Success, Failure}
@@ -48,11 +48,13 @@ object CreateAdventure {
           return
       }
       println("✓ LLM client initialized")
+      // Traced like the server (TRACING_MODE): the outline, then the opening turn
+      val tracing = AgentTracing.fromEnvironment
 
       // Generate adventure outline
       println(s"\nGenerating adventure outline for theme: '${config.theme}'...")
       val startTime = System.currentTimeMillis()
-      val outline: AdventureOutline = AdventureGenerator.generateAdventureOutline(config.theme, config.artStyle) match {
+      val outline: AdventureOutline = AdventureGenerator.generateAdventureOutline(config.theme, tracing) match {
         case Right(o) =>
           println(s"✓ Adventure outline generated: ${o.title}")
           o
@@ -72,7 +74,8 @@ object CreateAdventure {
         sessionId = sessionId,
         theme = Some(config.theme),
         artStyle = Some(config.artStyle),
-        adventureOutline = Some(outline)
+        adventureOutline = Some(outline),
+        tracing = tracing
       )
       println("✓ Game engine created")
 
@@ -145,6 +148,7 @@ object CreateAdventure {
       // Print summary
       DebugHelpers.printAdventureSummary(config.gameId, outline, initialScene)
 
+      tracing.foreach(_.shutdown())
       println("SUCCESS: Adventure created and ready for play!")
       println(s"Next step: Run user commands with RunUserStep")
       println(s"""Example: sbt "runMain org.llm4s.szork.debug.RunUserStep ${config.gameId} 1 'look around'" """)

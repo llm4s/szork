@@ -21,6 +21,19 @@ export interface LocationOutline {
   name: string;
   description: string;
   significance: string;
+  exits: ExitOutline[];
+  interactables: string[];
+  puzzles: string | null;
+  secrets: string | null;
+}
+
+/** An exit the designer planned: `state` is open, closed, locked, sealed or hidden. */
+export interface ExitOutline {
+  direction: string;
+  targetId: string;
+  description: string;
+  state: string;
+  obstacle: string | null;
 }
 
 export interface ItemOutline {

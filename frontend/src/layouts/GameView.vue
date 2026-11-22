@@ -53,6 +53,7 @@
               v-model="userInput"
               @keyup.enter="sendCommand"
               placeholder="Enter your command..."
+              :disabled="sessionTakenOver"
               variant="outlined"
               density="compact"
               hide-details
@@ -70,7 +71,7 @@
                       @touchstart.prevent="startRecording"
                       @touchend.prevent="stopRecording"
                       @touchcancel.prevent="stopRecording"
-                      :disabled="loading || !sttEnabled"
+                      :disabled="loading || !sttEnabled || sessionTakenOver"
                       class="audio-record-btn mr-1"
                       :class="{ recording: recording }"
                     >
@@ -86,7 +87,7 @@
                       color="primary"
                       variant="text"
                       icon="mdi-send"
-                      :disabled="!userInput.trim() || loading"
+                      :disabled="!userInput.trim() || loading || sessionTakenOver"
                       :loading="loading"
                     ></v-btn>
                   </template>
@@ -97,6 +98,14 @@
         </div>
       </v-col>
     </v-row>
+    <!-- Another tab or window loaded this game: this one stops playing it until the player takes it back -->
+    <v-snackbar :model-value="sessionTakenOver && gameStarted" color="warning" :timeout="-1" location="top">
+      This game is now being played in another tab or window.
+      <template v-slot:actions>
+        <v-btn variant="text" @click="takeBackSession">Play here</v-btn>
+        <v-btn variant="text" @click="backToSelection">Back to games</v-btn>
+      </template>
+    </v-snackbar>
     <v-snackbar v-model="errorSnackbar" color="error" :timeout="6000" location="top">
       {{ errorMessage }}
       <template v-slot:actions>
@@ -157,6 +166,8 @@ export default defineComponent({
       clearMessages,
       addLocalMessage,
       loadFailed,
+      sessionTakenOver,
+      takeBackSession,
       log: wsLog,
       errorSnackbar,
       errorMessage,
@@ -338,6 +349,11 @@ export default defineComponent({
       }
     };
 
+    // Another tab now plays this game: stop its music and narration here
+    watch(sessionTakenOver, (taken) => {
+      if (taken) stopAll();
+    });
+
     const sendCommand = async () => {
       const command = userInput.value.trim();
       // One command at a time, so responses cannot arrive out of order
@@ -446,6 +462,8 @@ export default defineComponent({
       imageEnabled,
       errorSnackbar,
       errorMessage,
+      sessionTakenOver,
+      takeBackSession,
     };
   },
 });

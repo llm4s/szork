@@ -152,10 +152,11 @@ describe("useWebSocketGame", () => {
     });
   });
 
-  it("waits for the response to a voice command and honours the image toggle", async () => {
+  it("waits for the response to a voice command and sends the image toggle", async () => {
     const game = await startedGame();
     await game.sendAudioCommand("YXVkaW8=", false);
     expect(game.awaitingResponse.value).toBe(true);
+    expect(latest().sentMessages()).toContainEqual({ type: "audioCommand", audio: "YXVkaW8=", imageGeneration: false });
 
     latest().receive("transcription", { text: "look" });
     expect(game.awaitingResponse.value).toBe(true);
@@ -163,16 +164,21 @@ describe("useWebSocketGame", () => {
       text: "A new room.",
       messageIndex: 4,
       command: "look",
-      hasImage: true,
+      hasImage: false,
       hasMusic: false,
     });
     expect(game.awaitingResponse.value).toBe(false);
 
     const response = game.messages.value[game.messages.value.length - 1];
-    expect(response.hasImage).toBe(false);
+    expect(response.text).toBe("A new room.");
     expect(response.imageLoading).toBe(false);
-    latest().receive("imageReady", { messageIndex: 4, image: "aW1n" });
-    expect(response.image).toBeUndefined();
+  });
+
+  it("asks for no image with a voice command when the session has images off", async () => {
+    const game = await startedGame();
+    game.imageEnabled.value = false;
+    await game.sendAudioCommand("YXVkaW8=");
+    expect(latest().sentMessages()).toContainEqual({ type: "audioCommand", audio: "YXVkaW8=", imageGeneration: false });
   });
 
   it("streams a response into one message, replaced by the final text", async () => {
@@ -291,6 +297,7 @@ describe("useWebSocketGame", () => {
         { role: "user", content: "look" },
         { role: "assistant", content: "It is dark." },
       ],
+      messageIndex: 3,
       currentScene: scene,
     });
 
@@ -302,5 +309,78 @@ describe("useWebSocketGame", () => {
     expect(game.messages.value[2].scene).toEqual(scene);
     expect(game.sessionId.value).toBe("sess-2");
     expect(game.loadFailed.value).toBeNull();
+  });
+
+  it("reloads when the response to the first command after loading was lost", async () => {
+    const game = useWebSocketGame();
+    const loading = game.loadGame("game-1");
+    latest().open();
+    await loading;
+    latest().receive("gameLoaded", {
+      ...flags,
+      sessionId: "sess-2",
+      gameId: "game-1",
+      messageIndex: 3,
+      conversation: [{ role: "assistant", content: "You are in a cave." }],
+    });
+    await game.sendCommand("go north");
+
+    latest().drop(); // streamComplete is sent now, and lost
+    await reconnect();
+    expect(latest().sentMessages()[0]).toEqual({ type: "resumeSession", sessionId: "sess-2" });
+    latest().receive("sessionResumed", { sessionId: "sess-2", gameId: "game-1", messageIndex: 5 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(game.isStreaming.value).toBe(false);
+    expect(latest().sentTypes()).toContain("loadGame");
+  });
+
+  it("stops playing and resuming a session another tab took over, until the player takes it back", async () => {
+    const game = await startedGame();
+    await game.sendCommand("go north");
+    latest().receive("sessionTakenOver", { sessionId: "sess-1", gameId: "game-1" });
+
+    expect(game.sessionTakenOver.value).toBe(true);
+    expect(game.isStreaming.value).toBe(false);
+    expect(game.gameId.value).toBe("game-1");
+
+    // Commands are not sent, and a reconnection does not take the session back
+    const sentBefore = latest().sent.length;
+    await game.sendCommand("look");
+    await game.sendAudioCommand("YXVkaW8=");
+    expect(latest().sent).toHaveLength(sentBefore);
+    latest().drop();
+    await reconnect();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(latest().sentTypes()).not.toContain("resumeSession");
+
+    // Taking it back loads the game again, with the features it had
+    game.takeBackSession();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(game.sessionTakenOver.value).toBe(false);
+    expect(latest().sentMessages()).toContainEqual({
+      type: "loadGame",
+      gameId: "game-1",
+      tts: false,
+      stt: true,
+      music: false,
+      image: true,
+    });
+    latest().receive("gameLoaded", {
+      ...flags,
+      sessionId: "sess-1",
+      gameId: "game-1",
+      messageIndex: 4,
+      conversation: [],
+    });
+    expect(game.sessionTakenOver.value).toBe(false);
+    expect(game.sessionId.value).toBe("sess-1");
+  });
+
+  it("ignores a takeover notice for a session it no longer plays", async () => {
+    const game = await startedGame();
+    latest().receive("sessionTakenOver", { sessionId: "sess-old", gameId: "game-0" });
+    expect(game.sessionTakenOver.value).toBe(false);
+    expect(game.sessionId.value).toBe("sess-1");
   });
 });

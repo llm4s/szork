@@ -9,7 +9,6 @@ import type { AdventureOutline } from "@/types/api";
 import type {
   SceneData,
   ConversationEntry,
-  GameInfo,
   FeatureRequest,
   SessionFeatureFlags,
   GameStartedMessage,
@@ -22,7 +21,6 @@ import type {
   ImageReadyMessage,
   MusicReadyMessage,
   MediaFailedMessage,
-  GamesListMessage,
   ErrorMessage,
 } from "@/types/WebSocketProtocol";
 
@@ -48,7 +46,6 @@ export function useWebSocketGame() {
   const isStreaming = ref(false);
   // True from sending a command (typed or spoken) until its response or an error arrives
   const awaitingResponse = ref(false);
-  const savedGames = ref<GameInfo[]>([]);
   const currentStreamingMessage = ref<GameMessage | null>(null);
   // Error toast state
   const errorSnackbar = ref(false);
@@ -249,10 +246,6 @@ export function useWebSocketGame() {
       }
     });
 
-    client.on<GamesListMessage>("gamesList", ({ data }) => {
-      savedGames.value = data.games;
-    });
-
     client.on<ErrorMessage>("error", ({ data }) => {
       // The session ended while we were away (e.g. the server restarted): load the game again
       if (data.details === SESSION_EXPIRED) {
@@ -326,11 +319,6 @@ export function useWebSocketGame() {
     wsClient.value.sendAudio(audioBase64);
   };
 
-  const getSavedGames = async () => {
-    await connect();
-    wsClient.value?.listGames();
-  };
-
   /** Forget the current game's messages and session (e.g. when returning to game selection). */
   const clearMessages = () => {
     endStreaming();
@@ -384,7 +372,6 @@ export function useWebSocketGame() {
     isConnected,
     isStreaming,
     awaitingResponse,
-    savedGames,
     ttsEnabled,
     sttEnabled,
     musicEnabled,
@@ -398,7 +385,6 @@ export function useWebSocketGame() {
     loadGame,
     sendCommand,
     sendAudioCommand,
-    getSavedGames,
     clearMessages,
     addLocalMessage,
     setScrollCallback,
@@ -409,5 +395,6 @@ export function useWebSocketGame() {
     // Error toast
     errorSnackbar,
     errorMessage,
+    showError,
   };
 }

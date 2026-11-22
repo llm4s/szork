@@ -240,8 +240,4 @@ export class WebSocketClient {
   sendAudio(audioBase64: string): void {
     this.send({ type: "audioCommand", audio: audioBase64 });
   }
-
-  listGames(): void {
-    this.send({ type: "listGames" });
-  }
 }

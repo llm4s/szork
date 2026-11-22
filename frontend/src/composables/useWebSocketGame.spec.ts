@@ -174,4 +174,133 @@ describe("useWebSocketGame", () => {
     latest().receive("imageReady", { messageIndex: 4, image: "aW1n" });
     expect(response.image).toBeUndefined();
   });
+
+  it("streams a response into one message, replaced by the final text", async () => {
+    const game = await startedGame();
+    await game.sendCommand("go north");
+    expect(latest().sentMessages()).toContainEqual({
+      type: "streamCommand",
+      command: "go north",
+      imageGeneration: true,
+    });
+
+    latest().receive("textChunk", { text: "You go ", chunkNumber: 1 });
+    latest().receive("textChunk", { text: "nor", chunkNumber: 2 });
+    const streaming = game.messages.value[game.messages.value.length - 1];
+    expect(streaming.text).toBe("You go nor");
+    expect(streaming.isStreaming).toBe(true);
+
+    latest().receive("streamComplete", {
+      text: "You go north.",
+      messageIndex: 4,
+      totalChunks: 2,
+      duration: 10,
+      hasImage: true,
+      hasMusic: false,
+    });
+    const response = game.messages.value[game.messages.value.length - 1];
+    expect(game.messages.value.map((m) => m.text)).toEqual(["You are in a cave.", "go north", "You go north."]);
+    expect(response.isStreaming).toBe(false);
+    expect(response.messageIndex).toBe(4);
+    expect(response.imageLoading).toBe(true);
+    expect(game.isStreaming.value).toBe(false);
+  });
+
+  it("attaches media to the response with the same message index", async () => {
+    const game = await startedGame();
+    latest().receive("commandResponse", {
+      text: "Room A",
+      messageIndex: 4,
+      command: "a",
+      hasImage: true,
+      hasMusic: false,
+    });
+    latest().receive("commandResponse", {
+      text: "Room B",
+      messageIndex: 6,
+      command: "b",
+      hasImage: true,
+      hasMusic: false,
+    });
+    const [, roomA, roomB] = game.messages.value;
+
+    // Out of order: the later response's image arrives first, the earlier one's fails
+    latest().receive("imageReady", { messageIndex: 6, image: "Yg==" });
+    latest().receive("mediaFailed", { messageIndex: 4, kind: "image" });
+
+    expect(roomB.image).toBe("Yg==");
+    expect(roomB.imageLoading).toBe(false);
+    expect(roomA.image).toBeUndefined();
+    expect(roomA.imageLoading).toBe(false);
+  });
+
+  it("plays music and narration through the callbacks", async () => {
+    const game = useWebSocketGame();
+    const music = vi.fn();
+    const narration = vi.fn();
+    game.setPlayBackgroundMusicCallback(music);
+    game.setPlayAudioNarrationCallback(narration);
+    const connecting = game.connect();
+    latest().open();
+    await connecting;
+
+    latest().receive("commandResponse", {
+      text: "Hello",
+      messageIndex: 2,
+      command: "hi",
+      audio: "c3BlZWNo",
+      hasImage: false,
+      hasMusic: true,
+    });
+    latest().receive("musicReady", { messageIndex: 2, music: "bXVzaWM=", mood: "calm" });
+
+    expect(narration).toHaveBeenCalledWith("c3BlZWNo");
+    expect(music).toHaveBeenCalledWith("bXVzaWM=", "calm");
+  });
+
+  it("reports a game that cannot be loaded through loadFailed, not as a message", async () => {
+    const game = useWebSocketGame();
+    const loading = game.loadGame("missing");
+    latest().open();
+    await loading;
+    latest().receive("error", { error: "Game not found", details: "missing" });
+
+    expect(game.loadFailed.value).toBe("Game not found: missing");
+    expect(game.messages.value).toEqual([]);
+    expect(game.errorSnackbar.value).toBe(true);
+
+    // A later error is shown in the game, not as a failed load
+    game.loadFailed.value = null;
+    latest().receive("error", { error: "Command failed" });
+    expect(game.loadFailed.value).toBeNull();
+    expect(game.messages.value[0].text).toBe("Error: Command failed");
+  });
+
+  it("shows a loaded game's history and current scene", async () => {
+    const game = useWebSocketGame();
+    const loading = game.loadGame("game-1");
+    latest().open();
+    await loading;
+    const scene = { locationName: "Cave", exits: [], items: [], npcs: [] };
+    latest().receive("gameLoaded", {
+      ...flags,
+      sessionId: "sess-2",
+      gameId: "game-1",
+      conversation: [
+        { role: "assistant", content: "You are in a cave." },
+        { role: "user", content: "look" },
+        { role: "assistant", content: "It is dark." },
+      ],
+      currentScene: scene,
+    });
+
+    expect(game.messages.value.map((m) => [m.isUser, m.text])).toEqual([
+      [false, "You are in a cave."],
+      [true, "look"],
+      [false, "It is dark."],
+    ]);
+    expect(game.messages.value[2].scene).toEqual(scene);
+    expect(game.sessionId.value).toBe("sess-2");
+    expect(game.loadFailed.value).toBeNull();
+  });
 });

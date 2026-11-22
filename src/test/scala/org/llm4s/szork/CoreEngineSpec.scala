@@ -21,12 +21,11 @@ class CoreEngineSpec extends AnyFunSuite with Matchers {
     val s1 = CoreEngine.applyScene(s0, scene)
     s1.currentScene.map(_.locationId) shouldBe Some("room1")
     s1.visitedLocations should contain("room1")
-    s1.conversationHistory.last.content should include("A small room")
+    s1.conversationHistory shouldBe empty // narration is recorded once, by trackAssistant
   }
 
-  test("shouldGenerate helpers react to content") {
-    val s0 = CoreState()
-    CoreEngine.shouldGenerateSceneImage(s0, "you enter a hall") shouldBe true
-    CoreEngine.shouldGenerateBackgroundMusic(s0, "a battle begins") shouldBe true
+  test("trackUser and trackAssistant record the transcript in order") {
+    val s = CoreEngine.trackAssistant(CoreEngine.trackUser(CoreState(), "look"), "A small room.")
+    s.conversationHistory.map(e => (e.role, e.content)) shouldBe List("user" -> "look", "assistant" -> "A small room.")
   }
 }

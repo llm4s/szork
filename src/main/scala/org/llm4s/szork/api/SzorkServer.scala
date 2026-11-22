@@ -551,7 +551,12 @@ object SzorkServer extends cask.Main with cask.Routes {
             )
         }
         val engine =
-          GameEngine.create(llmClient, sessionId, gameState.theme.map(_.prompt), gameState.artStyle.map(_.id), None)
+          GameEngine.create(
+            llmClient,
+            sessionId,
+            gameState.theme.map(_.prompt),
+            gameState.artStyle.map(_.id),
+            gameState.adventureOutline)
 
         // Restore the game state
         engine.restoreGameState(gameState)

@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.llm4s.llmconnect.model._
 import org.llm4s.types.Result
 import org.llm4s.szork.stubs.FakeLLMClient
-import org.llm4s.szork.game.{GameConstants, GameEngine, GameTools}
+import org.llm4s.szork.game.{GameConstants, GameEngine}
 
 /** Covers the GameEngine's use of the llm4s Agent: conversation threads, streaming turns, and restoring a saved
   * conversation onto a new thread.
@@ -91,7 +91,7 @@ class GameEngineAgentSpec extends AnyFunSuite with Matchers {
 
     engine.processCommand("take lantern", generateAudio = false).isRight shouldBe true
 
-    GameTools.getInventory should contain("brass lantern")
+    engine.getInventory should contain("brass lantern")
     val toolResults = engine.getMessages.collect { case t: ToolMessage => t }
     toolResults.map(_.toolCallId) shouldBe Vector("call-1")
     toolResults.head.content should include("brass lantern")

@@ -391,6 +391,7 @@ export default defineComponent({
     };
     
     const generateAdventureOutline = async (themeData: any, styleData: any) => {
+      let statusInterval: ReturnType<typeof setInterval> | undefined;
       try {
         // Update status messages during generation
         const statusMessages = [
@@ -403,7 +404,7 @@ export default defineComponent({
         ];
         
         let messageIndex = 0;
-        const statusInterval = setInterval(() => {
+        statusInterval = setInterval(() => {
           messageIndex = (messageIndex + 1) % statusMessages.length;
           generationStatus.value = statusMessages[messageIndex];
           generationProgress.value = Math.min(generationProgress.value + 15, 90);
@@ -434,6 +435,9 @@ export default defineComponent({
         generationProgress.value = 100;
         await new Promise(resolve => setTimeout(resolve, 1000));
         return null; // Will proceed without outline
+      } finally {
+        // Stop the progress messages whether generation succeeded or failed
+        if (statusInterval) clearInterval(statusInterval);
       }
     };
     

@@ -213,6 +213,12 @@
         </div>
       </v-col>
     </v-row>
+    <v-snackbar v-model="errorSnackbar" color="error" :timeout="6000" location="top">
+      {{ errorMessage }}
+      <template v-slot:actions>
+        <v-btn variant="text" @click="errorSnackbar = false">Close</v-btn>
+      </template>
+    </v-snackbar>
   </v-container>
 </template>
 
@@ -279,6 +285,9 @@ export default defineComponent({
       setScrollCallback,
       setPlayBackgroundMusicCallback,
       setPlayAudioNarrationCallback,
+      clearMessages,
+      addLocalMessage,
+      loadFailed,
       log: wsLog,
       errorSnackbar,
       errorMessage
@@ -306,6 +315,9 @@ export default defineComponent({
     const currentMusicMood = ref<string | null>(null);
     const currentNarration = ref<HTMLAudioElement | null>(null);
     const imageGenerationEnabled = ref(true);
+    const speechInputRequested = ref(true);
+    // The microphone stream while recording, released when recording stops or the view unmounts
+    let micStream: MediaStream | null = null;
     
     // Map WebSocket messages to the expected format for the UI
     const messages = computed(() => {
@@ -379,9 +391,7 @@ export default defineComponent({
       gameStarted.value = false;
       setupStarted.value = false;
       selectionStarted.value = true;
-      sessionId.value = null;
-      currentGameId.value = null;
-      messages.value.length = 0; // Clear messages array without reassigning
+      clearMessages();
       adventureTitle.value = "Generative Adventuring";
       
       // Clear the game ID from the URL if present
@@ -408,7 +418,7 @@ export default defineComponent({
         if (typeof config.sessionFeatures.image === 'boolean') imageGenerationEnabled.value = config.sessionFeatures.image;
         if (typeof config.sessionFeatures.music === 'boolean') backgroundMusicEnabled.value = config.sessionFeatures.music;
         if (typeof config.sessionFeatures.tts === 'boolean') narrationEnabled.value = config.sessionFeatures.tts;
-        // STT is used to disable mic in UI, handled in View
+        if (typeof config.sessionFeatures.stt === 'boolean') speechInputRequested.value = config.sessionFeatures.stt;
       }
       // Set the adventure title if available
       if (config.outline && config.outline.title) {
@@ -422,46 +432,39 @@ export default defineComponent({
     };
 
     const loadGame = async (gameId: string) => {
-      try {
-        log(`Loading game: ${gameId}`);
-        
-        // Clean up any existing audio when loading a new game
-        if (currentBackgroundMusic.value) {
-          currentBackgroundMusic.value.pause();
-          currentBackgroundMusic.value.src = "";
-          currentBackgroundMusic.value = null;
-          currentMusicMood.value = null;
-        }
-        
-        // Load game via WebSocket
-        await wsLoadGame(gameId);
-        
-        // WebSocket will handle loading the game
-        // The gameLoaded event will update messages and state
-        gameStarted.value = true;
-        
-        // Update URL if not already there
-        if (!route.params.gameId || route.params.gameId !== gameId) {
-          router.push(`/game/${gameId}`);
-        }
-        
-        // Scroll to bottom after loading
-        await nextTick();
-        await scrollToBottom();
-        
-      } catch (error) {
-        log("Error loading game:", error);
-        // Show error message and redirect to home
-        alert(`Unable to load saved game.\n\nThe game may have been deleted or corrupted.\n\nYou will be redirected to the main screen.`);
-        // Reset to initial state
-        gameStarted.value = false;
-        setupStarted.value = false;
-        selectionStarted.value = false;
-        // Clear the game ID from the URL
-        router.push('/');
+      log(`Loading game: ${gameId}`);
+      stopBackgroundMusic();
+      // The server answers with gameLoaded, or an error that sets loadFailed
+      await wsLoadGame(gameId);
+      gameStarted.value = true;
+      if (route.params.gameId !== gameId) router.push(`/game/${gameId}`);
+      await scrollToBottom();
+    };
+
+    // A game that cannot be loaded (deleted, or an invalid link) returns to the start screen
+    watch(loadFailed, (failure) => {
+      if (!failure) return;
+      log("Error loading game:", failure);
+      gameStarted.value = false;
+      setupStarted.value = false;
+      selectionStarted.value = false;
+      router.push('/');
+    });
+
+    // Once a new game has an id, put it in the URL so a refresh returns to it
+    watch(currentGameId, (id) => {
+      if (id && gameStarted.value && route.params.gameId !== id) router.replace(`/game/${id}`);
+    });
+
+    const stopBackgroundMusic = () => {
+      if (currentBackgroundMusic.value) {
+        currentBackgroundMusic.value.pause();
+        currentBackgroundMusic.value.src = "";
+        currentBackgroundMusic.value = null;
+        currentMusicMood.value = null;
       }
     };
-    
+
     const startGame = async () => {
       try {
         log("Starting game with theme:", adventureTheme.value, "and style:", artStyle.value, "and outline:", adventureOutline.value);
@@ -477,15 +480,16 @@ export default defineComponent({
         // Start game via WebSocket
         const theme = adventureTheme.value?.name || adventureTheme.value;
         const artStyleValue = artStyle.value?.id || artStyle.value;
-        await wsStartNewGame(theme, artStyleValue, imageGenerationEnabled.value, adventureOutline.value);
+        await wsStartNewGame(theme, artStyleValue, imageGenerationEnabled.value, adventureOutline.value, {
+          tts: narrationEnabled.value,
+          music: backgroundMusicEnabled.value,
+          stt: speechInputRequested.value,
+        });
         
         // Set the adventure title from the outline if available
         if (adventureOutline.value && adventureOutline.value.title) {
           adventureTitle.value = adventureOutline.value.title;
         }
-        
-        // Update URL to include game ID once we have it
-        // The gameStarted event will provide the game ID
         
       } catch (error) {
         log("Error starting game:", error);
@@ -506,7 +510,7 @@ export default defineComponent({
       try {
         await scrollToBottom();
         // Send command via WebSocket (streaming is default)
-        await wsSendCommand(command, true);
+        await wsSendCommand(command, true, imageGenerationEnabled.value);
         await scrollToBottom();
       } catch (error) {
         log("Error sending command:", error);
@@ -529,6 +533,7 @@ export default defineComponent({
       
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micStream = stream;
         
         // Try to use a format that's more compatible with Whisper
         let options = {};
@@ -564,8 +569,7 @@ export default defineComponent({
           log("Recording stopped, mime type:", mimeType, "size:", audioBlob.size);
           await sendAudioCommand(audioBlob);
           
-          // Stop all tracks
-          stream.getTracks().forEach(track => track.stop());
+          releaseMicrophone();
         };
 
         mediaRecorder.value.start();
@@ -573,11 +577,13 @@ export default defineComponent({
         log("Recording started successfully");
       } catch (error) {
         log("Error accessing microphone:", error);
-        messages.value.push({
-          text: "Error: Could not access microphone. Please check permissions.",
-          type: "system",
-        });
+        addLocalMessage("Error: Could not access microphone. Please check permissions.");
       }
+    };
+
+    const releaseMicrophone = () => {
+      micStream?.getTracks().forEach(track => track.stop());
+      micStream = null;
     };
 
     const stopRecording = () => {
@@ -593,12 +599,7 @@ export default defineComponent({
       // Check if audio clip has content
       log("Audio blob size:", audioBlob.size, "bytes");
       if (audioBlob.size === 0) {
-        // Add error message locally
-        wsMessages.value.push({
-          text: "Please hold the record button to record audio",
-          isUser: false,
-          timestamp: new Date()
-        });
+        addLocalMessage("Please hold the record button to record audio");
         return;
       }
 
@@ -619,22 +620,12 @@ export default defineComponent({
         // Send via WebSocket - the transcription and response will come via WebSocket events
         await wsSendAudioCommand(base64Audio);
       } catch (error) {
-        // Add error message locally
-        wsMessages.value.push({
-          text: "Error processing audio. Please try again.",
-          isUser: false,
-          timestamp: new Date()
-        });
+        addLocalMessage("Error processing audio. Please try again.");
         log("Error sending audio:", error);
       } finally {
         await scrollToBottom();
       }
     };
-
-    // Image and music polling are handled by WebSocket events now
-    // These functions are kept as stubs for backward compatibility
-    const pollForImage = () => { /* deprecated - handled by WebSocket */ };
-    const pollForMusic = () => { /* deprecated - handled by WebSocket */ };
 
     const playAudioNarration = (audioBase64: string) => {
       log(`[${sessionId.value || 'no-session'}] playAudioNarration called, narration enabled:`, narrationEnabled.value);
@@ -831,7 +822,9 @@ export default defineComponent({
     });
 
     onUnmounted(() => {
-      log("Component unmounting, cleaning up audio");
+      log("Component unmounting, cleaning up audio and microphone");
+      if (mediaRecorder.value && recording.value) mediaRecorder.value.stop();
+      releaseMicrophone();
       // Clean up background music
       if (currentBackgroundMusic.value) {
         currentBackgroundMusic.value.pause();

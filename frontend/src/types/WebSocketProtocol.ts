@@ -1,76 +1,85 @@
 /**
  * TypeScript types matching the Scala WebSocket protocol
+ * (src/main/scala/org/llm4s/szork/websocket/protocol/WebSocketProtocol.scala).
+ *
+ * Client messages are sent as `{ type, ...fields }`; server messages arrive as `{ type, data: {...} }`.
+ * Server fields marked optional are omitted when absent; all others are always sent.
  */
 
 // ============= Client Messages (sent to server) =============
 
-export interface NewGameRequest {
-  type: 'newGame';
-  theme?: string;
-  artStyle?: string;
-  imageGeneration?: boolean;
-  adventureOutline?: any;
+export interface FeatureRequest {
   tts?: boolean;
   stt?: boolean;
   music?: boolean;
   image?: boolean;
 }
 
-export interface LoadGameRequest {
-  type: 'loadGame';
+export interface NewGameRequest extends FeatureRequest {
+  type: "newGame";
+  theme?: string;
+  artStyle?: string;
+  imageGeneration?: boolean;
+  adventureOutline?: any;
+}
+
+export interface LoadGameRequest extends FeatureRequest {
+  type: "loadGame";
   gameId: string;
 }
 
+/** Re-attach to a session after reconnecting; answered by sessionResumed or an error with details SESSION_EXPIRED. */
+export interface ResumeSessionRequest {
+  type: "resumeSession";
+  sessionId: string;
+}
+
 export interface CommandRequest {
-  type: 'command';
+  type: "command";
   command: string;
 }
 
 export interface StreamCommandRequest {
-  type: 'streamCommand';
+  type: "streamCommand";
   command: string;
   imageGeneration?: boolean;
 }
 
 export interface AudioCommandRequest {
-  type: 'audioCommand';
+  type: "audioCommand";
   audio: string; // Base64 encoded audio
 }
 
-export interface GetImageRequest {
-  type: 'getImage';
-  messageIndex: number;
-}
-
-export interface GetMusicRequest {
-  type: 'getMusic';
-  messageIndex: number;
-}
-
 export interface ListGamesRequest {
-  type: 'listGames';
+  type: "listGames";
 }
 
 export interface PingMessage {
-  type: 'ping';
+  type: "ping";
   timestamp?: number;
 }
 
-export type ClientMessage = 
-  | NewGameRequest 
-  | LoadGameRequest 
-  | CommandRequest 
-  | StreamCommandRequest 
-  | AudioCommandRequest 
-  | GetImageRequest 
-  | GetMusicRequest 
-  | ListGamesRequest 
+export type ClientMessage =
+  | NewGameRequest
+  | LoadGameRequest
+  | ResumeSessionRequest
+  | CommandRequest
+  | StreamCommandRequest
+  | AudioCommandRequest
+  | ListGamesRequest
   | PingMessage;
 
 // ============= Server Messages (received from server) =============
 
+export interface SessionFeatureFlags {
+  ttsEnabled: boolean;
+  sttEnabled: boolean;
+  imageEnabled: boolean;
+  musicEnabled: boolean;
+}
+
 export interface ConnectedMessage {
-  type: 'connected';
+  type: "connected";
   data: {
     message: string;
     version: string;
@@ -79,26 +88,22 @@ export interface ConnectedMessage {
 }
 
 export interface GameStartedMessage {
-  type: 'gameStarted';
-  data: {
+  type: "gameStarted";
+  data: SessionFeatureFlags & {
     sessionId: string;
     gameId: string;
     text: string;
     messageIndex: number;
     scene?: SceneData;
     audio?: string;
-    hasImage?: boolean;
-    hasMusic?: boolean;
-    ttsEnabled?: boolean;
-    sttEnabled?: boolean;
-    imageEnabled?: boolean;
-    musicEnabled?: boolean;
+    hasImage: boolean;
+    hasMusic: boolean;
   };
 }
 
 export interface GameLoadedMessage {
-  type: 'gameLoaded';
-  data: {
+  type: "gameLoaded";
+  data: SessionFeatureFlags & {
     sessionId: string;
     gameId: string;
     conversation: ConversationEntry[];
@@ -107,21 +112,30 @@ export interface GameLoadedMessage {
   };
 }
 
+export interface SessionResumedMessage {
+  type: "sessionResumed";
+  data: {
+    sessionId: string;
+    gameId: string;
+    messageIndex: number;
+  };
+}
+
 export interface CommandResponseMessage {
-  type: 'commandResponse';
+  type: "commandResponse";
   data: {
     text: string;
     messageIndex: number;
     command: string;
     scene?: SceneData;
     audio?: string;
-    hasImage?: boolean;
-    hasMusic?: boolean;
+    hasImage: boolean;
+    hasMusic: boolean;
   };
 }
 
 export interface TextChunkMessage {
-  type: 'textChunk';
+  type: "textChunk";
   data: {
     text: string;
     chunkNumber: number;
@@ -129,27 +143,27 @@ export interface TextChunkMessage {
 }
 
 export interface StreamCompleteMessage {
-  type: 'streamComplete';
+  type: "streamComplete";
   data: {
     messageIndex: number;
     totalChunks: number;
     duration: number;
     scene?: SceneData;
     audio?: string;
-    hasImage?: boolean;
-    hasMusic?: boolean;
+    hasImage: boolean;
+    hasMusic: boolean;
   };
 }
 
 export interface TranscriptionMessage {
-  type: 'transcription';
+  type: "transcription";
   data: {
     text: string;
   };
 }
 
 export interface ImageReadyMessage {
-  type: 'imageReady';
+  type: "imageReady";
   data: {
     messageIndex: number;
     image: string; // Base64 encoded image
@@ -157,7 +171,7 @@ export interface ImageReadyMessage {
 }
 
 export interface MusicReadyMessage {
-  type: 'musicReady';
+  type: "musicReady";
   data: {
     messageIndex: number;
     music: string; // Base64 encoded audio
@@ -165,61 +179,54 @@ export interface MusicReadyMessage {
   };
 }
 
-export interface ImageDataMessage {
-  type: 'imageData';
+/** Media announced with hasImage/hasMusic could not be produced. */
+export interface MediaFailedMessage {
+  type: "mediaFailed";
   data: {
     messageIndex: number;
-    image: string;
-    status: string;
-  };
-}
-
-export interface MusicDataMessage {
-  type: 'musicData';
-  data: {
-    messageIndex: number;
-    music: string;
-    mood: string;
-    status: string;
+    kind: "image" | "music";
   };
 }
 
 export interface GamesListMessage {
-  type: 'gamesList';
+  type: "gamesList";
   data: {
     games: GameInfo[];
   };
 }
 
 export interface ErrorMessage {
-  type: 'error';
+  type: "error";
   data: {
     error: string;
     details?: string;
   };
 }
 
+/** `details` of the error answering resumeSession for a session that no longer exists. */
+export const SESSION_EXPIRED = "SESSION_EXPIRED";
+
 export interface PongMessage {
-  type: 'pong';
+  type: "pong";
   data: {
     timestamp: number;
   };
 }
 
-export type ServerMessage = 
-  | ConnectedMessage 
-  | GameStartedMessage 
-  | GameLoadedMessage 
-  | CommandResponseMessage 
-  | TextChunkMessage 
-  | StreamCompleteMessage 
-  | TranscriptionMessage 
-  | ImageReadyMessage 
-  | MusicReadyMessage 
-  | ImageDataMessage 
-  | MusicDataMessage 
-  | GamesListMessage 
-  | ErrorMessage 
+export type ServerMessage =
+  | ConnectedMessage
+  | GameStartedMessage
+  | GameLoadedMessage
+  | SessionResumedMessage
+  | CommandResponseMessage
+  | TextChunkMessage
+  | StreamCompleteMessage
+  | TranscriptionMessage
+  | ImageReadyMessage
+  | MusicReadyMessage
+  | MediaFailedMessage
+  | GamesListMessage
+  | ErrorMessage
   | PongMessage;
 
 // ============= Data Types =============
@@ -227,8 +234,8 @@ export type ServerMessage =
 export interface SceneData {
   locationName: string;
   exits: ExitData[];
-  items?: string[];
-  npcs?: string[];
+  items: string[];
+  npcs: string[];
 }
 
 export interface ExitData {

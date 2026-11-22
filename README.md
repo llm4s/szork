@@ -31,13 +31,13 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Java 17+
-- Scala 2.13
-- sbt 1.8+
-- Node.js 18+ (for frontend)
-- API Keys for:
-  - OpenAI (GPT-4 for DM, DALL-E for images, Whisper for speech)
-  - OR Anthropic (Claude for DM)
+- Java 21+
+- sbt 1.12+ (Scala 3.8 is fetched by sbt)
+- Node.js 22+ (for the frontend)
+- API keys for:
+  - OpenAI (Dungeon Master, DALL-E images, TTS narration and Whisper voice input)
+  - and/or Anthropic (Claude as the Dungeon Master)
+  - optionally Replicate (music) or HuggingFace (images)
 
 ### Environment Setup
 
@@ -75,20 +75,20 @@ Open your browser to http://localhost:3090
 
 ### API / Protocol
 
-- Primary interface: WebSocket `ws://localhost:9002` (typed JSON messages).
-- Selected HTTP endpoints remain for utility:
+- Gameplay: WebSocket on port 9002 (typed JSON messages; the Vite dev server proxies `/ws` to it). New and loaded games, commands (streamed), voice commands, and image/music notifications all go through it. A client that reconnects sends `resumeSession` to carry on its game.
+- HTTP endpoints (port 8090):
   - `GET /api/health` – health check
   - `GET /api/feature-flags` – capability discovery (LLM/image/music/tts/stt availability)
-  - `GET /api/games`, `GET /api/game/list` – list saved games
-  - `POST /api/game/save/:sessionId`, `GET /api/game/load/:gameId` – persistence helpers
+  - `GET /api/games` – list saved games; `DELETE /api/game/:gameId` – delete one
+  - `POST /api/game/validate-theme`, `POST /api/game/generate-adventure` – adventure setup (JSON bodies)
 
-See `frontend/src/types/WebSocketProtocol.ts` for the client protocol and `src/main/scala/org/llm4s/szork/protocol/WebSocketProtocol.scala` for server types.
+See `frontend/src/types/WebSocketProtocol.ts` for the client protocol and `src/main/scala/org/llm4s/szork/websocket/protocol/WebSocketProtocol.scala` for the server types.
 
 ## 🏗️ Architecture
 
 ### Technology Stack
-- **Backend**: Scala 2.13 with Cask web framework
-- **AI Integration**: LLM4S 0.6 (`llm4s-agent`, `llm4s-openai`, `llm4s-anthropic`, `llm4s-image`) for LLM orchestration
+- **Backend**: Scala 3 with the Cask web framework and Java-WebSocket
+- **AI Integration**: LLM4S 0.6 — `llm4s-agent` (the Dungeon Master agent: tools, threads, streaming, structured output, step limit, tracing), `llm4s-openai` / `llm4s-anthropic` (providers), `llm4s-image` (scene art), `llm4s-speech` (narration and voice input), `llm4s-observability` (Langfuse tracing)
 - **Frontend**: Vue 3 + Vuetify 3 + TypeScript
 - **Real-time**: WebSockets for streaming responses
 - **Build Tool**: sbt with hot reload support
@@ -98,16 +98,19 @@ See `frontend/src/types/WebSocketProtocol.ts` for the client protocol and `src/m
 ```
 szork/
 ├── src/main/scala/org/llm4s/szork/
-│   ├── SzorkServer.scala         # Main server with all endpoints
-│   ├── GameEngine.scala          # Core game logic; runs the llm4s Agent (threads, streaming events)
-│   ├── GameTools.scala           # Tool definitions for the AI agent
-│   ├── ImageGeneration.scala     # AI image generation
-│   ├── TextToSpeech.scala        # TTS integration
-│   ├── MusicGeneration.scala     # Dynamic music generation
-│   └── GamePersistence.scala     # Save/load game state
-├── frontend/                      # Vue.js web interface
-└── talk/                         # Presentation materials
+│   ├── api/          # SzorkServer (HTTP), config, sessions, capabilities, engine factory, tracing
+│   ├── websocket/    # TypedWebSocketServer and the WebSocket protocol
+│   ├── game/         # GameEngine (the llm4s Dungeon Master agent), tools, prompts, output schema, adventure outlines
+│   ├── media/        # Image, music, text-to-speech and speech-to-text, media cache
+│   ├── persistence/  # Step-based save/load
+│   ├── streaming/    # Narration extraction from the streamed JSON answer
+│   └── debug/        # CLI tools to create and step through games
+├── frontend/         # Vue 3 / Vuetify web interface
+└── talk/             # Presentation materials
 ```
+
+### How a turn works
+The game is one llm4s agent **thread**: each command is the next turn on it. The Dungeon Master may call the inventory tools, then answers with a JSON object matching `DungeonMasterOutput.schema` (llm4s validates it and asks the model to correct an invalid answer). Its `narrationText` streams to the player as it is written; the scene drives image and music generation. Each turn is saved as a step under `szork-saves/`.
 
 ## 🛠️ Development
 
@@ -135,27 +138,35 @@ The server exposes capabilities and allows per‑session overrides.
   - `GET /api/feature-flags` → `{ llm, image, music, tts, stt }`
   - The selection screen shows capability chips from this endpoint.
 - WebSocket protocol (per‑session):
-  - Client → Server `newGame` (optional overrides): `{ tts?: boolean, stt?: boolean, music?: boolean, imageGeneration?: boolean }`
-  - Server → Client `gameStarted` (effective flags): `{ ttsEnabled, sttEnabled, imageEnabled, musicEnabled }`
+  - Client → Server `newGame` / `loadGame` (optional overrides): `{ tts?: boolean, stt?: boolean, music?: boolean, image?: boolean }`
+  - Server → Client `gameStarted` / `gameLoaded` (effective flags): `{ ttsEnabled, sttEnabled, imageEnabled, musicEnabled }` — a request is limited to what the server can provide
 - UI behavior:
   - When a capability is disabled by server, related controls are disabled (e.g., mic button when STT is off, TTS/mute toggle when TTS is off, image/music toggles when disabled).
-  - Validation errors from server are surfaced as a toast and also appear in the chat stream.
+  - Server errors are shown as a toast and also appear in the chat stream.
 
 ### Configuration Options
 
-The game supports extensive configuration through environment variables:
+Set in `.env` (see `.env.example`) or the environment:
 
-- `SZORK_PORT` - Server port (default: 8090)
-- `SZORK_AUTO_SAVE` - Enable auto-save (default: true)
-- `SZORK_CACHE_ENABLED` - Enable caching (default: true)
-- `SZORK_IMAGE_GENERATION_ENABLED` - Enable image generation (default: true)
-- `SZORK_TTS_VOICE` - TTS voice selection
-- `SZORK_MUSIC_ENABLED` - Enable background music
+| Variable | Default | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `LLAMA_BASE_URL` | – | LLM provider credentials (OpenAI also powers DALL-E, TTS and Whisper) |
+| `SZORK_LLM_PROVIDER`, `SZORK_LLM_MODEL` | from the keys present; `gpt-4o` / `claude-sonnet-5-5` | Dungeon Master provider and model |
+| `SZORK_HOST`, `SZORK_PORT`, `SZORK_WS_PORT` | `127.0.0.1`, `8090`, `9002` | Where the HTTP and WebSocket servers listen |
+| `SZORK_ALLOWED_ORIGINS` | the dev frontend and this server | Browser origins allowed to open the WebSocket (comma-separated) |
+| `SZORK_IMAGE_GENERATION_ENABLED`, `SZORK_IMAGE_PROVIDER` | `true`, `none` | Scene images (`dalle3`, `dalle2`, `huggingface`, `huggingface-sdxl`, `local`) |
+| `SZORK_TTS_ENABLED`, `SZORK_TTS_VOICE`, `SZORK_TTS_MODEL` | `true`, `nova`, `tts-1` | Narration |
+| `SZORK_STT_ENABLED`, `SZORK_STT_MODEL` | `true`, `whisper-1` | Voice input |
+| `SZORK_MUSIC_ENABLED`, `REPLICATE_API_KEY` | `true`, – | Background music |
+| `SZORK_AUTO_SAVE`, `SZORK_SAVES_DIR` | `true`, `szork-saves` | Saving each turn |
+| `SZORK_CACHE_ENABLED`, `SZORK_CACHE_DIR`, `SZORK_CACHE_MAX_BYTES`, `SZORK_CACHE_TTL_MS` | `true`, `szork-cache`, 500MB, 7 days | Media cache |
+| `TRACING_MODE` (+ `LANGFUSE_*`) | off | Agent tracing: `console` or `langfuse` |
 
 ## 📚 Documentation
 
 - [Development Guide](docs/README_DEVELOPMENT.md) - Detailed development setup and build instructions
 - [SBT Revolver Guide](docs/README_SBT_REVOLVER.md) - Hot reload configuration with file watching
+- [Debug Tools](docs/DEBUG_TOOLS.md) - Create and step through games from the command line
 - [Frontend README](frontend/README.md) - Frontend development, features, and configuration
 - [Claude Code Guide](CLAUDE.md) - Guide for AI assistants working with this codebase
 - [Documentation Index](docs/README.md) - Complete documentation directory and archive

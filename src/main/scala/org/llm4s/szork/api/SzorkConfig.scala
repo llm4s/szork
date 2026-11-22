@@ -96,7 +96,7 @@ case class LLMConfig(
       case "openai" =>
         org.llm4s.llmconnect.config.OpenAIConfig(
           apiKey = Secret(apiKey),
-          model = model.getOrElse("gpt-4o"),
+          model = model.getOrElse(LLMConfig.DefaultOpenAIModel),
           organization = None,
           baseUrl = baseUrl.getOrElse("https://api.openai.com/v1"),
           contextWindow = 128000,
@@ -105,7 +105,7 @@ case class LLMConfig(
       case "anthropic" =>
         org.llm4s.llmconnect.config.AnthropicConfig(
           apiKey = Secret(apiKey),
-          model = model.getOrElse("claude-3-opus-20240229"),
+          model = model.getOrElse(LLMConfig.DefaultAnthropicModel),
           baseUrl = baseUrl.getOrElse("https://api.anthropic.com"),
           contextWindow = 200000,
           reserveCompletion = 4096
@@ -114,7 +114,7 @@ case class LLMConfig(
         // Use OpenAI-compatible config for local LLaMA servers
         org.llm4s.llmconnect.config.OpenAIConfig(
           apiKey = Secret(if (apiKey == "not-required") "sk-no-key-required" else apiKey),
-          model = model.getOrElse("llama2"),
+          model = model.getOrElse(LLMConfig.DefaultLlamaModel),
           organization = None,
           baseUrl = baseUrl.getOrElse("http://localhost:11434/v1"),
           contextWindow = 8192,
@@ -123,6 +123,14 @@ case class LLMConfig(
       case other =>
         throw new IllegalArgumentException(s"Unknown LLM provider: $other")
     }
+}
+
+object LLMConfig {
+
+  /** Models used when SZORK_LLM_MODEL is not set. */
+  val DefaultOpenAIModel = "gpt-4o"
+  val DefaultAnthropicModel = "claude-sonnet-5-5"
+  val DefaultLlamaModel = "llama3"
 }
 
 object SzorkConfig {
@@ -224,7 +232,7 @@ object SzorkConfig {
           LLMConfig(
             provider = "openai",
             apiKey = key,
-            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("gpt-4")),
+            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultOpenAIModel)),
             baseUrl = EnvLoader.get("OPENAI_BASE_URL")
           ))
 
@@ -233,7 +241,7 @@ object SzorkConfig {
           LLMConfig(
             provider = "anthropic",
             apiKey = key,
-            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("claude-3-opus-20240229")),
+            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultAnthropicModel)),
             baseUrl = EnvLoader.get("ANTHROPIC_BASE_URL")
           ))
 
@@ -242,7 +250,7 @@ object SzorkConfig {
           LLMConfig(
             provider = "llama",
             apiKey = "not-required",
-            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("llama2")),
+            model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultLlamaModel)),
             baseUrl = llamaUrl.orElse(Some("http://localhost:11434"))
           ))
 
@@ -253,7 +261,7 @@ object SzorkConfig {
             LLMConfig(
               provider = "openai",
               apiKey = key,
-              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("gpt-4")),
+              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultOpenAIModel)),
               baseUrl = EnvLoader.get("OPENAI_BASE_URL")
             ))
         } else if (anthropicKey.isDefined) {
@@ -261,7 +269,7 @@ object SzorkConfig {
             LLMConfig(
               provider = "anthropic",
               apiKey = key,
-              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("claude-3-opus-20240229")),
+              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultAnthropicModel)),
               baseUrl = EnvLoader.get("ANTHROPIC_BASE_URL")
             ))
         } else if (llamaUrl.isDefined) {
@@ -269,7 +277,7 @@ object SzorkConfig {
             LLMConfig(
               provider = "llama",
               apiKey = "not-required",
-              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some("llama2")),
+              model = EnvLoader.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultLlamaModel)),
               baseUrl = llamaUrl
             ))
         } else {

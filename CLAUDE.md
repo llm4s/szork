@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Szork is an AI-powered text adventure game built with Scala 3 and the LLM4S library. It combines classic text adventure gameplay with modern AI features including:
 
-- AI Dungeon Master using GPT-4/Claude for dynamic narratives
-- Voice control (Speech-to-Text) and narrated responses (Text-to-Speech) 
-- AI-generated scene artwork using DALL-E
+- AI Dungeon Master (an llm4s agent on OpenAI or Anthropic models) for dynamic narratives
+- Voice control (Speech-to-Text) and narrated responses (Text-to-Speech) via llm4s-speech
+- AI-generated scene artwork (DALL-E, HuggingFace or Stable Diffusion via llm4s-image) and background music (Replicate)
 - WebSocket-based real-time communication
 - Vue.js frontend with Vuetify UI components
 - Persistent game state with save/load functionality
@@ -37,129 +37,84 @@ cd frontend
 npm install       # Install dependencies
 npm run dev       # Start dev server (localhost:3090)
 npm run build     # Production build
-npm run lint      # Lint code
+npm run lint      # Lint and fix
+npm run lint:check # Lint without fixing (CI)
+npm test          # Vitest tests
 npm run format    # Format code
 ```
 
 ### Environment Setup
-Copy `.env` file with required API keys:
-- `OPENAI_API_KEY` - For GPT-4, DALL-E, Whisper
-- `ANTHROPIC_API_KEY` - For Claude models  
-- `LLM_MODEL` - Specify model (e.g., "openai/gpt-4o")
+Copy `.env.example` to `.env` and fill in keys (the README has the full variable table):
+- `OPENAI_API_KEY` - OpenAI models, DALL-E, TTS and Whisper
+- `ANTHROPIC_API_KEY` - Claude models
+- `SZORK_LLM_PROVIDER` / `SZORK_LLM_MODEL` - choose the Dungeon Master's provider and model
 
 ## Architecture Overview
 
 ### Core Components
 
-**SzorkServer.scala** - Main HTTP/WebSocket server using Cask framework
-- REST API endpoints for game management
-- WebSocket server on port 9002 for real-time communication
-- Session management and game persistence
-- Configuration validation and LLM client initialization
+**api/SzorkServer.scala** - HTTP server (Cask): feature flags, saved-game list/delete, theme validation and adventure
+generation. Starts the WebSocket server with separate thread pools for session work and media.
 
-**GameEngine.scala** - Core game logic and AI integration
-- LLM4S `Agent` (built with `Agent.builder`) with tool calling; the game conversation is one agent thread
-- Streaming (`agent.stream` + `AgentEvents.TextDelta`) and non-streaming turns over a shared `GraphRuntime`
-- Scene parsing and game state management
-- Audio/image generation coordination
-- Step-based persistence with complete conversation history tracking
-- Integration with CoreEngine for pure functional state management
+**websocket/TypedWebSocketServer.scala** - All gameplay. Each `GameSession` runs its work one task at a time on its own
+`SerialExecutor`; sessions survive reconnects (`resumeSession`) and expire when idle. Media generation runs on its own
+pool and reports `imageReady`/`musicReady` or `mediaFailed`. Refuses browser origins outside `SZORK_ALLOWED_ORIGINS`.
+`websocket/protocol/WebSocketProtocol.scala` defines the messages and the `{type, data}` wire format (`ProtocolCodec`);
+keep `frontend/src/types/WebSocketProtocol.ts` in sync.
 
-**TypedWebSocketServer.scala** - Type-safe WebSocket communication
-- Protocol-based message handling using case classes
-- Real-time streaming responses
-- Image/music generation coordination
-- Session-based connection management
+**game/GameEngine.scala** - The Dungeon Master: an llm4s `Agent` built with `Agent.builder` (tools, system prompt,
+`withOutput(DungeonMasterOutput.schema)`, `withMaxSteps`, optional `withTracing`). A game is one agent thread; streaming
+and blocking agents share one `GraphRuntime`. Restoring a save seeds a new thread with the saved conversation.
 
-**GameTools.scala** - Tool functions for LLM agent
-- Inventory management (list/add/remove items)
-- Tool registry for LLM4S integration
-- Persistent state for game saves/loads
+**game/DungeonMasterOutput.scala** - The structured output schema every turn answers with (narration first, then the
+scene or simple response). **game/PromptBuilder.scala** builds the system prompt; **game/GameTools.scala** builds the
+inventory tools per game over a `PlayerInventory`.
 
-### Data Models
-
-**GameModels.scala** defines the core game state structures:
-- `GameScene` - Complete scene with location, exits, items, NPCs
-- `SimpleResponse` - Simple actions without scene changes
-- `Exit` - Navigation between locations
-- Streaming response parsing for real-time gameplay
-
-**StepPersistence.scala** - Step-based persistence system
-- Records each user interaction as a discrete step
-- Stores conversation history, media cache, and game state
-- Enables save/load at any point with full state restoration
-- Step replay capability for debugging and analysis
-
-**CoreState.scala** - Pure functional game state
-- Immutable core game state representation
-- Separates business logic from side effects
-- Enables deterministic state transitions
-
-### Key Features
-
-**Streaming Architecture** - Text responses stream in real-time via WebSocket, with JSON parsing to extract narrative text separately from structured game data.
-
-**Tool Integration** - LLM agent has access to inventory management tools and must use them consistently for game state tracking.
-
-**Multi-modal Generation** - Coordinates text, audio, and image generation asynchronously with caching to improve performance.
-
-**Game Persistence** - Step-based persistence system that records each interaction as a discrete step, enabling:
-- Save/load at any point with full conversation history
-- Media cache preservation (images, music, audio)
-- Step replay for debugging and analysis
-- Backwards-compatible state restoration
+**persistence/** - Step-based saves under `szork-saves/<game-id>/step-NNNN/`; `GameDirs` validates game ids before they
+reach the filesystem. **media/** - image, music, speech and the media cache.
 
 ## Development Patterns
 
 ### Adding New Game Tools
-1. Define tool schema in `GameTools.scala`
-2. Implement handler function with `SafeParameterExtractor`
-3. Add tool to `allTools` sequence
-4. Update game prompt in `GameEngine.scala` to document tool usage
+1. Add the tool in `GameTools.forInventory` (or a sibling builder) with `ToolBuilder` and `SafeParameterExtractor`
+2. Keep per-game state in an object passed in, not in a global
+3. Document when to use it in `PromptBuilder.scala`
 
 ### WebSocket Message Handling
-1. Add case class to `protocol/WebSocketProtocol.scala`
-2. Add parsing logic in `TypedWebSocketServer.parseClientMessage()`
-3. Implement handler method in `TypedWebSocketServer.scala`
-4. Add logging with consistent format
+1. Add the case class to `websocket/protocol/WebSocketProtocol.scala` and its `ReadWriter.merge` list (client messages
+   also go in `ProtocolCodec`'s list); avoid default values on server-message fields (`macroRW` omits them)
+2. Handle it in `TypedWebSocketServer.dispatch`, running engine work with `runFor(session)`
+3. Mirror it in `frontend/src/types/WebSocketProtocol.ts`; cover it in `WebSocketServerSpec`
 
 ### Game State Extensions
-1. Update `GameState` case class in persistence layer
+1. Update `GameState` and `GameStateCodec` (old save formats do not need to be supported)
 2. Modify `getGameState()` and `restoreGameState()` in `GameEngine.scala`
-3. Handle backwards compatibility for existing saves
-4. Test save/load functionality thoroughly
+3. Test save/load round trips
 
 ## Configuration
 
-### Server Configuration
-- **Port**: Default 8090 (HTTP), 9002 (WebSocket)
-- **Hot Reload**: Enabled via sbt-revolver plugin
-- **File Watching**: Auto-restart on Scala file changes
-
-### LLM Configuration  
-- **Provider**: OpenAI or Anthropic via LLM4S
-- **Model**: Configurable via `LLM_MODEL` environment variable
-- **Tools**: Inventory management, structured response generation
-- **Streaming**: Support for real-time text generation
-
-### Frontend Configuration
-- **Framework**: Vue 3 + TypeScript + Vuetify 3
-- **Dev Server**: Vite on port 3090  
-- **WebSocket**: Connects to backend on port 9002
-- **Build**: TypeScript compilation with Vue SFC support
+- **Ports**: 8090 (HTTP), 9002 (WebSocket), bound to `127.0.0.1` unless `SZORK_HOST` is set
+- **Hot Reload**: sbt-revolver (`sbt "~szorkStart"`)
+- **Tracing**: `TRACING_MODE=console|langfuse` (off by default)
+- **Frontend**: Vue 3 + TypeScript + Vuetify 3, Vite dev server on port 3090 proxying `/api` and `/ws`
 
 ## Testing
 
 ```bash
-sbt test                           # Run all tests
-sbt "testOnly *GameEngineTest"     # Run specific test
-sbt "testOnly * -- -z inventory"  # Run tests matching pattern
+sbt test                                  # All backend tests (fake LLM, no network)
+sbt "testOnly *GameEngineAgentSpec"       # One suite
+sbt "testOnly * -- -z inventory"          # Tests whose name matches
+RUN_INTEGRATION=true sbt "testOnly *AdventureIntegrationSpec"  # Against a real LLM
+cd frontend && npm test                   # Frontend tests
 ```
+
+Test fakes answer in the structured output format via `stubs/DmAnswers`. CI compiles with `-Werror` and checks
+`scalafmtCheckAll`.
 
 ## Code Style
 
-- Follow Scala 3 conventions
-- Use consistent error handling with `Either[String, T]` 
+- Follow Scala 3 conventions; format with scalafmt
+- Errors as values: `SzorkResult[T] = Either[SzorkError, T]` (llm4s calls return `Result[T]`)
 - Comprehensive logging with structured messages
-- Immutable data structures where possible
+- Immutable data structures where possible; state shared across threads must be safe (see `SerialExecutor`)
 - Tool calling must be documented in LLM system prompts

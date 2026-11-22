@@ -203,6 +203,7 @@ object RunUserStep {
       throw new IllegalArgumentException(s"Invalid step number: ${args(1)}")
     )
     val command = args(2)
+    require(IdGenerator.isValidGameId(gameId), s"'$gameId' is not a game id (expected e.g. game-1a2b3c4d)")
 
     Config(gameId, step, command)
   }
@@ -212,24 +213,21 @@ object RunUserStep {
       |Usage: sbt "runMain org.llm4s.szork.debug.RunUserStep <game-id> <previous-step> <command>"
       |
       |Arguments:
-      |  <game-id>           Game identifier (required)
-      |  <previous-step>     Previous step number to load from (required)
-      |  <command>           User command to execute (required, must be quoted)
+      |  <game-id>           Game id, as printed by CreateAdventure (e.g. game-1a2b3c4d)
+      |  <previous-step>     Previous step number to load from
+      |  <command>           User command to execute (quoted)
       |
       |Examples:
-      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 1 'look around'"
-      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 2 'go north'"
-      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 3 'take lantern'"
-      |  sbt "runMain org.llm4s.szork.debug.RunUserStep test-game-1 4 'inventory'"
+      |  sbt "runMain org.llm4s.szork.debug.RunUserStep game-1a2b3c4d 1 'look around'"
+      |  sbt "runMain org.llm4s.szork.debug.RunUserStep game-1a2b3c4d 2 'take lantern'"
       |
       |Output:
       |  Creates szork-saves/<game-id>/step-<N+1>/ with:
       |    - metadata.json          : Step metadata
-      |    - state.json             : Updated game state
+      |    - state.json             : Updated game state, including the agent conversation
       |    - command.txt            : User command
       |    - response.txt           : Narration text
-      |    - response.json          : Structured response
-      |    - messages.json          : Agent messages
+      |    - response.json          : Structured response (if the step described a scene)
       |    - tool-calls.json        : Tool calls (if any)
       |""".stripMargin)
 }

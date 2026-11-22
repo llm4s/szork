@@ -67,7 +67,8 @@ object GameTools {
     val listInventoryTool = orThrow(
       ToolBuilder[Map[String, Any], InventoryListResult](
         "list_inventory",
-        "List all items currently in the player's inventory",
+        "List all items currently in the player's inventory. The current game state in the prompt already lists " +
+          "them; use this only when it says the inventory was cut short.",
         listInventorySchema
       ).withHandler { _ =>
         logger.info("Listing player inventory")
@@ -204,9 +205,8 @@ object GameTools {
       ToolBuilder[Map[String, Any], LocationView](
         "get_location_state",
         "Get a location's current state: its exits (direction, destination, state open/closed/locked/sealed/" +
-          "blocked/hidden, obstacle), the facts recorded about it and the characters met there. Use it before " +
-          "letting the player through an exit that is not plainly open, before acting on an object whose state " +
-          "matters, or when unsure what already happened at a location.",
+          "blocked/hidden, obstacle), the facts recorded about it and the characters met there. The player's " +
+          "current location is already in the current game state in the prompt; use this for other locations.",
         Schema
           .`object`[Map[String, Any]]("Get location state parameters")
           .withOptionalField("location_id", locationIdProperty)

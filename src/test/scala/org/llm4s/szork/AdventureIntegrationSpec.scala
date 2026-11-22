@@ -76,6 +76,7 @@ class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
     }
 
     var steps = 0
+    var usages = Vector.empty[GameEngine.TurnUsage] // the Dungeon Master's model calls, tokens and time per turn
     while (steps < 20) {
       val command = nextCommand(lastNarration, transcript)
       println(s"[Player] $command")
@@ -86,7 +87,12 @@ class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
       // Structured output means the player only ever sees narration
       responseText.trim should not be empty
       responseText.trim should not startWith "{"
-      println("[DM] " + responseText + "\n")
+      println("[DM] " + responseText)
+      engine.lastTurnUsage.foreach { usage =>
+        usages = usages :+ usage
+        println(s"[Usage] $usage")
+      }
+      println()
 
       transcript = transcript :+ (command -> responseText)
       lastNarration = responseText
@@ -99,6 +105,13 @@ class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
       } else {
         steps += 1
       }
+    }
+
+    if (usages.nonEmpty) {
+      def perTurn(f: GameEngine.TurnUsage => Long) = f"${usages.map(f).sum.toDouble / usages.size}%.1f"
+      println(
+        s"[Usage] ${usages.size} turns, per turn: ${perTurn(_.modelCalls)} model calls, " +
+          s"${perTurn(_.inputTokens)} input + ${perTurn(_.outputTokens)} output tokens, ${perTurn(_.durationMs)}ms")
     }
 
     // Ask the LLM to rate the interaction

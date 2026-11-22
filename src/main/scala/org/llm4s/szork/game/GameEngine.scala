@@ -7,7 +7,7 @@ import org.llm4s.agent.graph.middleware.{ContextWindowMiddleware, GuardrailMiddl
 import org.llm4s.agent.guardrails.InputGuardrail
 import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.LLMClient
-import org.llm4s.llmconnect.model.{Message, UserMessage, AssistantMessage, SystemMessage, ToolMessage}
+import org.llm4s.llmconnect.model.{Message, UserMessage, AssistantMessage, SystemMessage, ToolMessage, UsageSummary}
 import org.llm4s.toolapi.ToolRegistry
 import org.llm4s.trace.Tracing
 import org.llm4s.types.Result
@@ -103,6 +103,10 @@ class GameEngine(
   // The thread holding the conversation, once a turn has run on it. After a restore (or a
   // failed turn) it is None, and the next turn starts a new thread seeded with `history`.
   private var threadId: Option[ThreadId] = None
+  // The thread's usage as of its last turn (llm4s accumulates it over the thread), to tell each turn's own
+  private var threadUsage: UsageSummary = UsageSummary()
+  // The model calls, tokens and time of the last completed turn
+  @volatile private var lastUsage: Option[GameEngine.TurnUsage] = None
   // The conversation as of the last successful turn: the thread's full history, without the
   // system prompt (the agent sends that on every model call).
   @volatile private var history: Vector[Message] = Vector.empty
@@ -303,9 +307,12 @@ class GameEngine(
     * Each player command must pass the input guardrails (llm4s's `GuardrailMiddleware`); a refused command ends the
     * turn `AgentStatus.Blocked` without a model call, storing nothing of it.
     *
-    * With a context window, each model call is sent the system prompt (which holds the adventure outline, and is never
-    * pruned) and as much of the recent conversation as fits; the current turn is always sent whole, and a tool call is
-    * never sent without its result.
+    * Each model call's system prompt ends with the current game state ([[WorldStateMiddleware]]): rendered for that
+    * call, after any tool calls earlier in the turn, and never stored in the thread.
+    *
+    * With a context window, each model call is sent the system prompt (which holds the adventure outline and the game
+    * state, and is never pruned) and as much of the recent conversation as fits; the current turn is always sent whole,
+    * and a tool call is never sent without its result.
     *
     * With subagents, the Dungeon Master is offered a `task_<id>` tool for each (llm4s delegation, bounded by
     * [[DmSubagents.Delegation]]); a task runs on a child thread of the turn's thread, in the same runtime, traced with
@@ -326,7 +333,10 @@ class GameEngine(
     // what each model call is sent (wrapModelCall), so the two are independent
     val guarded =
       if (inputGuardrails.isEmpty) base else base.withMiddleware(new GuardrailMiddleware(inputGuardrails, Nil))
-    val windowed = modelWindow.fold(guarded)(window => guarded.withMiddleware(new ContextWindowMiddleware(window)))
+    // The current game state joins the system prompt of every model call (a prompt section, never stored), so the
+    // model reads the location, inventory and quests there instead of calling the read tools
+    val stated = guarded.withMiddleware(new WorldStateMiddleware(world, inventory))
+    val windowed = modelWindow.fold(stated)(window => stated.withMiddleware(new ContextWindowMiddleware(window)))
     val builder = tracing.fold(windowed)(windowed.withTracing)
     for {
       blocking <- builder.build()
@@ -363,10 +373,11 @@ class GameEngine(
     */
   private def runTurn(query: String, listener: Option[StreamEvent => Unit]): Result[AgentResult] =
     agents.flatMap { dm =>
-      val (turnThread, seed) = threadId match {
-        case Some(id) => (id, Nil)
-        case None => (ThreadId(s"szork-${sessionId}-${java.util.UUID.randomUUID()}"), history)
+      val (turnThread, seed, usageBefore) = threadId match {
+        case Some(id) => (id, Nil, threadUsage)
+        case None => (ThreadId(s"szork-${sessionId}-${java.util.UUID.randomUUID()}"), history, UsageSummary())
       }
+      val started = System.currentTimeMillis()
       val outcome = listener match {
         case None => dm.blocking.run(turnThread, query, RunConfig(), seed)
         case Some(l) => dm.streaming.stream(turnThread, query, RunConfig(), seed)(l).flatMap(_.await())
@@ -395,6 +406,10 @@ class GameEngine(
               threadId = Some(result.threadId)
               history = result.messages
               lastTurnStart = turnStart
+              threadUsage = result.usage
+              val usage = GameEngine.TurnUsage(result.usage, usageBefore, System.currentTimeMillis() - started)
+              lastUsage = Some(usage)
+              logger.info(s"[$sessionId] Turn usage: $usage")
               status match {
                 case AgentStatus.Completed(_) =>
                   logger.debug(
@@ -428,6 +443,10 @@ class GameEngine(
     lastValidationIssues = None
     v
   }
+
+  /** The model calls, tokens and time the last completed turn took, from the usage llm4s counts on the turn's thread.
+    */
+  def lastTurnUsage: Option[GameEngine.TurnUsage] = lastUsage
 
   /** Whether the last turn moved the player to a new location (or opened the first scene). */
   def locationChangedLastTurn: Boolean = lastTurnChangedLocation
@@ -647,6 +666,23 @@ object GameEngine {
       val modelLimit = (llmClient.getContextWindow() - llmClient.getReserveCompletion()) / 2
       if (modelLimit > 0) w.copy(maxTokens = w.maxTokens.map(math.min(_, modelLimit))) else w
     }
+
+  /** What one turn of the Dungeon Master cost: its model calls, their input and output tokens, and its time. */
+  final case class TurnUsage(modelCalls: Long, inputTokens: Long, outputTokens: Long, durationMs: Long) {
+    override def toString: String =
+      s"$modelCalls model call(s), $inputTokens input + $outputTokens output tokens, ${durationMs}ms"
+  }
+
+  object TurnUsage {
+
+    /** The turn's share of a thread's usage: `after` the turn less `before` it. */
+    def apply(after: UsageSummary, before: UsageSummary, durationMs: Long): TurnUsage =
+      TurnUsage(
+        after.requestCount - before.requestCount,
+        after.inputTokens - before.inputTokens,
+        after.outputTokens - before.outputTokens,
+        durationMs)
+  }
 
   /** The id of the Dungeon Master agent. */
   val AgentId: String = "szork-dungeon-master"

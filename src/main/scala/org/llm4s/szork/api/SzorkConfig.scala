@@ -2,7 +2,9 @@ package org.llm4s.szork.api
 
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.agent.ContextWindowConfig
 import org.llm4s.config.{ConfigReader, EnvLoader}
+import org.llm4s.szork.game.GameEngine
 import org.llm4s.security.Secret
 import org.slf4j.Logger
 
@@ -72,6 +74,8 @@ case class SzorkConfig(
 
   // LLM configuration
   llmConfig: Option[LLMConfig] = None,
+  // How much of the game's conversation each Dungeon Master model call is sent (None: all of it)
+  dmContextWindow: Option[ContextWindowConfig] = Some(GameEngine.DefaultContextWindow),
 
   // Game configuration
   autoSaveEnabled: Boolean = true,
@@ -180,6 +184,7 @@ object SzorkConfig {
 
     // Load LLM configuration
     val llmConfig = loadLLMConfig()
+    val dmContextWindow = loadDmContextWindow()
 
     // Media feature flags
     val ttsEnabled = EnvLoader.get("SZORK_TTS_ENABLED").map(_.toLowerCase != "false").getOrElse(true)
@@ -210,11 +215,32 @@ object SzorkConfig {
       sttEnabled = sttEnabled,
       musicEnabled = musicEnabled,
       llmConfig = llmConfig,
+      dmContextWindow = dmContextWindow,
       autoSaveEnabled = autoSaveEnabled,
       cacheEnabled = cacheEnabled,
       cacheDirectory = cacheDirectory,
       savesDirectory = savesDirectory
     )
+  }
+
+  /** The Dungeon Master's context window: SZORK_DM_CONTEXT_MAX_MESSAGES limits each model call to that many
+    * conversation messages; otherwise SZORK_DM_CONTEXT_MAX_TOKENS limits it to that many tokens (default
+    * [[GameEngine.DefaultContextTokens]]; 0 or `off` sends the whole conversation). The system prompt is never counted
+    * or pruned. A value that is not a positive number (other than 0/off) is ignored.
+    */
+  private[szork] def loadDmContextWindow(env: ConfigReader = EnvLoader): Option[ContextWindowConfig] = {
+    def positive(key: String): Option[Int] =
+      env.get(key).flatMap(v => v.trim.toIntOption).filter(_ > 0)
+    positive("SZORK_DM_CONTEXT_MAX_MESSAGES") match {
+      case Some(messages) => Some(ContextWindowConfig(maxMessages = Some(messages)))
+      case None =>
+        env.get("SZORK_DM_CONTEXT_MAX_TOKENS").map(_.trim.toLowerCase) match {
+          case Some("0" | "off") => None
+          case _ =>
+            val tokens = positive("SZORK_DM_CONTEXT_MAX_TOKENS").getOrElse(GameEngine.DefaultContextTokens)
+            Some(ContextWindowConfig(maxTokens = Some(tokens)))
+        }
+    }
   }
 
   /** The LLM to use, from SZORK_LLM_PROVIDER or else whichever provider's settings are present. */
@@ -328,6 +354,10 @@ object SzorkConfig {
           else "Disabled"
         }")
       logger.info(s"LLM Provider: ${config.llmConfig.map(_.provider).getOrElse("Not configured")}")
+      val window = config.dmContextWindow.fold("whole conversation") { w =>
+        w.maxMessages.fold(s"${w.maxTokens.getOrElse(0)} tokens")(m => s"$m messages")
+      }
+      logger.info(s"DM context window: $window")
       logger.info(s"TTS: ${if (config.ttsEnabled) "Enabled" else "Disabled"}")
       logger.info(s"STT: ${if (config.sttEnabled) "Enabled" else "Disabled"}")
       logger.info(s"Music: ${if (config.musicEnabled) "Enabled" else "Disabled"}")

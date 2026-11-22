@@ -1,8 +1,9 @@
 package org.llm4s.szork.game
 
-import org.llm4s.agent.{Agent, AgentResult, AgentStatus}
+import org.llm4s.agent.{Agent, AgentResult, AgentStatus, ContextWindowConfig}
 import org.llm4s.agent.events.AgentEvents
 import org.llm4s.agent.graph.{GraphRuntime, RunConfig, StreamEvent, ThreadId}
+import org.llm4s.agent.graph.middleware.ContextWindowMiddleware
 import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{Message, UserMessage, AssistantMessage, SystemMessage, ToolMessage}
@@ -41,6 +42,10 @@ import org.llm4s.szork.streaming.StreamingJsonParser
   *   Optional client for scene image generation
   * @param musicClient
   *   Optional client for background music generation
+  * @param tracing
+  *   Optional tracing for the agent's runs
+  * @param contextWindow
+  *   How much of the conversation each model call is sent (None sends all of it); see [[GameEngine.contextWindowFor]]
   * @param llmClient
   *   LLM client for AI narrative generation (implicit)
   */
@@ -53,7 +58,8 @@ class GameEngine(
   ttsClient: Option[TTSClient] = None,
   imageClient: Option[ImageClient] = None,
   musicClient: Option[MusicClient] = None,
-  tracing: Option[Tracing] = None
+  tracing: Option[Tracing] = None,
+  contextWindow: Option[ContextWindowConfig] = Some(GameEngine.DefaultContextWindow)
 )(implicit llmClient: LLMClient) {
   private implicit val logger: org.slf4j.Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
@@ -71,6 +77,11 @@ class GameEngine(
   // Two agents are compiled from the same settings - one streaming, one not - over a shared
   // runtime: streaming is not part of the agent's graph version, so either can run the next
   // turn of the same thread.
+  // The thread keeps the whole conversation; llm4s's ContextWindowMiddleware trims only what each
+  // model call is sent, to this window fitted to the model.
+  private val modelWindow: Option[ContextWindowConfig] = GameEngine.contextWindowFor(contextWindow, llmClient)
+  modelWindow.foreach(w =>
+    logger.debug(s"[$sessionId] Context window: maxTokens=${w.maxTokens}, maxMessages=${w.maxMessages}"))
   private val runtime: GraphRuntime = GraphRuntime.inMemory()
   private var agents: Result[GameEngine.DungeonMaster] = buildAgents(systemPrompt)
 
@@ -239,10 +250,18 @@ class GameEngine(
   /** The items the player is carrying. */
   def getInventory: List[String] = inventory.list
 
-  /** Returns the full conversation history (without the system prompt) as of the last completed turn. */
+  /** Returns the full conversation history (without the system prompt) as of the last completed turn.
+    *
+    * This is the whole thread, not the pruned part a model call is sent; it is what a save stores.
+    */
   def getMessages: Vector[Message] = history
 
-  /** Builds the Dungeon Master agents for `systemPrompt`: one streaming, one not, sharing this engine's runtime. */
+  /** Builds the Dungeon Master agents for `systemPrompt`: one streaming, one not, sharing this engine's runtime.
+    *
+    * With a context window, each model call is sent the system prompt (which holds the adventure outline, and is never
+    * pruned) and as much of the recent conversation as fits; the current turn is always sent whole, and a tool call is
+    * never sent without its result.
+    */
   private def buildAgents(systemPrompt: String): Result[GameEngine.DungeonMaster] = {
     val base = Agent
       .builder(GameEngine.AgentId, llmClient)
@@ -251,7 +270,8 @@ class GameEngine(
       .withMaxSteps(GameEngine.MaxModelCallsPerTurn)
       .withOutput(DungeonMasterOutput.schema)
       .withRuntime(runtime)
-    val builder = tracing.fold(base)(base.withTracing)
+    val windowed = modelWindow.fold(base)(window => base.withMiddleware(new ContextWindowMiddleware(window)))
+    val builder = tracing.fold(windowed)(windowed.withTracing)
     for {
       blocking <- builder.build()
       streaming <- builder.withStreaming().build()
@@ -404,6 +424,8 @@ class GameEngine(
       lastPlayed = clock.now(),
       totalPlayTime = totalPlayTime + currentSessionTime,
       adventureTitle = adventureTitle,
+      // The full thread: pruning applies only to what a model call is sent, so a restored game
+      // prunes again from the whole conversation
       agentMessages = history.toList
     )
   }
@@ -552,6 +574,22 @@ object GameEngine {
   val NarrationVoice: String =
     org.llm4s.config.EnvLoader.get("SZORK_TTS_VOICE").map(_.trim).filter(_.nonEmpty).getOrElse("nova")
 
+  /** Conversation tokens sent with each model call by default, besides the system prompt and the current turn. */
+  val DefaultContextTokens: Int = 24000
+
+  /** The default context window: the most recent conversation that fits in [[DefaultContextTokens]]. */
+  val DefaultContextWindow: ContextWindowConfig = ContextWindowConfig(maxTokens = Some(DefaultContextTokens))
+
+  /** `window` fitted to `llmClient`'s model: a token limit is capped at half the model's context window less its
+    * completion reserve, leaving the other half for the system prompt (with the adventure outline), the tool and output
+    * schemas and the current turn. A model reporting no context window leaves the limit as configured.
+    */
+  def contextWindowFor(window: Option[ContextWindowConfig], llmClient: LLMClient): Option[ContextWindowConfig] =
+    window.map { w =>
+      val modelLimit = (llmClient.getContextWindow() - llmClient.getReserveCompletion()) / 2
+      if (modelLimit > 0) w.copy(maxTokens = w.maxTokens.map(math.min(_, modelLimit))) else w
+    }
+
   /** The id of the Dungeon Master agent. */
   val AgentId: String = "szork-dungeon-master"
 
@@ -583,6 +621,10 @@ object GameEngine {
     *   Optional image generation client
     * @param musicClient
     *   Optional music generation client
+    * @param tracing
+    *   Optional tracing for the agent's runs
+    * @param contextWindow
+    *   How much of the conversation each model call is sent (None sends all of it)
     * @return
     *   Configured GameEngine instance
     */
@@ -596,8 +638,18 @@ object GameEngine {
     ttsClient: Option[TTSClient] = None,
     imageClient: Option[ImageClient] = None,
     musicClient: Option[MusicClient] = None,
-    tracing: Option[Tracing] = None
+    tracing: Option[Tracing] = None,
+    contextWindow: Option[ContextWindowConfig] = Some(DefaultContextWindow)
   ): GameEngine =
-    new GameEngine(sessionId, theme, artStyle, adventureOutline, clock, ttsClient, imageClient, musicClient, tracing)(
-      llmClient)
+    new GameEngine(
+      sessionId,
+      theme,
+      artStyle,
+      adventureOutline,
+      clock,
+      ttsClient,
+      imageClient,
+      musicClient,
+      tracing,
+      contextWindow)(llmClient)
 }

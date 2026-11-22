@@ -63,8 +63,10 @@ pool and reports `imageReady`/`musicReady` or `mediaFailed`. Refuses browser ori
 keep `frontend/src/types/WebSocketProtocol.ts` in sync.
 
 **game/GameEngine.scala** - The Dungeon Master: an llm4s `Agent` built with `Agent.builder` (tools, system prompt,
-`withOutput(DungeonMasterOutput.schema)`, `withMaxSteps`, optional `withTracing`). A game is one agent thread; streaming
-and blocking agents share one `GraphRuntime`. Restoring a save seeds a new thread with the saved conversation.
+`withOutput(DungeonMasterOutput.schema)`, `withMaxSteps`, a `ContextWindowMiddleware`, optional `withTracing`). A game is
+one agent thread; streaming and blocking agents share one `GraphRuntime`. The middleware trims only what each model call
+is sent (`SZORK_DM_CONTEXT_MAX_TOKENS`/`_MESSAGES`); the thread, and so `GameState.agentMessages`, keeps the whole
+conversation. Restoring a save seeds a new thread with the saved conversation.
 
 **game/DungeonMasterOutput.scala** - The structured output schema every turn answers with (narration first, then the
 scene or simple response). **game/PromptBuilder.scala** builds the system prompt; **game/GameTools.scala** builds the

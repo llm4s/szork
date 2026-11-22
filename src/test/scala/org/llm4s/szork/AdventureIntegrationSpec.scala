@@ -6,11 +6,11 @@ import org.llm4s.llmconnect.model.{SystemMessage, UserMessage, Conversation}
 import org.llm4s.szork.api.SzorkConfig
 import org.llm4s.szork.game.{GameEngine, IdGenerator}
 
-/** Integration test against a real LLM: an LLM player plays an underground realm adventure for 20 turns, text only
-  * (no images, audio or music), and another call reviews the transcript.
+/** Integration test against a real LLM: an LLM player plays an underground realm adventure for 20 turns, text only (no
+  * images, audio or music), and another call reviews the transcript.
   *
-  * Skipped unless RUN_INTEGRATION=true and an LLM is configured. Run it with:
-  * `RUN_INTEGRATION=true sbt "testOnly *AdventureIntegrationSpec"`
+  * Skipped unless RUN_INTEGRATION=true and an LLM is configured. Run it with: `RUN_INTEGRATION=true sbt "testOnly
+  * *AdventureIntegrationSpec"`
   */
 class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
 
@@ -127,7 +127,8 @@ class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
 
     // The game kept a structured scene throughout, and the reviewer gave a score
     engine.getCurrentScene shouldBe defined
-    val score = scala.util.Try(ujson.read(ratingText.substring(ratingText.indexOf('{'), ratingText.lastIndexOf('}') + 1))("score").num)
+    val score = scala.util.Try(
+      ujson.read(ratingText.substring(ratingText.indexOf('{'), ratingText.lastIndexOf('}') + 1))("score").num)
     withClue(s"review: $ratingText")(score.isSuccess shouldBe true)
   }
 }

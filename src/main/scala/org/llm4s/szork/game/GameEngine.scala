@@ -1,7 +1,7 @@
 package org.llm4s.szork.game
 
 import org.llm4s.agent.{Agent, AgentResult, AgentStatus, ContextWindowConfig}
-import org.llm4s.agent.events.AgentEvents
+import org.llm4s.agent.events.{AgentEvents, SubagentEvents}
 import org.llm4s.agent.graph.{GraphRuntime, RunConfig, StreamEvent, ThreadId}
 import org.llm4s.agent.graph.middleware.{ContextWindowMiddleware, GuardrailMiddleware}
 import org.llm4s.agent.guardrails.InputGuardrail
@@ -50,6 +50,8 @@ import org.llm4s.szork.streaming.StreamingJsonParser
   * @param inputGuardrails
   *   Guardrails each player command must pass before the Dungeon Master sees it (empty: none); a refused command is
   *   answered with [[PlayerInputGuardrail.Refusal]]
+  * @param subagents
+  *   Which subagents the Dungeon Master may delegate to (NPC dialogue, hints) and their client; see [[DmSubagents]]
   * @param llmClient
   *   LLM client for AI narrative generation (implicit)
   */
@@ -64,21 +66,25 @@ class GameEngine(
   musicClient: Option[MusicClient] = None,
   tracing: Option[Tracing] = None,
   contextWindow: Option[ContextWindowConfig] = Some(GameEngine.DefaultContextWindow),
-  inputGuardrails: Seq[InputGuardrail] = PlayerInputGuardrail.default
+  inputGuardrails: Seq[InputGuardrail] = PlayerInputGuardrail.default,
+  subagents: SubagentSettings = SubagentSettings.default
 )(implicit llmClient: LLMClient) {
   private implicit val logger: org.slf4j.Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   private val themeDescription = PromptBuilder.themeDescription(theme)
   private val artStyleDescription = PromptBuilder.artStyleDescription(artStyle)
   // The adventure outline and the system prompt built from it. A restored game takes its outline from the save.
-  private var outline: Option[AdventureOutline] = adventureOutline
-  private var systemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, outline)
+  // (volatile: a subagent's brief reads it on the runtime's thread)
+  @volatile private var outline: Option[AdventureOutline] = adventureOutline
+  private var systemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, outline, subagents)
 
   // This game's inventory and world state, read and changed by the agent's tools. The world state outlives the
   // context window: what happened in turns the model is no longer sent is still there.
   private val inventory = new PlayerInventory()
   private val world = WorldState.seededFrom(outline)
   private val toolRegistry = new ToolRegistry(GameTools.forInventory(inventory) ++ GameTools.forWorld(world))
+  // The subagents the Dungeon Master delegates to: their briefs read this game's outline, world and inventory
+  private val subagentDefinitions = DmSubagents.forGame(subagents, () => outline, world, inventory)
 
   // The Dungeon Master is an llm4s Agent; the game's conversation is one of its threads.
   // Two agents are compiled from the same settings - one streaming, one not - over a shared
@@ -197,13 +203,18 @@ class GameEngine(
     * tool call produces no text, and if llm4s asks the model to correct an invalid answer the corrected narration
     * streams again (the final narration, sent with streamComplete, is what the client keeps). Events reach the listener
     * one at a time, and the run's await() returns only once the listener has handled the last one.
+    *
+    * Only the Dungeon Master's own text streams. A subagent's events are not part of this subscription (the turn is
+    * streamed without `nested`, and the subagents do not stream), so its words reach the player only through the
+    * Dungeon Master's narration; a model call of any other agent is ignored all the same, so it cannot reset the
+    * extractor mid-narration. The subagent's TaskStarted/TaskEnded events are logged.
     */
   private def narrationListener(onTextChunk: String => Unit): StreamEvent => Unit = {
     var textParser = new StreamingJsonParser()
     var narrativeChunkCount = 0
 
     {
-      case AgentEvents.ModelCallStarted(call) =>
+      case AgentEvents.ModelCallStarted(call) if call.agent == GameEngine.AgentId =>
         logger.debug(s"[$sessionId] Model call started (agent=${call.agent}, attempt=${call.attempt})")
         textParser = new StreamingJsonParser()
 
@@ -216,6 +227,14 @@ class GameEngine(
 
       case AgentEvents.ToolCallStarted(call) =>
         logger.info(s"[$sessionId] Tool call: ${call.tool} (id=${call.toolCallId}) arguments=${call.arguments}")
+
+      case SubagentEvents.TaskStarted(started) =>
+        logger.info(s"[$sessionId] Subagent ${started.child.agent.value} started")
+
+      case SubagentEvents.TaskEnded(ended) =>
+        logger.info(
+          s"[$sessionId] Subagent ${ended.child.agent.value} ended ${ended.status} in ${ended.duration.toMillis}ms, " +
+            s"usage=${ended.usage}")
 
       case _ => ()
     }
@@ -288,15 +307,22 @@ class GameEngine(
     * With a context window, each model call is sent the system prompt (which holds the adventure outline, and is never
     * pruned) and as much of the recent conversation as fits; the current turn is always sent whole, and a tool call is
     * never sent without its result.
+    *
+    * With subagents, the Dungeon Master is offered a `task_<id>` tool for each (llm4s delegation, bounded by
+    * [[DmSubagents.Delegation]]); a task runs on a child thread of the turn's thread, in the same runtime, traced with
+    * the Dungeon Master.
     */
   private def buildAgents(systemPrompt: String): Result[GameEngine.DungeonMaster] = {
-    val base = Agent
+    val agent = Agent
       .builder(GameEngine.AgentId, llmClient)
       .withTools(toolRegistry)
       .withSystemPrompt(systemPrompt)
       .withMaxSteps(GameEngine.MaxModelCallsPerTurn)
       .withOutput(DungeonMasterOutput.schema)
       .withRuntime(runtime)
+    val base =
+      if (subagentDefinitions.isEmpty) agent
+      else agent.withSubagents(subagentDefinitions*).withDelegation(DmSubagents.Delegation)
     // The input guardrails check each turn's command before the agent starts (beforeAgent); the context window trims
     // what each model call is sent (wrapModelCall), so the two are independent
     val guarded =
@@ -306,7 +332,10 @@ class GameEngine(
     for {
       blocking <- builder.build()
       streaming <- builder.withStreaming().build()
-    } yield GameEngine.DungeonMaster(blocking, streaming)
+    } yield {
+      if (subagentDefinitions.nonEmpty) logger.debug(s"[$sessionId] ${blocking.delegation}")
+      GameEngine.DungeonMaster(blocking, streaming)
+    }
   }
 
   /** Replaces the conversation: forgets the current thread, and seeds the next turn's new thread with `seed`. */
@@ -504,7 +533,7 @@ class GameEngine(
     // The Dungeon Master's prompt is rebuilt from the saved outline, and the saved conversation
     // seeds a new llm4s thread when the next turn runs.
     outline = state.adventureOutline
-    systemPrompt = PromptBuilder.fullSystemPrompt(theme, artStyle, outline)
+    systemPrompt = PromptBuilder.fullSystemPrompt(theme, artStyle, outline, subagents)
     agents = buildAgents(systemPrompt)
     restoreConversation(state.agentMessages.toVector)
     logger.info(s"[$sessionId] Game state restored with ${history.size} agent messages")
@@ -619,7 +648,8 @@ class GameEngine(
 object GameEngine {
 
   /** Model calls allowed in one turn: enough for several tool calls (checking an exit, unlocking it, using up the key,
-    * recording quest progress), the answer and a correction of it, but not a runaway loop.
+    * recording quest progress, delegating to a subagent), the answer and a correction of it, but not a runaway loop. A
+    * subagent's own model call is limited by its task budget ([[DmSubagents.MaxStepsPerTask]]), not counted here.
     */
   val MaxModelCallsPerTurn: Int = 12
 
@@ -682,6 +712,8 @@ object GameEngine {
     *   How much of the conversation each model call is sent (None sends all of it)
     * @param inputGuardrails
     *   Guardrails each player command must pass (empty: none)
+    * @param subagents
+    *   The subagents the Dungeon Master may delegate to
     * @return
     *   Configured GameEngine instance
     */
@@ -697,7 +729,8 @@ object GameEngine {
     musicClient: Option[MusicClient] = None,
     tracing: Option[Tracing] = None,
     contextWindow: Option[ContextWindowConfig] = Some(DefaultContextWindow),
-    inputGuardrails: Seq[InputGuardrail] = PlayerInputGuardrail.default
+    inputGuardrails: Seq[InputGuardrail] = PlayerInputGuardrail.default,
+    subagents: SubagentSettings = SubagentSettings.default
   ): GameEngine =
     new GameEngine(
       sessionId,
@@ -710,5 +743,6 @@ object GameEngine {
       musicClient,
       tracing,
       contextWindow,
-      inputGuardrails)(using llmClient)
+      inputGuardrails,
+      subagents)(using llmClient)
 }

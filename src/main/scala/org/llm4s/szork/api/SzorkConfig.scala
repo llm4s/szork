@@ -71,6 +71,8 @@ case class SzorkConfig(
   dmContextWindow: Option[ContextWindowConfig] = Some(GameEngine.DefaultContextWindow),
   // Whether player commands pass the Dungeon Master's prompt-injection guardrail (PlayerInputGuardrail)
   inputGuardrailEnabled: Boolean = true,
+  // The Dungeon Master's subagents: NPC dialogue and hints, and the model they use
+  subagents: SubagentConfig = SubagentConfig(),
 
   // Saves and the media cache
   autoSaveEnabled: Boolean = true,
@@ -189,6 +191,7 @@ object SzorkConfig {
       dmContextWindow = loadDmContextWindow(env),
       inputGuardrailEnabled =
         setting("SZORK_INPUT_GUARDRAIL").map(_.toLowerCase).forall(v => v != "false" && v != "off"),
+      subagents = SubagentConfig.load(env),
       autoSaveEnabled = flag("SZORK_AUTO_SAVE"),
       savesDirectory = setting("SZORK_SAVES_DIR").getOrElse("szork-saves"),
       cache = MediaCacheConfig.load(env),
@@ -287,6 +290,10 @@ object SzorkConfig {
       }
       logger.info(s"DM context window: $window")
       logger.info(s"DM input guardrail: ${if (config.inputGuardrailEnabled) "Enabled" else "Disabled"}")
+      def onOff(on: Boolean) = if (on) "Enabled" else "Disabled"
+      logger.info(
+        s"DM subagents: NPC dialogue ${onOff(config.subagents.npcDialogue)}, hints ${onOff(config.subagents.hints)}" +
+          s" (model: ${config.subagents.model.getOrElse("the Dungeon Master's")})")
       logger.info(s"Auto-save: ${if (config.autoSaveEnabled) "Enabled" else "Disabled"}")
       logger.info(s"Cache: ${if (config.cache.enabled) s"Enabled (${config.cache.directory})" else "Disabled"}")
       logger.info(s"Saves Directory: ${config.savesDirectory}")

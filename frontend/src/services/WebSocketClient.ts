@@ -61,6 +61,11 @@ export class WebSocketClient {
    */
   connect(): Promise<void> {
     if (this.isConnected || this.isConnecting) return Promise.resolve();
+    // Connecting now supersedes a scheduled reconnection attempt
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.closedIntentionally = false;
     this.isConnecting = true;
 

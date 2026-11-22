@@ -1,43 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocketClient } from "./WebSocketClient";
+import { FakeWebSocket } from "@/test/FakeWebSocket";
 
-/** A stand-in for the browser WebSocket that records what is sent and lets tests open or drop it. */
-class FakeWebSocket {
-  static instances: FakeWebSocket[] = [];
-  sent: string[] = [];
-  onopen: (() => void) | null = null;
-  onclose: (() => void) | null = null;
-  onerror: ((e: unknown) => void) | null = null;
-  onmessage: ((e: { data: string }) => void) | null = null;
-
-  constructor(public url: string) {
-    FakeWebSocket.instances.push(this);
-  }
-
-  send(data: string) {
-    this.sent.push(data);
-  }
-
-  close() {
-    this.onclose?.();
-  }
-
-  /** The server accepts the connection. */
-  open() {
-    this.onopen?.();
-  }
-
-  /** The connection drops (not initiated by the client). */
-  drop() {
-    this.onclose?.();
-  }
-
-  sentTypes(): string[] {
-    return this.sent.map((s) => JSON.parse(s).type);
-  }
-}
-
-const latest = () => FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
+const latest = () => FakeWebSocket.latest();
 
 describe("WebSocketClient", () => {
   beforeEach(() => {

@@ -2,7 +2,7 @@
  * Composable for WebSocket-based game communication
  */
 
-import { ref, onUnmounted, nextTick } from "vue";
+import { ref, onUnmounted, nextTick, getCurrentInstance } from "vue";
 import { WebSocketClient } from "@/services/WebSocketClient";
 import { SESSION_EXPIRED } from "@/types/WebSocketProtocol";
 import type {
@@ -45,6 +45,8 @@ export function useWebSocketGame() {
   const messages = ref<GameMessage[]>([]);
   const isConnected = ref(false);
   const isStreaming = ref(false);
+  // True from sending a command (typed or spoken) until its response or an error arrives
+  const awaitingResponse = ref(false);
   const savedGames = ref<GameInfo[]>([]);
   const currentStreamingMessage = ref<GameMessage | null>(null);
   // Error toast state
@@ -62,6 +64,13 @@ export function useWebSocketGame() {
   let playBackgroundMusicCallback: ((musicBase64: string, mood: string) => void) | null = null;
   let playAudioNarrationCallback: ((audioBase64: string) => void) | null = null;
   let pendingLoad: string | null = null;
+  // The server's message index after the last response we received; null until a response
+  // (a loaded game's history carries none). A larger index on resume means we missed a response.
+  let lastMessageIndex: number | null = null;
+  // Whether the response to the voice command in flight should show its scene image
+  let voiceImageWanted = true;
+  // Set once the owning component unmounts: late callbacks must not open a new connection
+  let disposed = false;
 
   const log = (message: string, ...args: any[]) => {
     console.log(`[Game] ${message}`, ...args);
@@ -83,8 +92,17 @@ export function useWebSocketGame() {
     imageEnabled.value = flags.imageEnabled;
   };
 
-  /** Ends the in-progress streamed response, dropping it if nothing arrived. */
+  /** The features this session has, to ask for again when the game is reloaded. */
+  const currentFeatures = (): FeatureRequest => ({
+    tts: ttsEnabled.value,
+    stt: sttEnabled.value,
+    music: musicEnabled.value,
+    image: imageEnabled.value,
+  });
+
+  /** Ends the in-progress response (streamed or not), dropping a streamed one if nothing arrived. */
   const endStreaming = () => {
+    awaitingResponse.value = false;
     const streaming = currentStreamingMessage.value;
     if (streaming) {
       streaming.isStreaming = false;
@@ -104,29 +122,41 @@ export function useWebSocketGame() {
     imageLoading: hasImage,
   });
 
-  /** Connect to the WebSocket server (replacing any previous client). */
+  /**
+   * Connect to the WebSocket server. The client is reused, so a connection that dropped (and is
+   * waiting to reconnect, or has run out of retries) reopens with its handlers and queued messages.
+   */
   const connect = async (): Promise<void> => {
-    if (wsClient.value?.connected) return;
-    wsClient.value?.disconnect();
-
-    const client = new WebSocketClient();
-    wsClient.value = client;
-    setupMessageHandlers(client);
-    client.onConnectionChange((connected, reconnected) => {
-      isConnected.value = connected;
-      // After a dropped connection, re-attach to the game in progress
-      if (connected && reconnected && sessionId.value) {
-        log(`Reconnected; resuming session ${sessionId.value}`);
-        client.resumeSession(sessionId.value);
-      }
-    });
+    if (disposed) return;
+    let client = wsClient.value;
+    if (!client) {
+      const created = new WebSocketClient();
+      setupMessageHandlers(created);
+      created.onConnectionChange((connected) => {
+        isConnected.value = connected;
+        // Whenever a connection opens while we have a session, re-attach to it. This runs before
+        // queued messages are sent, so a command typed while offline reaches the resumed session.
+        if (connected && sessionId.value) {
+          log(`Connected; resuming session ${sessionId.value}`);
+          created.resumeSession(sessionId.value);
+        }
+      });
+      wsClient.value = created;
+      client = created;
+    }
     await client.connect();
+  };
+
+  /** Load the current game again, with the features this session had. */
+  const reloadCurrentGame = () => {
+    if (gameId.value) loadGame(gameId.value, currentFeatures());
   };
 
   const setupMessageHandlers = (client: WebSocketClient) => {
     client.on<GameStartedMessage>("gameStarted", ({ data }) => {
       sessionId.value = data.sessionId;
       gameId.value = data.gameId;
+      lastMessageIndex = data.messageIndex;
       applyFlags(data);
       messages.value.push(responseMessage(data.text, data.messageIndex, data.hasImage, data.scene));
       if (data.audio) playAudioNarration(data.audio);
@@ -137,6 +167,7 @@ export function useWebSocketGame() {
       pendingLoad = null;
       sessionId.value = data.sessionId;
       gameId.value = data.gameId;
+      lastMessageIndex = null;
       applyFlags(data);
       endStreaming();
       // History has no media to attach, so its entries carry no message index
@@ -151,11 +182,23 @@ export function useWebSocketGame() {
     });
 
     client.on<SessionResumedMessage>("sessionResumed", ({ data }) => {
-      log(`Session ${data.sessionId} resumed`);
+      log(`Session ${data.sessionId} resumed at message ${data.messageIndex}`);
+      // The response we are waiting for was sent while we were disconnected, so it is lost:
+      // stop waiting and load the game again to show it
+      if (awaitingResponse.value && lastMessageIndex !== null && data.messageIndex > lastMessageIndex) {
+        log("Missed the response while disconnected; reloading the game");
+        endStreaming();
+        reloadCurrentGame();
+      }
     });
 
     client.on<CommandResponseMessage>("commandResponse", ({ data }) => {
-      messages.value.push(responseMessage(data.text, data.messageIndex, data.hasImage, data.scene));
+      awaitingResponse.value = false;
+      lastMessageIndex = data.messageIndex;
+      // A voice command with images turned off: the server still reports the scene's image
+      const hasImage = data.hasImage && voiceImageWanted;
+      voiceImageWanted = true;
+      messages.value.push(responseMessage(data.text, data.messageIndex, hasImage, data.scene));
       if (data.audio) playAudioNarration(data.audio);
       scroll();
     });
@@ -167,6 +210,7 @@ export function useWebSocketGame() {
     });
 
     client.on<StreamCompleteMessage>("streamComplete", ({ data }) => {
+      lastMessageIndex = data.messageIndex;
       const streaming = currentStreamingMessage.value;
       if (streaming) {
         streaming.text = data.text;
@@ -186,7 +230,7 @@ export function useWebSocketGame() {
 
     client.on<ImageReadyMessage>("imageReady", ({ data }) => {
       const message = messages.value.find((m) => m.messageIndex === data.messageIndex);
-      if (message) {
+      if (message?.hasImage) {
         message.image = data.image;
         message.imageLoading = false;
       }
@@ -213,7 +257,7 @@ export function useWebSocketGame() {
       if (data.details === SESSION_EXPIRED) {
         if (gameId.value) {
           log(`Session expired; reloading game ${gameId.value}`);
-          loadGame(gameId.value);
+          reloadCurrentGame();
         }
         return;
       }
@@ -258,6 +302,7 @@ export function useWebSocketGame() {
     await connect();
     messages.value.push({ text: command, isUser: true, timestamp: new Date() });
 
+    awaitingResponse.value = true;
     if (streaming) {
       currentStreamingMessage.value = { text: "", isUser: false, timestamp: new Date(), isStreaming: true };
       messages.value.push(currentStreamingMessage.value);
@@ -268,9 +313,16 @@ export function useWebSocketGame() {
     }
   };
 
-  const sendAudioCommand = async (audioBase64: string) => {
+  /**
+   * Send a recorded voice command; the transcription and response arrive as messages. The
+   * protocol has no image flag for voice commands, so with images off the image is not shown.
+   */
+  const sendAudioCommand = async (audioBase64: string, imageGeneration = true) => {
     await connect();
-    wsClient.value?.sendAudio(audioBase64);
+    if (!wsClient.value) return;
+    voiceImageWanted = imageGeneration;
+    awaitingResponse.value = true;
+    wsClient.value.sendAudio(audioBase64);
   };
 
   const getSavedGames = async () => {
@@ -284,6 +336,7 @@ export function useWebSocketGame() {
     messages.value = [];
     sessionId.value = null;
     gameId.value = null;
+    lastMessageIndex = null;
   };
 
   /** Add a local message (not from the server), e.g. a microphone error. */
@@ -302,9 +355,13 @@ export function useWebSocketGame() {
     if (playAudioNarrationCallback) playAudioNarrationCallback(audioBase64);
   };
 
-  onUnmounted(() => {
-    disconnect();
-  });
+  // The composable can also be used outside a component (e.g. in tests)
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      disposed = true;
+      disconnect();
+    });
+  }
 
   const setScrollCallback = (callback: () => void) => {
     scrollCallback = callback;
@@ -325,6 +382,7 @@ export function useWebSocketGame() {
     messages,
     isConnected,
     isStreaming,
+    awaitingResponse,
     savedGames,
     ttsEnabled,
     sttEnabled,

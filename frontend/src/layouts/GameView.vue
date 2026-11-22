@@ -232,6 +232,7 @@ import { useRouter, useRoute } from "vue-router";
 import AdventureSetup from "@/components/AdventureSetup.vue";
 import GameSelection from "@/components/GameSelection.vue";
 import { useWebSocketGame } from "@/composables/useWebSocketGame";
+import { useAudioPlayback } from "@/composables/useAudioPlayback";
 import type { AdventureConfig, AdventureOutline, StyleChoice, ThemeChoice } from "@/types/api";
 import type { SceneData } from "@/types/WebSocketProtocol";
 
@@ -244,10 +245,6 @@ type DisplayMessage = {
   scene?: SceneData;
   streaming?: boolean;
 };
-
-// Narration over quieter background music
-const NARRATION_VOLUME = 0.8;
-const MUSIC_VOLUME = 0.3;
 
 export default defineComponent({
   name: "GameView",
@@ -267,7 +264,6 @@ export default defineComponent({
 
     // Use the WebSocket composable
     const {
-      sessionId,
       gameId: currentGameId,
       messages: wsMessages,
       isStreaming,
@@ -292,6 +288,14 @@ export default defineComponent({
       errorMessage,
       showError,
     } = useWebSocketGame();
+    const {
+      narrationEnabled,
+      backgroundMusicEnabled,
+      playNarration,
+      playBackgroundMusic,
+      stopBackgroundMusic,
+      stopAll,
+    } = useAudioPlayback({ log: wsLog });
 
     // Local UI state
     const userInput = ref("");
@@ -301,7 +305,6 @@ export default defineComponent({
     const recording = ref(false);
     const mediaRecorder = ref<MediaRecorder | null>(null);
     const audioChunks = ref<Blob[]>([]);
-    const narrationEnabled = ref(true);
     const gameStarted = ref(false);
     const setupStarted = ref(false);
     const selectionStarted = ref(false);
@@ -309,9 +312,6 @@ export default defineComponent({
     const artStyle = ref<StyleChoice | null>(null);
     const adventureOutline = ref<AdventureOutline | null>(null);
     const adventureTitle = ref<string>("Generative Adventuring");
-    const backgroundMusicEnabled = ref(true);
-    const currentBackgroundMusic = ref<HTMLAudioElement | null>(null);
-    const currentNarration = ref<HTMLAudioElement | null>(null);
     const imageGenerationEnabled = ref(true);
     const speechInputRequested = ref(true);
     // The microphone stream while recording, released when recording stops or the view unmounts
@@ -385,13 +385,7 @@ export default defineComponent({
 
     /** Leave the current game for the selection screen. */
     const resetGame = () => {
-      // Clean up any existing audio
-      stopBackgroundMusic();
-      if (currentNarration.value) {
-        currentNarration.value.pause();
-        currentNarration.value.src = "";
-        currentNarration.value = null;
-      }
+      stopAll();
 
       // Reset game state
       gameStarted.value = false;
@@ -467,14 +461,6 @@ export default defineComponent({
         }
       }
     );
-
-    const stopBackgroundMusic = () => {
-      if (currentBackgroundMusic.value) {
-        currentBackgroundMusic.value.pause();
-        currentBackgroundMusic.value.src = "";
-        currentBackgroundMusic.value = null;
-      }
-    };
 
     const startGame = async () => {
       try {
@@ -651,154 +637,6 @@ export default defineComponent({
       }
     };
 
-    const playAudioNarration = (audioBase64: string) => {
-      log(`[${sessionId.value || "no-session"}] playAudioNarration called, narration enabled:`, narrationEnabled.value);
-      log(`[${sessionId.value || "no-session"}] Audio base64 length:`, audioBase64.length);
-
-      if (!narrationEnabled.value) {
-        log(`[${sessionId.value || "no-session"}] Narration is disabled, skipping playback`);
-        return;
-      }
-
-      try {
-        // Stop any current narration
-        if (currentNarration.value && !currentNarration.value.paused) {
-          currentNarration.value.pause();
-          currentNarration.value = null;
-        }
-
-        // Create audio element
-        const audioUrl = `data:audio/mpeg;base64,${audioBase64}`;
-        log(`[${sessionId.value || "no-session"}] Creating audio element with URL length:`, audioUrl.length);
-
-        const audio = new Audio(audioUrl);
-        audio.volume = NARRATION_VOLUME;
-        currentNarration.value = audio;
-
-        // Add event listeners for debugging
-        audio.addEventListener("loadeddata", () => {
-          log(`[${sessionId.value || "no-session"}] Audio loaded successfully, duration:`, audio.duration);
-        });
-
-        audio.addEventListener("error", (e) => {
-          log(`[${sessionId.value || "no-session"}] Audio error event:`, e);
-          log(`[${sessionId.value || "no-session"}] Audio error details:`, audio.error);
-        });
-
-        audio.addEventListener("play", () => {
-          log(`[${sessionId.value || "no-session"}] Audio started playing`);
-        });
-
-        audio.addEventListener("ended", () => {
-          log(`[${sessionId.value || "no-session"}] Audio playback ended`);
-          if (currentNarration.value === audio) {
-            currentNarration.value = null;
-          }
-        });
-
-        // Play the audio
-        log(`[${sessionId.value || "no-session"}] Attempting to play audio...`);
-        audio
-          .play()
-          .then(() => {
-            log(`[${sessionId.value || "no-session"}] Audio play() promise resolved successfully`);
-          })
-          .catch((error) => {
-            log(`[${sessionId.value || "no-session"}] Error playing audio narration:`, error);
-            log(`[${sessionId.value || "no-session"}] Error type:`, error.name, "Message:", error.message);
-          });
-
-        log(`[${sessionId.value || "no-session"}] Playing audio narration at volume:`, NARRATION_VOLUME);
-      } catch (error) {
-        log(`[${sessionId.value || "no-session"}] Error creating audio element:`, error);
-        log(`[${sessionId.value || "no-session"}] Error details:`, error);
-      }
-    };
-
-    // Music is now delivered via WebSocket - no polling needed
-
-    const playBackgroundMusic = (musicBase64: string, mood: string) => {
-      log(`Playing background music, mood: ${mood}, enabled: ${backgroundMusicEnabled.value}`);
-
-      if (!backgroundMusicEnabled.value) {
-        log("Background music is disabled, skipping");
-        return;
-      }
-
-      try {
-        // Clean up any existing music first
-        if (currentBackgroundMusic.value) {
-          log("Stopping current background music");
-          currentBackgroundMusic.value.pause();
-          currentBackgroundMusic.value.src = "";
-          currentBackgroundMusic.value = null;
-        }
-
-        // Create new audio element
-        const audioUrl = `data:audio/mpeg;base64,${musicBase64}`;
-        const newMusic = new Audio(audioUrl);
-        newMusic.volume = MUSIC_VOLUME;
-        newMusic.loop = true; // Loop background music
-
-        currentBackgroundMusic.value = newMusic;
-
-        // Play the music
-        newMusic
-          .play()
-          .then(() => {
-            log("Background music started successfully");
-          })
-          .catch((error) => {
-            log("Error playing background music:", error);
-            // Clean up on error
-            currentBackgroundMusic.value = null;
-          });
-      } catch (error) {
-        log("Error creating background music element:", error);
-        currentBackgroundMusic.value = null;
-      }
-    };
-
-    // Watch for background music enabled changes
-    watch(backgroundMusicEnabled, (enabled) => {
-      if (!enabled) {
-        log("Disabling background music");
-        // Simply pause the music
-        if (currentBackgroundMusic.value && !currentBackgroundMusic.value.paused) {
-          currentBackgroundMusic.value.pause();
-          log("Background music paused");
-        }
-      } else if (enabled) {
-        log("Background music re-enabled");
-        // Resume current music if it exists
-        if (currentBackgroundMusic.value && currentBackgroundMusic.value.paused) {
-          log("Resuming paused background music");
-          currentBackgroundMusic.value
-            .play()
-            .then(() => {
-              log("Background music resumed");
-            })
-            .catch((error) => {
-              log("Error resuming background music:", error);
-            });
-        }
-      }
-    });
-
-    // Watch for narration enabled changes
-    watch(narrationEnabled, (enabled) => {
-      if (!enabled && currentNarration.value && !currentNarration.value.paused) {
-        // Stop current narration immediately
-        log("Stopping current narration as narration was disabled");
-        currentNarration.value.pause();
-        currentNarration.value.currentTime = 0;
-        currentNarration.value = null;
-      }
-    });
-
-    // Game saving is now automatic after each command
-    // No manual save function needed
-
     onMounted(async () => {
       // Set up auto-scroll callback for streaming
       setScrollCallback(() => {
@@ -807,7 +645,7 @@ export default defineComponent({
 
       // Set up audio playback callbacks
       setPlayBackgroundMusicCallback(playBackgroundMusic);
-      setPlayAudioNarrationCallback(playAudioNarration);
+      setPlayAudioNarrationCallback(playNarration);
 
       // Connect to WebSocket server
       try {
@@ -831,17 +669,10 @@ export default defineComponent({
     });
 
     onUnmounted(() => {
-      log("Component unmounting, cleaning up audio and microphone");
+      log("Component unmounting, cleaning up the microphone");
       unmounted = true;
       if (mediaRecorder.value && recording.value) mediaRecorder.value.stop();
       releaseMicrophone();
-      stopBackgroundMusic();
-      // Clean up narration
-      if (currentNarration.value) {
-        currentNarration.value.pause();
-        currentNarration.value.src = "";
-        currentNarration.value = null;
-      }
     });
 
     return {

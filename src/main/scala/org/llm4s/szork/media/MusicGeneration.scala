@@ -7,183 +7,21 @@ import requests._
 import org.llm4s.config.EnvLoader
 import org.llm4s.szork.api.MediaNetworkConfig
 import org.llm4s.szork.api.MusicPollConfig
+import org.llm4s.szork.game.DungeonMasterOutput
 import java.util.Base64
 import ujson._
 import java.net.URI
 import scala.util.{Failure, Success, Try, Using}
 
 class MusicGeneration {
+  import MusicGeneration.MusicMood
+
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
   private val net = MediaNetworkConfig.instance
   private val replicateApiKey =
     EnvLoader.get("REPLICATE_API_KEY").filter(key => key.nonEmpty && !key.contains("YOUR_REPLICATE_API_KEY"))
 
   def isAvailable: Boolean = replicateApiKey.isDefined
-
-  case class MusicMood(
-    name: String,
-    basePrompt: String,
-    duration: Int = 10, // seconds
-    temperature: Double = 1.0, // Generation randomness
-    topK: Int = 250,
-    topP: Double = 0.0,
-    cfGuidance: Int = 3
-  ) {
-    def generatePrompt(context: String = ""): String = {
-      // Add context-aware variations to the base prompt
-      val contextualAdditions = extractContextualElements(context)
-      s"$basePrompt${if (contextualAdditions.nonEmpty) s", $contextualAdditions" else ""}"
-    }
-
-    private def extractContextualElements(text: String): String = {
-      val lowerText = text.toLowerCase
-      val elements = scala.collection.mutable.ListBuffer[String]()
-
-      // Add atmospheric elements based on context
-      if (lowerText.contains("rain") || lowerText.contains("storm")) elements += "rain sounds"
-      if (lowerText.contains("wind")) elements += "wind effects"
-      if (lowerText.contains("fire") || lowerText.contains("torch")) elements += "crackling fire"
-      if (lowerText.contains("water") || lowerText.contains("stream")) elements += "flowing water"
-      if (lowerText.contains("echo")) elements += "reverb effects"
-
-      // Add emotional modifiers
-      if (lowerText.contains("tense")) elements += "building tension"
-      if (lowerText.contains("peaceful")) elements += "serene atmosphere"
-      if (lowerText.contains("danger")) elements += "threatening undertones"
-      if (lowerText.contains("ancient")) elements += "ancient mystical"
-      if (lowerText.contains("magic")) elements += "magical sparkles"
-
-      elements.mkString(", ")
-    }
-  }
-
-  object MusicMoods {
-    // Main location moods with more variety
-    val ENTRANCE = MusicMood(
-      "entrance",
-      "mysterious cave entrance, deep ambient drones, distant echoes, foreboding orchestral, dark fantasy atmosphere",
-      duration = 12,
-      temperature = 0.9
-    )
-
-    val EXPLORATION = MusicMood(
-      "exploration",
-      "adventurous fantasy exploration, light orchestral strings, curious woodwinds, hopeful melodies, discovery theme",
-      duration = 10,
-      temperature = 1.0
-    )
-
-    val COMBAT = MusicMood(
-      "combat",
-      "intense battle music, war drums, aggressive strings, brass stabs, epic orchestral combat, fast tempo action",
-      duration = 8,
-      temperature = 0.8,
-      cfGuidance = 4
-    )
-
-    val VICTORY = MusicMood(
-      "victory",
-      "triumphant fanfare, heroic brass section, celebratory orchestral, epic victory theme, uplifting crescendo",
-      duration = 8,
-      temperature = 0.7)
-
-    val DUNGEON = MusicMood(
-      "dungeon",
-      "dark dungeon ambience, ominous low strings, dripping water, distant chains, suspenseful horror atmosphere",
-      duration = 12,
-      temperature = 1.1)
-
-    val FOREST = MusicMood(
-      "forest",
-      "enchanted forest ambience, bird songs, rustling leaves, soft Celtic flutes, mystical harp, nature magic",
-      duration = 12,
-      temperature = 1.0)
-
-    val TOWN = MusicMood(
-      "town",
-      "medieval town square, lute and mandolin, bustling marketplace, folk dance rhythm, cheerful tavern music",
-      duration = 10,
-      temperature = 0.9)
-
-    val MYSTERY = MusicMood(
-      "mystery",
-      "mysterious puzzle atmosphere, subtle piano, ethereal pads, contemplative strings, building intrigue",
-      duration = 10,
-      temperature = 1.2)
-
-    // Additional atmospheric moods
-    val CASTLE = MusicMood(
-      "castle",
-      "grand castle hall, regal horns, medieval court music, stone echoes, nobility theme, harpsichord",
-      duration = 10,
-      temperature = 0.8)
-
-    val UNDERWATER = MusicMood(
-      "underwater",
-      "underwater cavern, muffled sounds, whale songs, bubbling effects, mysterious aquatic ambience",
-      duration = 12,
-      temperature = 1.3)
-
-    val TEMPLE = MusicMood(
-      "temple",
-      "ancient temple, Gregorian chants, sacred bells, divine atmosphere, ethereal choir, spiritual resonance",
-      duration = 12,
-      temperature = 0.9)
-
-    val BOSS = MusicMood(
-      "boss",
-      "epic boss battle, massive orchestral, choir vocals, intense percussion, dark powerful theme, climactic",
-      duration = 10,
-      temperature = 0.7,
-      cfGuidance = 5
-    )
-
-    val STEALTH = MusicMood(
-      "stealth",
-      "stealthy infiltration, minimal percussion, tense strings, quiet footsteps, suspenseful atmosphere",
-      duration = 10,
-      temperature = 1.0)
-
-    val TREASURE = MusicMood(
-      "treasure",
-      "treasure discovery, magical chimes, sparkling sounds, wonder and awe, mystical revelation",
-      duration = 8,
-      temperature = 0.8)
-
-    val DANGER = MusicMood(
-      "danger",
-      "imminent danger, rising tension, warning drums, dissonant strings, heart-pounding suspense",
-      duration = 8,
-      temperature = 0.9,
-      cfGuidance = 4)
-
-    val PEACEFUL = MusicMood(
-      "peaceful",
-      "peaceful resting place, soft piano, gentle strings, calm breathing space, meditative atmosphere",
-      duration = 12,
-      temperature = 1.0)
-
-    val all: List[MusicMood] = List(
-      ENTRANCE,
-      EXPLORATION,
-      COMBAT,
-      VICTORY,
-      DUNGEON,
-      FOREST,
-      TOWN,
-      MYSTERY,
-      CASTLE,
-      UNDERWATER,
-      TEMPLE,
-      BOSS,
-      STEALTH,
-      TREASURE,
-      DANGER,
-      PEACEFUL)
-
-    /** The mood called `name` (as the Dungeon Master's scenes name them). */
-    def byName(name: String): Option[MusicMood] = all.find(_.name.equalsIgnoreCase(name.trim))
-  }
 
   def generateMusic(mood: MusicMood, context: String = ""): SzorkResult[String] =
     generateMusicWithCache(mood, context, None, None)
@@ -387,4 +225,175 @@ class MusicGeneration {
 
 object MusicGeneration {
   def apply(): MusicGeneration = new MusicGeneration()
+
+  case class MusicMood(
+    name: String,
+    basePrompt: String,
+    duration: Int = 10, // seconds
+    temperature: Double = 1.0, // Generation randomness
+    topK: Int = 250,
+    topP: Double = 0.0,
+    cfGuidance: Int = 3
+  ) {
+    def generatePrompt(context: String = ""): String = {
+      // Add context-aware variations to the base prompt
+      val contextualAdditions = extractContextualElements(context)
+      s"$basePrompt${if (contextualAdditions.nonEmpty) s", $contextualAdditions" else ""}"
+    }
+
+    private def extractContextualElements(text: String): String = {
+      val lowerText = text.toLowerCase
+      val elements = scala.collection.mutable.ListBuffer[String]()
+
+      // Add atmospheric elements based on context
+      if (lowerText.contains("rain") || lowerText.contains("storm")) elements += "rain sounds"
+      if (lowerText.contains("wind")) elements += "wind effects"
+      if (lowerText.contains("fire") || lowerText.contains("torch")) elements += "crackling fire"
+      if (lowerText.contains("water") || lowerText.contains("stream")) elements += "flowing water"
+      if (lowerText.contains("echo")) elements += "reverb effects"
+
+      // Add emotional modifiers
+      if (lowerText.contains("tense")) elements += "building tension"
+      if (lowerText.contains("peaceful")) elements += "serene atmosphere"
+      if (lowerText.contains("danger")) elements += "threatening undertones"
+      if (lowerText.contains("ancient")) elements += "ancient mystical"
+      if (lowerText.contains("magic")) elements += "magical sparkles"
+
+      elements.mkString(", ")
+    }
+  }
+
+  /** Music settings for each of the Dungeon Master's moods ([[DungeonMasterOutput.MusicMoods]]). */
+  object MusicMoods {
+    // Main location moods with more variety
+    val ENTRANCE = MusicMood(
+      "entrance",
+      "mysterious cave entrance, deep ambient drones, distant echoes, foreboding orchestral, dark fantasy atmosphere",
+      duration = 12,
+      temperature = 0.9
+    )
+
+    val EXPLORATION = MusicMood(
+      "exploration",
+      "adventurous fantasy exploration, light orchestral strings, curious woodwinds, hopeful melodies, discovery theme",
+      duration = 10,
+      temperature = 1.0
+    )
+
+    val COMBAT = MusicMood(
+      "combat",
+      "intense battle music, war drums, aggressive strings, brass stabs, epic orchestral combat, fast tempo action",
+      duration = 8,
+      temperature = 0.8,
+      cfGuidance = 4
+    )
+
+    val VICTORY = MusicMood(
+      "victory",
+      "triumphant fanfare, heroic brass section, celebratory orchestral, epic victory theme, uplifting crescendo",
+      duration = 8,
+      temperature = 0.7)
+
+    val DUNGEON = MusicMood(
+      "dungeon",
+      "dark dungeon ambience, ominous low strings, dripping water, distant chains, suspenseful horror atmosphere",
+      duration = 12,
+      temperature = 1.1)
+
+    val FOREST = MusicMood(
+      "forest",
+      "enchanted forest ambience, bird songs, rustling leaves, soft Celtic flutes, mystical harp, nature magic",
+      duration = 12,
+      temperature = 1.0)
+
+    val TOWN = MusicMood(
+      "town",
+      "medieval town square, lute and mandolin, bustling marketplace, folk dance rhythm, cheerful tavern music",
+      duration = 10,
+      temperature = 0.9)
+
+    val MYSTERY = MusicMood(
+      "mystery",
+      "mysterious puzzle atmosphere, subtle piano, ethereal pads, contemplative strings, building intrigue",
+      duration = 10,
+      temperature = 1.2)
+
+    // Additional atmospheric moods
+    val CASTLE = MusicMood(
+      "castle",
+      "grand castle hall, regal horns, medieval court music, stone echoes, nobility theme, harpsichord",
+      duration = 10,
+      temperature = 0.8)
+
+    val UNDERWATER = MusicMood(
+      "underwater",
+      "underwater cavern, muffled sounds, whale songs, bubbling effects, mysterious aquatic ambience",
+      duration = 12,
+      temperature = 1.3)
+
+    val TEMPLE = MusicMood(
+      "temple",
+      "ancient temple, Gregorian chants, sacred bells, divine atmosphere, ethereal choir, spiritual resonance",
+      duration = 12,
+      temperature = 0.9)
+
+    val BOSS = MusicMood(
+      "boss",
+      "epic boss battle, massive orchestral, choir vocals, intense percussion, dark powerful theme, climactic",
+      duration = 10,
+      temperature = 0.7,
+      cfGuidance = 5
+    )
+
+    val STEALTH = MusicMood(
+      "stealth",
+      "stealthy infiltration, minimal percussion, tense strings, quiet footsteps, suspenseful atmosphere",
+      duration = 10,
+      temperature = 1.0)
+
+    val TREASURE = MusicMood(
+      "treasure",
+      "treasure discovery, magical chimes, sparkling sounds, wonder and awe, mystical revelation",
+      duration = 8,
+      temperature = 0.8)
+
+    val DANGER = MusicMood(
+      "danger",
+      "imminent danger, rising tension, warning drums, dissonant strings, heart-pounding suspense",
+      duration = 8,
+      temperature = 0.9,
+      cfGuidance = 4)
+
+    val PEACEFUL = MusicMood(
+      "peaceful",
+      "peaceful resting place, soft piano, gentle strings, calm breathing space, meditative atmosphere",
+      duration = 12,
+      temperature = 1.0)
+
+    /** Every mood, in the order [[DungeonMasterOutput.MusicMoods]] lists their names. */
+    val all: List[MusicMood] = List(
+      ENTRANCE,
+      EXPLORATION,
+      COMBAT,
+      VICTORY,
+      DUNGEON,
+      FOREST,
+      TOWN,
+      MYSTERY,
+      CASTLE,
+      UNDERWATER,
+      TEMPLE,
+      BOSS,
+      STEALTH,
+      TREASURE,
+      DANGER,
+      PEACEFUL)
+
+    /** The mood called `name` (as the Dungeon Master's scenes name them). */
+    def byName(name: String): Option[MusicMood] = all.find(_.name.equalsIgnoreCase(name.trim))
+
+    /** The mood played for a scene whose mood is not one of [[all]]. */
+    def orDefault(name: String): MusicMood =
+      byName(name).orElse(byName(DungeonMasterOutput.DefaultMusicMood)).getOrElse(EXPLORATION)
+  }
 }

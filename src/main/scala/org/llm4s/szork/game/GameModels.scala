@@ -97,7 +97,7 @@ object GameResponseData {
             narrationText = parsed("narrationText").str,
             imageDescription = field("imageDescription").map(_.str).getOrElse(""),
             musicDescription = field("musicDescription").map(_.str).getOrElse(""),
-            musicMood = field("musicMood").map(_.str).getOrElse("exploration"),
+            musicMood = field("musicMood").map(_.str).getOrElse(DungeonMasterOutput.DefaultMusicMood),
             exits = exits,
             items = field("items").map(_.arr.map(_.str).toList).getOrElse(Nil),
             npcs = field("npcs").map(_.arr.map(_.str).toList).getOrElse(Nil)

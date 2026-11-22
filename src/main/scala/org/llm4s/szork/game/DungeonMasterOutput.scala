@@ -2,16 +2,52 @@ package org.llm4s.szork.game
 
 import org.llm4s.toolapi.{ObjectSchema, Schema}
 
-/** The structured answer the Dungeon Master gives every turn, as an llm4s output schema.
+/** The structured answer the Dungeon Master gives every turn, as an llm4s output schema, and the one definition of the
+  * values an answer is held to: exit directions, music moods and narration lengths.
   *
-  * The agent is built with `withOutput(DungeonMasterOutput.schema)`: llm4s states the schema in the system prompt,
-  * checks each final answer against it, and asks the model to correct an invalid answer once. A turn is either a
-  * `fullScene` (the player is somewhere new, or looked around) or a `simple` response; fields a simple response has no
-  * use for are null. `narrationText` comes first so it can be streamed to the player while the rest is written.
+  * The agent is built with `withOutput(DungeonMasterOutput.schema)`: llm4s states the schema in the system prompt on
+  * every model call, checks each final answer against it, and asks the model to correct an invalid answer once; a
+  * second invalid answer fails the turn. A turn is either a `fullScene` (the player is somewhere new, or looked around)
+  * or a `simple` response; fields a simple response has no use for are null. `narrationText` comes first so it can be
+  * streamed to the player while the rest is written.
+  *
+  * [[GameResponseValidator]] checks what the schema cannot express, with the same limits, and music generation has
+  * settings for each of the moods listed here.
   */
 object DungeonMasterOutput {
+
+  /** The directions an exit may take (an enum in the schema). */
   val Directions: Seq[String] =
     Seq("north", "south", "east", "west", "up", "down", "in", "out", "left", "right", "forward", "back")
+
+  /** The moods a scene's background music may have; `MusicGeneration.MusicMoods` has settings for each. */
+  val MusicMoods: Seq[String] = Seq(
+    "entrance",
+    "exploration",
+    "combat",
+    "victory",
+    "dungeon",
+    "forest",
+    "town",
+    "mystery",
+    "castle",
+    "underwater",
+    "temple",
+    "boss",
+    "stealth",
+    "treasure",
+    "danger",
+    "peaceful"
+  )
+
+  /** The mood played for a scene that names none, or one not in [[MusicMoods]]. */
+  val DefaultMusicMood: String = "exploration"
+
+  /** Longest narration for a full scene, in characters: a guideline, so a longer one is used, with a warning. */
+  val MaxSceneNarrationChars: Int = 750
+
+  /** Longest narration for a simple response, in characters: a guideline, as for a scene. */
+  val MaxSimpleNarrationChars: Int = 450
 
   private def nullableString(description: String) = Schema.nullable(Schema.string(description))
 
@@ -27,7 +63,8 @@ object DungeonMasterOutput {
       "narrationText",
       Schema.string(
         "What the player reads and hears: terse classic text-adventure prose, mentioning every exit for a scene " +
-          "(at most 750 characters for a fullScene, 450 for a simple response)")
+          s"(at most $MaxSceneNarrationChars characters for a fullScene, $MaxSimpleNarrationChars for a simple " +
+          "response)")
     ))
     .withProperty(
       Schema.property(
@@ -41,12 +78,8 @@ object DungeonMasterOutput {
       Schema.property("imageDescription", nullableString("fullScene: 2-3 sentence visual description; simple: null")))
     .withProperty(
       Schema.property("musicDescription", nullableString("fullScene: atmosphere for background music; simple: null")))
-    .withProperty(Schema.property(
-      "musicMood",
-      nullableString(
-        "fullScene: one of entrance, exploration, combat, victory, dungeon, forest, town, mystery, castle, " +
-          "underwater, temple, boss, stealth, treasure, danger, peaceful; simple: null")
-    ))
+    .withProperty(
+      Schema.property("musicMood", nullableString(s"fullScene: one of ${MusicMoods.mkString(", ")}; simple: null")))
     .withProperty(Schema.property("exits", Schema.nullable(Schema.array("fullScene: every exit; simple: null", exit))))
     .withProperty(Schema.property(
       "items",

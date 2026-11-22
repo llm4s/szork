@@ -189,7 +189,11 @@ object TextChunkMessage {
   implicit val rw: ReadWriter[TextChunkMessage] = macroRW
 }
 
+/** Ends a streamed response. `text` is the final narration, which replaces the streamed text (the model may have been
+  * asked to correct its answer after narration had started streaming).
+  */
 case class StreamCompleteMessage(
+  text: String,
   messageIndex: Int,
   totalChunks: Int,
   duration: Long,

@@ -18,7 +18,7 @@ import org.llm4s.szork.debug.DebugHelpers
 import org.llm4s.szork.api.{GameTheme, ArtStyle}
 import org.llm4s.szork.media.MediaPlanner
 import org.llm4s.szork.persistence.{StepData, GameState, StepMetadata}
-import org.llm4s.szork.streaming.StreamingTextParser
+import org.llm4s.szork.streaming.StreamingJsonParser
 
 /** Core game engine managing AI-driven text adventure gameplay.
   *
@@ -201,19 +201,19 @@ class GameEngine(
     // Track user command in conversation history
     coreState = CoreEngine.trackUser(coreState, command)
 
-    // Text of the current model call, and the parser extracting its narration. Both are reset
-    // when a model call starts, so a retried attempt or the follow-up call after a tool
-    // result starts clean. Tool calls produce no text deltas, so only answer text arrives here.
-    // Events are delivered to the listener one at a time, and the run's await() returns only
-    // once the listener has handled the last one.
-    var textParser = new StreamingTextParser()
+    // Extracts the narration from the JSON answer as it streams. It is reset when a model call
+    // starts: a tool call produces no text, and if llm4s asks the model to correct an invalid
+    // answer the corrected narration streams again (the final narration, sent with streamComplete,
+    // is what the client keeps). Events reach the listener one at a time, and the run's await()
+    // returns only once the listener has handled the last one.
+    var textParser = new StreamingJsonParser()
     var chunkCount = 0
     var narrativeChunkCount = 0
 
     val listener: StreamEvent => Unit = {
       case AgentEvents.ModelCallStarted(call) =>
         logger.debug(s"[$sessionId] Model call started (agent=${call.agent}, attempt=${call.attempt})")
-        textParser = new StreamingTextParser()
+        textParser = new StreamingJsonParser()
 
       case AgentEvents.TextDelta(delta) =>
         chunkCount += 1
@@ -309,6 +309,7 @@ class GameEngine(
       .withTools(toolRegistry)
       .withSystemPrompt(systemPrompt)
       .withMaxSteps(GameEngine.MaxModelCallsPerTurn)
+      .withOutput(DungeonMasterOutput.schema)
       .withRuntime(runtime)
     val builder = tracing.fold(base)(base.withTracing)
     for {

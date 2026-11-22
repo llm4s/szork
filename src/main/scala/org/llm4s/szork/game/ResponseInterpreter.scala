@@ -25,10 +25,10 @@ object ResponseInterpreter {
   val FallbackNarration: String =
     "I apologize, but there was an error processing the game response. Please try your command again."
 
-  /** Interprets an answer in the `narration <<<JSON>>> {...}` format (or bare JSON).
+  /** Interprets the Dungeon Master's JSON answer.
     *
     * Structured data with only warnings is used as-is. If the data has errors or cannot be parsed, the player still
-    * sees the narration: the text before the JSON marker, or the JSON's narrationText - never raw JSON.
+    * sees the narration - the JSON's narrationText, or the text itself if it is not JSON - never raw JSON.
     */
   def interpret(answer: String): Interpretation =
     GameResponseParser.parse(answer) match {
@@ -36,21 +36,15 @@ object ResponseInterpreter {
         val findings = GameResponseValidator.check(data)
         val issues = Option(findings.errors ++ findings.warnings).filter(_.nonEmpty)
         if (findings.errors.isEmpty) Interpretation(Some(data), data.narrationText, issues)
-        else Interpretation(None, narrationOf(answer).getOrElse(data.narrationText), issues)
+        else Interpretation(None, data.narrationText, issues)
       case Left(error) =>
         Interpretation(None, narrationOf(answer).getOrElse(FallbackNarration), Some(List(error.message)))
     }
 
-  /** The narration in `answer` when it cannot be used as structured data. */
+  /** The narration in an answer that could not be parsed. */
   private def narrationOf(answer: String): Option[String] = {
     val trimmed = answer.trim
-    trimmed.indexOf(GameResponseParser.JsonMarker) match {
-      case -1 if trimmed.startsWith("{") => extractNarrationTextFromJson(trimmed)
-      case -1 => Some(trimmed).filter(_.nonEmpty)
-      case at =>
-        Some(trimmed.substring(0, at).trim)
-          .filter(_.nonEmpty)
-          .orElse(extractNarrationTextFromJson(trimmed.substring(at + GameResponseParser.JsonMarker.length).trim))
-    }
+    if (trimmed.contains("{")) GameResponseParser.extractJson(trimmed).flatMap(extractNarrationTextFromJson)
+    else Some(trimmed).filter(_.nonEmpty)
   }
 }

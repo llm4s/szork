@@ -44,7 +44,7 @@ class GameEngineAgentSpec extends AnyFunSuite with Matchers {
     result.isRight shouldBe true
     result.toOption.get.text should include("small hall")
     streamed.toString should include("small hall")
-    streamed.toString should not include "<<<JSON>>>"
+    streamed.toString should not include "{" // only the narration is streamed, not the JSON
     engine.getCurrentScene.map(_.locationId) shouldBe Some("hall")
     engine.getMessages.collect { case u: UserMessage => u.content }.last shouldBe "go north"
   }

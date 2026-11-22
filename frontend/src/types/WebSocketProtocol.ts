@@ -145,6 +145,8 @@ export interface TextChunkMessage {
 export interface StreamCompleteMessage {
   type: "streamComplete";
   data: {
+    /** The final narration; replaces the streamed text. */
+    text: string;
     messageIndex: number;
     totalChunks: number;
     duration: number;

@@ -8,18 +8,8 @@ import org.llm4s.types.Result
   */
 class FakeLLMClientInvalid extends LLMClient {
   private def invalidCompletion(narration: String): Completion = {
-    val json = ujson.Obj(
-      "responseType" -> "fullScene",
-      "locationId" -> "invalid_room",
-      "locationName" -> "Invalid Room",
-      "imageDescription" -> "x",
-      "musicDescription" -> "y",
-      "musicMood" -> "exploration",
-      "exits" -> ujson.Arr(ujson.Obj("direction" -> "north-east", "locationId" -> "next")),
-      "items" -> ujson.Arr(),
-      "npcs" -> ujson.Arr()
-    )
-    val content = s"$narration\n<<<JSON>>>\n${ujson.write(json)}"
+    // Valid against the output schema, but its location id breaks the game's own rules
+    val content = DmAnswers.scene(narration, "Invalid Room!", "Invalid Room", Seq("north" -> "next"))
     Completion(
       id = java.util.UUID.randomUUID().toString,
       created = java.time.Instant.now(),

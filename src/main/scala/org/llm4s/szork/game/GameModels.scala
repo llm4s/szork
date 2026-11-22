@@ -40,9 +40,11 @@ object GameResponseData {
   def fromJson(json: String): SzorkResult[GameResponseData] =
     try {
       val parsed = read(json)
+      // A field that is absent or null (structured output nulls the fields a response type does not use)
+      def field(name: String): Option[Value] = parsed.obj.get(name).filter(_ != Null)
 
       // Check response type
-      val responseType = parsed.obj.get("responseType").map(_.str).getOrElse("fullScene")
+      val responseType = field("responseType").map(_.str).getOrElse("fullScene")
 
       responseType match {
         case "simple" =>
@@ -50,14 +52,13 @@ object GameResponseData {
           val response = SimpleResponse(
             narrationText = parsed("narrationText").str,
             locationId = parsed("locationId").str,
-            actionTaken = parsed.obj.get("actionTaken").map(_.str).getOrElse("unknown")
+            actionTaken = field("actionTaken").map(_.str).getOrElse("unknown")
           )
           Right(response)
 
         case _ =>
           // Parse as full scene (default behavior)
-          val exits = parsed.obj
-            .get("exits")
+          val exits = field("exits")
             .map { exitsValue =>
               try
                 exitsValue.arr.map { exitJson =>
@@ -75,7 +76,7 @@ object GameResponseData {
                         Exit(
                           direction = obj("direction").str,
                           locationId = obj("locationId").str,
-                          description = obj.obj.get("description").map(_.str)
+                          description = obj.obj.get("description").filter(_ != Null).map(_.str)
                         )
                     }
                   catch {
@@ -94,12 +95,12 @@ object GameResponseData {
             locationId = parsed("locationId").str,
             locationName = parsed("locationName").str,
             narrationText = parsed("narrationText").str,
-            imageDescription = parsed.obj.get("imageDescription").map(_.str).getOrElse(""),
-            musicDescription = parsed.obj.get("musicDescription").map(_.str).getOrElse(""),
-            musicMood = parsed.obj.get("musicMood").map(_.str).getOrElse("exploration"),
+            imageDescription = field("imageDescription").map(_.str).getOrElse(""),
+            musicDescription = field("musicDescription").map(_.str).getOrElse(""),
+            musicMood = field("musicMood").map(_.str).getOrElse("exploration"),
             exits = exits,
-            items = parsed.obj.get("items").map(_.arr.map(_.str).toList).getOrElse(Nil),
-            npcs = parsed.obj.get("npcs").map(_.arr.map(_.str).toList).getOrElse(Nil)
+            items = field("items").map(_.arr.map(_.str).toList).getOrElse(Nil),
+            npcs = field("npcs").map(_.arr.map(_.str).toList).getOrElse(Nil)
           )
 
           Right(scene)

@@ -77,4 +77,60 @@ class Llm4sFeaturesSpec extends AnyFunSuite with Matchers {
       .defaultVoice shouldBe "onyx"
     TextToSpeech.create(Reader(Map("OPENAI_API_KEY" -> "sk-test"))).toOption.get.defaultVoice shouldBe "nova"
   }
+
+  /** Answers "test" first with prose that is not the output schema, then - when llm4s asks it to correct that - with a
+    * valid answer.
+    */
+  private class CorrectingLLM extends FakeLLMClient {
+    @volatile var answers = 0
+    @volatile var lastRequest: Seq[Message] = Nil
+    private def answer(conversation: Conversation): Completion = {
+      val inTestTurn =
+        conversation.messages.reverse.collectFirst { case u: UserMessage => u.content }.exists(_ != "Start adventure")
+      lastRequest = conversation.messages
+      val content =
+        if (!inTestTurn) org.llm4s.szork.stubs.DmAnswers.scene("Start.", "start", "Start", Seq("north" -> "hall"))
+        else {
+          answers += 1
+          if (answers == 1) "You look around the dusty room. Nothing happens."
+          else org.llm4s.szork.stubs.DmAnswers.simple("The dust settles.", "start", "look")
+        }
+      Completion(
+        id = s"c-$answers",
+        created = java.time.Instant.now(),
+        content = content,
+        model = "fake-llm",
+        message = AssistantMessage(content))
+    }
+    override def complete(conversation: Conversation, options: CompletionOptions): Result[Completion] =
+      Right(answer(conversation))
+    override def streamComplete(
+      conversation: Conversation,
+      options: CompletionOptions,
+      onChunk: StreamedChunk => Unit): Result[Completion] = {
+      val completion = answer(conversation)
+      onChunk(StreamedChunk(completion.id, Some(completion.content)))
+      Right(completion)
+    }
+  }
+
+  test("an answer that is not the output schema is corrected by the model, and the corrected answer is used") {
+    val llm = new CorrectingLLM
+    val engine = GameEngine.create(llm, "correcting")
+    engine.initialize().isRight shouldBe true
+
+    engine.processCommand("test", generateAudio = false).toOption.get.text shouldBe "The dust settles."
+    llm.answers shouldBe 2
+    // The correction request tells the model what was wrong
+    llm.lastRequest.map(_.content).mkString should include("You look around the dusty room")
+  }
+
+  test("a streamed turn ends with the corrected narration") {
+    val llm = new CorrectingLLM
+    val engine = GameEngine.create(llm, "correcting-stream")
+    engine.initialize().isRight shouldBe true
+
+    val response = engine.processCommandStreaming("test", _ => (), generateAudio = false)
+    response.toOption.get.text shouldBe "The dust settles."
+  }
 }

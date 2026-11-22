@@ -76,8 +76,7 @@ object PromptBuilder {
       |GAME INITIALIZATION:
       |When you receive the message "Start adventure", generate the opening scene of the adventure.
       |This should be the player's starting location, introducing them to the world and setting.
-      |For the initial response ONLY, output JUST the JSON (no narration text prefix, no <<<JSON>>> marker).
-      |Create a fullScene JSON response WITH narrationText field included.
+      |Answer with a fullScene response.
       |STRICT LENGTH LIMIT: narrationText must be ≤750 characters (aim for 400-600).
       |Keep descriptions terse in classic text adventure style (2-4 concise sentences).
       |
@@ -169,13 +168,8 @@ object PromptBuilder {
       |
       |Response Format:
       |
-      |FOR INITIALIZATION ("Start adventure"):
-      |Output ONLY the complete JSON response with narrationText field included.
-      |
-      |FOR ALL OTHER COMMANDS (after initialization):
-      |1. First output ONLY the narration text on its own line (no meta commentary)
-      |2. Then output "<<<JSON>>>" on a new line
-      |3. Then output ONLY the JSON response (WITHOUT narrationText field - we'll add it programmatically)
+      |Every final answer is ONE JSON object matching the response schema below - no text before or after it.
+      |Put narrationText first. Fields that a response type does not use are null.
       |
       |CRITICAL EXIT FORMAT:
       |The "exits" array MUST contain objects with this exact structure:
@@ -216,7 +210,9 @@ object PromptBuilder {
       |  "responseType": "simple",
       |  "narrationText": "Action result or description text. (MAX 450 chars)",
       |  "locationId": "current_location_id",
-      |  "actionTaken": "examine/help/inventory/talk/use/etc"
+      |  "actionTaken": "examine/help/inventory/talk/use/etc",
+      |  "locationName": null, "imageDescription": null, "musicDescription": null, "musicMood": null,
+      |  "exits": null, "items": null, "npcs": null
       |}
       |""".stripMargin
   }

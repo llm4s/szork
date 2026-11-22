@@ -2,7 +2,14 @@ package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
-import org.llm4s.szork.game.{AdventureOutline, CharacterOutline, ItemOutline, LocationOutline, PromptBuilder}
+import org.llm4s.szork.game.{
+  AdventureOutline,
+  CharacterOutline,
+  DungeonMasterOutput,
+  ItemOutline,
+  LocationOutline,
+  PromptBuilder
+}
 
 class PromptBuilderSpec extends AnyFunSuite with Matchers {
   test("fullSystemPrompt includes theme and art style") {
@@ -86,5 +93,19 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt should include("CRITICAL: You MUST respect the exit states")
     prompt should include("Physical barriers are ABSOLUTE until explicitly overcome")
     prompt should include("NEVER allow movement through locked, sealed, or blocked passages")
+  }
+
+  test("fullSystemPrompt leaves the answer's JSON format to the output schema llm4s states") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, Some("pixel"), None)
+    // No hand-written JSON example of the answer
+    prompt should not include "\"responseType\""
+    prompt should not include "\"narrationText\":"
+    // The prose guidance stays: when to use each response type, the art style for images, exits in prose
+    prompt should include("RESPONSE FORMAT:")
+    prompt should include("fullScene")
+    prompt should include("simple")
+    prompt should include("imageDescription: describe the scene for an image in pixel art style")
+    prompt should include("players read narrationText")
+    prompt should include(s"narrationText must be ≤${DungeonMasterOutput.MaxSceneNarrationChars} characters")
   }
 }

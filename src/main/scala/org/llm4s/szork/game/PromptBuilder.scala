@@ -67,17 +67,17 @@ object PromptBuilder {
       |
       |COMMAND MAPPING:
       |- Movement commands (north/south/east/west/up/down/in/out):
-      |  • If passable, return TYPE 1 - FULL SCENE for the destination.
-      |  • If blocked/locked/sealed, return TYPE 2 - SIMPLE RESPONSE explaining the obstacle; keep locationId as current.
+      |  • If passable, answer with a fullScene for the destination.
+      |  • If blocked/locked/sealed, answer with a simple response explaining the obstacle; keep locationId as current.
       |- Inventory commands (inventory, take, drop, etc.):
-      |  • You may use inventory tools internally, but the user-facing output must still follow TYPE 2 - SIMPLE RESPONSE format.
-      |- Examination/help/other non-movement interactions: TYPE 2 - SIMPLE RESPONSE.
+      |  • You may use inventory tools internally, but the answer is still a simple response.
+      |- Examination/help/other non-movement interactions: a simple response.
       |
       |GAME INITIALIZATION:
       |When you receive the message "Start adventure", generate the opening scene of the adventure.
       |This should be the player's starting location, introducing them to the world and setting.
       |Answer with a fullScene response.
-      |STRICT LENGTH LIMIT: narrationText must be ≤750 characters (aim for 400-600).
+      |STRICT LENGTH LIMIT: narrationText must be ≤${DungeonMasterOutput.MaxSceneNarrationChars} characters (aim for 400-600).
       |Keep descriptions terse in classic text adventure style (2-4 concise sentences).
       |
       |TEXT ADVENTURE WRITING CONVENTIONS:
@@ -166,54 +166,12 @@ object PromptBuilder {
       |- Track exit states across player actions - locked doors stay locked until unlocked
       |- Update exit states when player takes relevant actions (unlock, open, unseal)
       |
-      |Response Format:
-      |
-      |Every final answer is ONE JSON object matching the response schema below - no text before or after it.
-      |Put narrationText first. Fields that a response type does not use are null.
-      |
-      |CRITICAL EXIT FORMAT:
-      |The "exits" array MUST contain objects with this exact structure:
-      |{
-      |  "direction": "north|south|east|west|up|down|in|out",
-      |  "locationId": "target_location_id",
-      |  "description": "Optional description of what's in that direction"
-      |}
-      |NEVER output exits as simple strings like ["north", "south"]
-      |
-      |TYPE 1 - FULL SCENE (for movement, look, or scene changes):
-      |{
-      |  "responseType": "fullScene",
-      |  "narrationText": "Brief room description. Exits visible. Items present. (MAX 750 chars)",
-      |  "locationId": "unique_location_id",
-      |  "locationName": "Human Readable Name",
-      |  "imageDescription": "Detailed 2-3 sentence visual description for image generation in $artStyleDesc.",
-      |  "musicDescription": "Detailed atmospheric description for music generation.",
-      |  "musicMood": "One of: entrance, exploration, combat, victory, dungeon, forest, town, mystery, castle, underwater, temple, boss, stealth, treasure, danger, peaceful",
-      |  "exits": [
-      |    {
-      |      "direction": "north",
-      |      "locationId": "forest_path",
-      |      "description": "A winding path leads into the dark forest"
-      |    },
-      |    {
-      |      "direction": "east",
-      |      "locationId": "river_bank",
-      |      "description": "The sound of rushing water comes from the east"
-      |    }
-      |  ],
-      |  "items": ["brass lantern", "mysterious key"],
-      |  "npcs": ["old hermit", "friendly merchant"]
-      |}
-      |
-      |TYPE 2 - SIMPLE RESPONSE (for examine, help, inventory, interactions without scene change):
-      |{
-      |  "responseType": "simple",
-      |  "narrationText": "Action result or description text. (MAX 450 chars)",
-      |  "locationId": "current_location_id",
-      |  "actionTaken": "examine/help/inventory/talk/use/etc",
-      |  "locationName": null, "imageDescription": null, "musicDescription": null, "musicMood": null,
-      |  "exits": null, "items": null, "npcs": null
-      |}
+      |RESPONSE FORMAT:
+      |Every final answer is one JSON object matching the response schema you are given. Put narrationText first.
+      |- fullScene: for movement to a new location, LOOK, or the opening scene. Give the location's details, its exits
+      |  (each with the id of the location it leads to) and the music mood that best fits it.
+      |- simple: for everything else; the fields only a scene uses are null.
+      |- imageDescription: describe the scene for an image in $artStyleDesc.
       |""".stripMargin
   }
 }

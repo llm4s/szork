@@ -369,8 +369,7 @@ class GameEngine(
       val styledPrompt = MediaPlanner.styledImagePrompt(artStyle, scene.imageDescription, artStyleDescription)
       logger.info(s"[$sessionId] Generating scene image for ${scene.locationId}: ${styledPrompt.take(100)}...")
       client.generateScene(styledPrompt, artStyle.getOrElse("fantasy"), gameId, Some(scene.locationId)) match {
-        case Right(image) if image.nonEmpty => Some(image)
-        case Right(_) => None
+        case Right(image) => Some(image)
         case Left(error) =>
           logger.error(s"[$sessionId] Failed to generate image: ${error.message}")
           None

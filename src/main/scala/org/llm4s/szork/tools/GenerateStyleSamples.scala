@@ -1,8 +1,8 @@
 package org.llm4s.szork.tools
 
-import org.llm4s.szork.media.ImageGeneration
+import org.llm4s.szork.api.SzorkConfig
+import org.llm4s.szork.media.SceneImages
 import java.nio.file.{Files, Paths}
-import java.util.Base64
 
 /** Generates the sample image for each art style shown on the style selection page.
   *
@@ -53,13 +53,12 @@ object GenerateStyleSamples {
       println(s"Created directory: $outputDir")
     }
 
-    // Try to create ImageGeneration - will throw if API key not configured
-    val imageGen =
-      try
-        ImageGeneration()
-      catch {
-        case _: IllegalStateException =>
-          println("ERROR: the configured image provider has no credentials (see SZORK_IMAGE_PROVIDER)")
+    // The llm4s image client for the configured provider (SZORK_IMAGE_PROVIDER and its credentials)
+    val imageClient =
+      SceneImages.config(SzorkConfig.instance).flatMap(SceneImages.llm4sClient(_, tracing = None)) match {
+        case Right(client) => client
+        case Left(reason) =>
+          println(s"ERROR: scene images unavailable: $reason")
           sys.exit(1)
       }
 
@@ -73,16 +72,13 @@ object GenerateStyleSamples {
       val fullPrompt = s"${style.sceneDescription}, rendered in ${style.stylePrompt}"
       println(s"  Prompt: ${fullPrompt.take(100)}...")
 
-      imageGen.generateScene(fullPrompt) match {
-        case Right(base64Image) if base64Image.nonEmpty =>
-          val imageData = Base64.getDecoder.decode(base64Image)
+      imageClient.generateImage(fullPrompt, SceneImages.Options) match {
+        case Right(image) =>
+          val imageData = image.asBytes
           val outputPath = outputDir.resolve(s"${style.id}-sample.png")
           Files.write(outputPath, imageData)
           println(s"  ✓ Saved ${style.name} sample to: $outputPath (${imageData.length / 1024} KB)")
           Some((style.id, outputPath.toString))
-        case Right(_) =>
-          println(s"  ✗ Image generation is disabled; set SZORK_IMAGE_PROVIDER and its credentials")
-          None
         case Left(error) =>
           println(s"  ✗ Failed to generate ${style.name} sample: ${error.message}")
           None

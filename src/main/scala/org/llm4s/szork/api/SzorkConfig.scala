@@ -5,6 +5,7 @@ import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.agent.ContextWindowConfig
 import org.llm4s.config.{ConfigReader, EnvLoader}
 import org.llm4s.szork.game.GameEngine
+import org.llm4s.szork.media.SceneImages
 import org.llm4s.security.Secret
 import org.slf4j.Logger
 
@@ -37,23 +38,6 @@ object ImageProvider {
     case OpenAIDalle3 => "OpenAI DALL-E 3"
     case LocalStableDiffusion => "Local Stable Diffusion"
   }
-
-  /** Resolve the HuggingFace API key from the supported env keys, in priority order. */
-  def huggingFaceKey(reader: ConfigReader = EnvLoader): Option[String] =
-    reader
-      .get("HUGGINGFACE_API_KEY")
-      .filter(_.nonEmpty)
-      .orElse(reader.get("HF_API_KEY").filter(_.nonEmpty))
-      .orElse(reader.get("HUGGINGFACE_TOKEN").filter(_.nonEmpty))
-
-  /** Whether the credentials required by the given image provider are available. */
-  def imageCredsAvailable(provider: ImageProvider, reader: ConfigReader = EnvLoader): Boolean =
-    provider match {
-      case HuggingFace | HuggingFaceSDXL => huggingFaceKey(reader).exists(_.nonEmpty)
-      case OpenAIDalle2 | OpenAIDalle3 => reader.get("OPENAI_API_KEY").exists(_.nonEmpty)
-      case LocalStableDiffusion => true
-      case None => false
-    }
 }
 
 /** Configuration for the Szork game server
@@ -322,17 +306,9 @@ object SzorkConfig {
         errors += s"Invalid port: ${config.port}"
       }
 
-      // Validate image provider configuration
-      if (config.imageGenerationEnabled && config.imageProvider != ImageProvider.None
-        && !ImageProvider.imageCredsAvailable(config.imageProvider)) {
-        config.imageProvider match {
-          case ImageProvider.HuggingFace | ImageProvider.HuggingFaceSDXL =>
-            errors += "HuggingFace image provider selected but no API key found"
-          case ImageProvider.OpenAIDalle2 | ImageProvider.OpenAIDalle3 =>
-            errors += "OpenAI DALL-E provider selected but OPENAI_API_KEY not found"
-          case _ => ()
-        }
-      }
+      // An image provider that was chosen but cannot be used (its credentials are missing)
+      if (config.imageGenerationEnabled && config.imageProvider != ImageProvider.None)
+        SceneImages.config(config).left.foreach(reason => errors += s"Scene images unavailable: $reason")
 
       // Validate LLM configuration
       if (config.llmConfig.isEmpty) {

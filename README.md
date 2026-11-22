@@ -157,13 +157,15 @@ Set in `.env` (see `.env.example`) or the environment:
 | `SZORK_DM_CONTEXT_MAX_MESSAGES` | – | Limit each call by conversation messages instead of tokens |
 | `SZORK_HOST`, `SZORK_PORT`, `SZORK_WS_PORT` | `127.0.0.1`, `8090`, `9002` | Where the HTTP and WebSocket servers listen |
 | `SZORK_ALLOWED_ORIGINS` | the dev frontend and this server | Browser origins allowed to open the WebSocket (comma-separated) |
-| `SZORK_IMAGE_GENERATION_ENABLED`, `SZORK_IMAGE_PROVIDER` | `true`, `none` | Scene images (`dalle3`, `dalle2`, `huggingface`, `huggingface-sdxl`, `local`) |
+| `SZORK_IMAGE_GENERATION_ENABLED`, `SZORK_IMAGE_PROVIDER` | `true`, `none` | Scene images through the llm4s image client (`dalle3`, `dalle2`, `huggingface`, `huggingface-sdxl`, `local`); traced with the Dungeon Master when `TRACING_MODE` is set |
+| `HUGGINGFACE_API_KEY` (or `HF_API_KEY`, `HUGGINGFACE_TOKEN`) | – | Key for the `huggingface` image providers (the DALL-E ones use `OPENAI_API_KEY`) |
+| `STABLE_DIFFUSION_URL` (or `SD_URL`), `STABLE_DIFFUSION_API_KEY` (or `SD_API_KEY`) | `http://localhost:7860`, – | The `local` Stable Diffusion server |
 | `SZORK_TTS_ENABLED`, `SZORK_TTS_VOICE`, `SZORK_TTS_MODEL` | `true`, `nova`, `tts-1` | Narration |
 | `SZORK_STT_ENABLED`, `SZORK_STT_MODEL` | `true`, `whisper-1` | Voice input |
 | `SZORK_MUSIC_ENABLED`, `REPLICATE_API_KEY` | `true`, – | Background music |
 | `SZORK_AUTO_SAVE`, `SZORK_SAVES_DIR` | `true`, `szork-saves` | Saving each turn |
 | `SZORK_CACHE_ENABLED`, `SZORK_CACHE_DIR`, `SZORK_CACHE_MAX_BYTES`, `SZORK_CACHE_TTL_MS` | `true`, `szork-cache`, 500MB, 7 days | Media cache |
-| `TRACING_MODE` (+ `LANGFUSE_*`) | off | Agent tracing: `console` or `langfuse` |
+| `TRACING_MODE` (+ `LANGFUSE_*`) | off | Agent and scene image tracing: `console` or `langfuse` |
 
 ## 📚 Documentation
 

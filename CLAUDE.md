@@ -73,7 +73,8 @@ scene or simple response). **game/PromptBuilder.scala** builds the system prompt
 inventory tools per game over a `PlayerInventory`.
 
 **persistence/** - Step-based saves under `szork-saves/<game-id>/step-NNNN/`; `GameDirs` validates game ids before they
-reach the filesystem. **media/** - image, music, speech and the media cache.
+reach the filesystem. **media/** - image, music, speech and the media cache; `SceneImages` builds the server's one
+llm4s image client (traced with the Dungeon Master) and the cached `ImageClient` over it.
 
 ## Development Patterns
 

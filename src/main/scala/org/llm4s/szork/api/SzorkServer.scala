@@ -269,7 +269,12 @@ object SzorkServer extends cask.Main with cask.Routes {
     address = new java.net.InetSocketAddress(config.host, wsPort),
     sessionManager = sessionManager,
     capabilities = capabilities,
-    engineFactory = EngineFactory.default(llmClient, tracing, config.dmContextWindow, sceneImages),
+    engineFactory = EngineFactory.default(
+      llmClient,
+      tracing,
+      config.dmContextWindow,
+      sceneImages,
+      inputGuardrail = config.inputGuardrailEnabled),
     sttClient = Option.when(capabilities.stt)(new org.llm4s.szork.adapters.DefaultSTTClient()),
     workPool = workPool,
     mediaEC = ExecutionContext.fromExecutor(mediaPool),

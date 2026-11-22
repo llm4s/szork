@@ -492,7 +492,9 @@ class TypedWebSocketServer(
     )
   }
 
-  /** After a turn's response is sent: report validation issues, start its media, and save it. */
+  /** After a turn's response is sent: report validation issues, start its media, and save it. A refused command changed
+    * nothing, so it is not saved.
+    */
   private def afterTurn(
     session: GameSession,
     turn: TurnMedia,
@@ -503,7 +505,7 @@ class TypedWebSocketServer(
       logger.warn(s"[${session.id}] Response issues: ${issues.mkString("; ")}")
     }
     startMedia(session, turn)
-    if (session.features.autoSave) {
+    if (session.features.autoSave && !response.refused) {
       session.engine.incrementStepNumber()
       val stepData = session.engine.createStepData(
         gameId = session.gameId,

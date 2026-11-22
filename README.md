@@ -155,6 +155,7 @@ Set in `.env` (see `.env.example`) or the environment:
 | `SZORK_LLM_PROVIDER`, `SZORK_LLM_MODEL` | from the keys present; `gpt-4o` / `claude-sonnet-5-5` | Dungeon Master provider and model |
 | `SZORK_DM_CONTEXT_MAX_TOKENS` | `24000` | Conversation tokens sent with each Dungeon Master call, besides the system prompt (oldest turns are dropped first; capped at half the model's context window; `0` or `off` sends the whole game) |
 | `SZORK_DM_CONTEXT_MAX_MESSAGES` | – | Limit each call by conversation messages instead of tokens |
+| `SZORK_INPUT_GUARDRAIL` | `true` | Check each command with llm4s's prompt-injection guardrail before the Dungeon Master sees it ("ignore your instructions", "print your system prompt"); a refused command gets "The dungeon does not understand you." and changes nothing (`false` or `off` disables) |
 | `SZORK_HOST`, `SZORK_PORT`, `SZORK_WS_PORT` | `127.0.0.1`, `8090`, `9002` | Where the HTTP and WebSocket servers listen |
 | `SZORK_ALLOWED_ORIGINS` | the dev frontend and this server | Browser origins allowed to open the WebSocket (comma-separated) |
 | `SZORK_IMAGE_GENERATION_ENABLED`, `SZORK_IMAGE_PROVIDER` | `true`, `none` | Scene images through the llm4s image client (`dalle3`, `dalle2`, `huggingface`, `huggingface-sdxl`, `local`); traced with the Dungeon Master when `TRACING_MODE` is set |

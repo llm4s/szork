@@ -1,9 +1,10 @@
 package org.llm4s.szork.api
 
 import org.llm4s.agent.ContextWindowConfig
+import org.llm4s.agent.guardrails.InputGuardrail
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.szork.adapters.{DefaultMusicClient, DefaultTTSClient}
-import org.llm4s.szork.game.{AdventureOutline, GameEngine}
+import org.llm4s.szork.game.{AdventureOutline, GameEngine, PlayerInputGuardrail}
 import org.llm4s.szork.spi.{ImageClient, SystemClock}
 import org.llm4s.trace.Tracing
 
@@ -25,14 +26,17 @@ trait EngineFactory {
 object EngineFactory {
 
   /** Engines sharing the server's `llmClient`, `tracing`, `contextWindow` and scene `imageClient` (None: no images),
-    * with the default speech and music clients.
+    * with the default speech and music clients. With `inputGuardrail`, engines check player commands with the
+    * [[PlayerInputGuardrail]] (it is stateless, so they share it).
     */
   def default(
     llmClient: LLMClient,
     tracing: Option[Tracing],
     contextWindow: Option[ContextWindowConfig] = Some(GameEngine.DefaultContextWindow),
-    imageClient: Option[ImageClient] = None
-  ): EngineFactory =
+    imageClient: Option[ImageClient] = None,
+    inputGuardrail: Boolean = true
+  ): EngineFactory = {
+    val guardrails: Seq[InputGuardrail] = if (inputGuardrail) PlayerInputGuardrail.default else Nil
     (sessionId, theme, artStyle, outline, features) =>
       Right(
         new GameEngine(
@@ -45,6 +49,8 @@ object EngineFactory {
           imageClient = imageClient.filter(_ => features.image),
           musicClient = Option.when(features.music)(new DefaultMusicClient()),
           tracing = tracing,
-          contextWindow = contextWindow
+          contextWindow = contextWindow,
+          inputGuardrails = guardrails
         )(using llmClient))
+  }
 }

@@ -66,7 +66,10 @@ keep `frontend/src/types/WebSocketProtocol.ts` in sync.
 `withOutput(DungeonMasterOutput.schema)`, `withMaxSteps`, a `ContextWindowMiddleware`, optional `withTracing`). A game is
 one agent thread; streaming and blocking agents share one `GraphRuntime`. The middleware trims only what each model call
 is sent (`SZORK_DM_CONTEXT_MAX_TOKENS`/`_MESSAGES`); the thread, and so `GameState.agentMessages`, keeps the whole
-conversation. Restoring a save seeds a new thread with the saved conversation.
+conversation. Restoring a save seeds a new thread with the saved conversation. A `GuardrailMiddleware` runs
+**game/PlayerInputGuardrail.scala** (llm4s's `PromptInjectionDetector` with adventure-safe patterns,
+`SZORK_INPUT_GUARDRAIL`) on each command: a blocked turn (`AgentStatus.Blocked`) never reaches the model and is answered
+in character with a `refused` `GameResponse` that changes nothing and is not saved.
 
 **game/DungeonMasterOutput.scala** - The structured output schema every turn answers with (narration first, then the
 scene or simple response). **game/PromptBuilder.scala** builds the system prompt; **game/GameTools.scala** builds the

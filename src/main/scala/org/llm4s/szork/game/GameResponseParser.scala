@@ -4,7 +4,7 @@ import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 
 object GameResponseParser {
-  private val JsonMarker = "<<<JSON>>>"
+  val JsonMarker = "<<<JSON>>>"
 
   // Extract JSON string; if a marker is present, inject narrationText from prefix
   def extractJsonWithNarration(response: String): Option[String] = {

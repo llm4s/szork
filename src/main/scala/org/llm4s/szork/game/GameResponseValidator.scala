@@ -42,41 +42,52 @@ object GameResponseValidator {
   private val maxImageDescLen = 600
   private val maxMusicDescLen = 400
 
-  def validate(data: GameResponseData): SzorkResult[GameResponseData] = {
+  /** Problems found in a response: `errors` make it unusable; `warnings` are worth reporting but do not stop the
+    * response being used (e.g. narration a little over the length guideline).
+    */
+  final case class Findings(errors: List[String], warnings: List[String])
+
+  def check(data: GameResponseData): Findings = {
     val errors = scala.collection.mutable.ListBuffer[String]()
+    val warnings = scala.collection.mutable.ListBuffer[String]()
+
+    def checkId(locationId: String): Unit =
+      if (locationId.trim.isEmpty) errors += "locationId must be non-empty"
+      else if (idPattern.findFirstIn(locationId).isEmpty) errors += s"locationId '$locationId' must match [a-z0-9_-]+"
+
+    def checkNarration(text: String, maxLen: Int): Unit =
+      if (text.trim.isEmpty) errors += "narrationText must be non-empty"
+      else if (text.length > maxLen) warnings += s"narrationText too long (${text.length} > $maxLen)"
 
     data match {
       case s: GameScene =>
-        if (s.locationId.trim.isEmpty) errors += "locationId must be non-empty"
-        else if (idPattern.findFirstIn(s.locationId).isEmpty)
-          errors += s"locationId '${s.locationId}' must match [a-z0-9_-]+"
+        checkId(s.locationId)
         if (s.locationName.trim.isEmpty) errors += "locationName must be non-empty"
-        if (s.narrationText.trim.isEmpty) errors += "narrationText must be non-empty"
-        else if (s.narrationText.length > maxNarrationLenFull)
-          errors += s"narrationText too long (${s.narrationText.length} > $maxNarrationLenFull)"
+        checkNarration(s.narrationText, maxNarrationLenFull)
         if (s.exits.exists(e => e.direction.trim.isEmpty || e.locationId.trim.isEmpty))
           errors += "all exits must have direction and locationId"
-        if (s.exits.nonEmpty && s.exits.exists(e => !allowedDirections.contains(e.direction.toLowerCase)))
+        if (s.exits.exists(e => !allowedDirections.contains(e.direction.toLowerCase)))
           errors += s"invalid exit direction present (allowed: ${allowedDirections.mkString(", ")})"
-        if (s.exits.isEmpty)
-          errors += "full scene should include at least one exit"
+        if (s.exits.isEmpty) warnings += "full scene should include at least one exit"
         if (!allowedMoods.contains(s.musicMood.toLowerCase))
-          errors += s"musicMood '${s.musicMood}' is not a recognized mood"
+          warnings += s"musicMood '${s.musicMood}' is not a recognized mood"
         if (s.imageDescription.length > maxImageDescLen)
-          errors += s"imageDescription too long (${s.imageDescription.length} > $maxImageDescLen)"
+          warnings += s"imageDescription too long (${s.imageDescription.length} > $maxImageDescLen)"
         if (s.musicDescription.length > maxMusicDescLen)
-          errors += s"musicDescription too long (${s.musicDescription.length} > $maxMusicDescLen)"
+          warnings += s"musicDescription too long (${s.musicDescription.length} > $maxMusicDescLen)"
 
       case s: SimpleResponse =>
-        if (s.locationId.trim.isEmpty) errors += "locationId must be non-empty"
-        else if (idPattern.findFirstIn(s.locationId).isEmpty)
-          errors += s"locationId '${s.locationId}' must match [a-z0-9_-]+"
-        if (s.narrationText.trim.isEmpty) errors += "narrationText must be non-empty"
-        else if (s.narrationText.length > maxNarrationLenSimple)
-          errors += s"narrationText too long (${s.narrationText.length} > $maxNarrationLenSimple)"
+        checkId(s.locationId)
+        checkNarration(s.narrationText, maxNarrationLenSimple)
         if (s.actionTaken.trim.isEmpty) errors += "actionTaken must be non-empty"
     }
 
-    if (errors.isEmpty) Right(data) else Left(ValidationError(errors.toList))
+    Findings(errors.toList, warnings.toList)
+  }
+
+  /** The response if it has no errors (warnings are ignored here; see [[check]]). */
+  def validate(data: GameResponseData): SzorkResult[GameResponseData] = {
+    val findings = check(data)
+    if (findings.errors.isEmpty) Right(data) else Left(ValidationError(findings.errors))
   }
 }

@@ -20,6 +20,10 @@ import scala.util.Using
   * under that game's lock, and every file is written atomically, so concurrent image and music writes cannot lose each
   * other's entries or expose half-written files. A cache hit refreshes the file's timestamp, and the cache as a whole
   * is pruned oldest-first to SZORK_CACHE_MAX_BYTES, dropping files unused for SZORK_CACHE_TTL_MS.
+  *
+  * Clearing a game's cache (when the game is deleted) also stops anything being cached for it afterwards: an image or
+  * music job still running for the deleted game finds it marked deleted and writes nothing. Game ids are never reused,
+  * so the mark is permanent.
   */
 object MediaCache {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
@@ -41,29 +45,39 @@ object MediaCache {
   private[szork] def useCacheDirectory(dir: Path): Unit = cacheRoot = dir
 
   private val gameLocks = TrieMap[String, Object]()
+  // Games whose cache was cleared: nothing is cached for them again. Set and checked under the game's lock.
+  private val deletedGames = TrieMap[String, Unit]()
   private object PruneLock
 
   private def gameDir(gameId: String): Path = GameDirs.resolve(cacheRoot, gameId)
 
-  /** Runs `f` holding `gameId`'s lock, with its index; saves the index `f` returns. */
-  private def updateIndex(gameId: String)(f: MediaIndex => MediaIndex): Unit =
+  /** Runs `f` holding `gameId`'s lock, with its index; saves the index `f` returns. Returns false, doing nothing, if
+    * the game was deleted.
+    */
+  private def updateIndex(gameId: String)(f: MediaIndex => MediaIndex): Boolean =
     gameLocks.getOrElseUpdate(gameId, new Object).synchronized {
-      val dir = gameDir(gameId)
-      Files.createDirectories(dir.resolve("images"))
-      Files.createDirectories(dir.resolve("music"))
-      val metadataPath = dir.resolve("metadata.json")
-      val index = MediaCacheCodec.load(metadataPath).getOrElse {
-        logger.warn(s"Unreadable media index for game=$gameId; rebuilding it")
-        MediaIndex(Map.empty)
-      }
-      // Drop entries whose files were pruned
-      val live = MediaIndex(index.locations.map { case (loc, e) =>
-        loc -> LocationEntries(
-          e.images.filter(i => Files.exists(dir.resolve(i.path))),
-          e.music.filter(m => Files.exists(dir.resolve(m.path))))
-      })
-      MediaCacheCodec.save(metadataPath, f(live))
+      if (deletedGames.contains(gameId)) false
+      else updateLiveIndex(gameId)(f)
     }
+
+  private def updateLiveIndex(gameId: String)(f: MediaIndex => MediaIndex): Boolean = {
+    val dir = gameDir(gameId)
+    Files.createDirectories(dir.resolve("images"))
+    Files.createDirectories(dir.resolve("music"))
+    val metadataPath = dir.resolve("metadata.json")
+    val index = MediaCacheCodec.load(metadataPath).getOrElse {
+      logger.warn(s"Unreadable media index for game=$gameId; rebuilding it")
+      MediaIndex(Map.empty)
+    }
+    // Drop entries whose files were pruned
+    val live = MediaIndex(index.locations.map { case (loc, e) =>
+      loc -> LocationEntries(
+        e.images.filter(i => Files.exists(dir.resolve(i.path))),
+        e.music.filter(m => Files.exists(dir.resolve(m.path))))
+    })
+    MediaCacheCodec.save(metadataPath, f(live))
+    true
+  }
 
   /** The cached file `pathOf` picks from `gameId`'s index, base64-encoded; refreshes its timestamp. */
   private def lookup(gameId: String)(pathOf: MediaIndex => Option[String]): Option[String] =
@@ -90,13 +104,15 @@ object MediaCache {
   private def store(gameId: String, subDir: String, fileName: String, base64Content: String)(
     addEntry: (MediaIndex, String) => MediaIndex): Unit =
     if (enabled) try {
-      updateIndex(gameId) { index =>
+      val stored = updateIndex(gameId) { index =>
         val relative = s"$subDir/$fileName"
         AtomicFiles.write(gameDir(gameId).resolve(relative), Base64.getDecoder.decode(base64Content))
         addEntry(index, relative)
       }
-      logger.info(s"Cached $subDir/$fileName for game=$gameId")
-      prune()
+      if (stored) {
+        logger.info(s"Cached $subDir/$fileName for game=$gameId")
+        prune()
+      } else logger.info(s"Not caching $subDir/$fileName: game=$gameId was deleted")
     } catch {
       case e: Exception => logger.error(s"Failed to cache $subDir/$fileName for game=$gameId", e)
     }
@@ -155,10 +171,12 @@ object MediaCache {
 
   // ============= Management =============
 
+  /** Deletes `gameId`'s cached media, and stops anything being cached for it from now on (see the class comment). */
   def clearGameCache(gameId: String): SzorkResult[Unit] =
     try {
       val dir = gameDir(gameId)
       gameLocks.getOrElseUpdate(gameId, new Object).synchronized {
+        deletedGames.put(gameId, ())
         if (Files.exists(dir)) {
           deleteRecursively(dir)
           logger.info(s"Cleared cache for game: $gameId")

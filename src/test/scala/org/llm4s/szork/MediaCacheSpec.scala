@@ -49,6 +49,17 @@ class MediaCacheSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     Files.exists(root.resolve(game)) shouldBe false
   }
 
+  test("media finished after a game's cache is cleared is not written") {
+    val game = IdGenerator.gameId()
+    MediaCache.cacheImage(game, "a", "first", "pixel", b64("one"))
+    MediaCache.clearGameCache(game) shouldBe Right(())
+
+    // An image or music job still running when the game was deleted
+    MediaCache.cacheImage(game, "b", "second", "pixel", b64("two"))
+    MediaCache.cacheMusic(game, "b", "tune", "exploration", b64("three"))
+    Files.exists(root.resolve(game)) shouldBe false
+  }
+
   test("a corrupt index is rebuilt by the next write") {
     val game = IdGenerator.gameId()
     MediaCache.cacheImage(game, "a", "first", "pixel", b64("one"))

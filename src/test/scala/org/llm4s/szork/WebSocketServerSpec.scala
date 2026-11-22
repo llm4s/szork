@@ -9,6 +9,8 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import scala.concurrent.ExecutionContext
 import org.llm4s.szork.api._
+import org.llm4s.szork.error.ErrorHandling.SzorkResult
+import org.llm4s.szork.spi.STTClient
 import org.llm4s.szork.game.GameEngine
 import org.llm4s.szork.stubs.{FakeImageClient, FakeLLMClient}
 import org.llm4s.szork.websocket.TypedWebSocketServer
@@ -36,12 +38,17 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
         outline,
         imageClient = Option.when(features.image)(new FakeImageClient())))
 
+  // Every recording says "go north", which moves the player to a new scene
+  private val sttClient: STTClient = new STTClient {
+    override def transcribeBytes(audioBytes: Array[Byte], filename: String): SzorkResult[String] = Right("go north")
+  }
+
   private val server = new TypedWebSocketServer(
     address = new InetSocketAddress("127.0.0.1", port),
     sessionManager = sessions,
-    capabilities = Capabilities(tts = false, stt = false, image = true, music = false),
+    capabilities = Capabilities(tts = false, stt = true, image = true, music = false),
     engineFactory = engineFactory,
-    sttClient = None,
+    sttClient = Some(sttClient),
     workPool = workPool,
     mediaEC = ExecutionContext.fromExecutor(mediaPool),
     musicEC = ExecutionContext.fromExecutor(mediaPool),
@@ -112,6 +119,27 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     c.close()
   }
 
+  private val recording = java.util.Base64.getEncoder.encodeToString("audio".getBytes)
+
+  test("a voice command honours its imageGeneration flag") {
+    val c = connect()
+    startGame(c)
+    c.sendJson("type" -> "audioCommand", "audio" -> recording, "imageGeneration" -> false)
+    c.await("transcription")("data")("text").str shouldBe "go north"
+    val response = c.await("commandResponse")("data")
+    response("scene")("locationName").str shouldBe "Small Hall"
+    response("hasImage").bool shouldBe false
+    c.close()
+
+    val d = connect()
+    startGame(d)
+    d.sendJson("type" -> "audioCommand", "audio" -> recording)
+    val withImage = d.await("commandResponse")("data")
+    withImage("hasImage").bool shouldBe true
+    d.await("imageReady")("data")("messageIndex").num shouldBe withImage("messageIndex").num
+    d.close()
+  }
+
   test("a reconnected client resumes its session") {
     val first = connect()
     val sessionId = startGame(first)("data")("sessionId").str
@@ -157,7 +185,14 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     ProtocolCodec.decode("""{"type":"streamCommand","command":"look"}""") shouldBe Right(StreamCommandRequest("look"))
     ProtocolCodec.decode("""{"type":"resumeSession","data":{"sessionId":"s1"}}""") shouldBe Right(
       ResumeSessionRequest("s1"))
-    val json = ujson.read(ProtocolCodec.encode(MediaFailedMessage(3, "music")))
+    ProtocolCodec.decode("""{"type":"audioCommand","audio":"AAAA","imageGeneration":false}""") shouldBe Right(
+      AudioCommandRequest("AAAA", Some(false)))
+    val json = ujson.read(ProtocolCodec.encode(MediaFailedMessage(3, MediaKind.Music)))
     json shouldBe ujson.Obj("type" -> "mediaFailed", "data" -> ujson.Obj("messageIndex" -> 3, "kind" -> "music"))
+    upickle.default.read[MediaKind](ujson.Str("image")) shouldBe MediaKind.Image
+    val takenOver = ujson.read(ProtocolCodec.encode(SessionTakenOverMessage("s1", "g1")))
+    takenOver shouldBe ujson.Obj(
+      "type" -> "sessionTakenOver",
+      "data" -> ujson.Obj("sessionId" -> "s1", "gameId" -> "g1"))
   }
 }

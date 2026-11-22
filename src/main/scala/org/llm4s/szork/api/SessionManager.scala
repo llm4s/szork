@@ -31,17 +31,28 @@ object SessionFeatures {
     )
 }
 
-/** An active game: its engine and settings. `executor` serialises all work on the engine. */
+/** An active game: its engine and settings. `executor` serialises all work on the engine.
+  *
+  * The engine is built with every media client the server can provide; `features` decides which of them the session
+  * uses, so they can change while it plays (loading an open game applies the newly requested features). They are
+  * changed only by the session's own tasks, between turns.
+  */
 final class GameSession(
   val id: String,
   val gameId: String,
   val engine: GameEngine,
   val theme: Option[GameTheme],
   val artStyle: Option[ArtStyle],
-  val features: SessionFeatures,
+  initialFeatures: SessionFeatures,
   val executor: ExecutionContext
 ) {
   @volatile private var lastActiveAt: Long = System.currentTimeMillis()
+  @volatile private var currentFeatures: SessionFeatures = initialFeatures
+
+  def features: SessionFeatures = currentFeatures
+
+  /** Switches the session to `features`; call from a task on `executor`, so no turn sees a change part-way. */
+  def updateFeatures(features: SessionFeatures): Unit = currentFeatures = features
 
   def touch(): Unit = lastActiveAt = System.currentTimeMillis()
   def lastActive: Long = lastActiveAt

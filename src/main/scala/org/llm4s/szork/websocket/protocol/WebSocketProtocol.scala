@@ -11,31 +11,33 @@ object ClientMessage {
   implicit val rw: ReadWriter[ClientMessage] = ReadWriter.merge(
     NewGameRequest.rw,
     LoadGameRequest.rw,
+    ResumeSessionRequest.rw,
     CommandRequest.rw,
     StreamCommandRequest.rw,
     AudioCommandRequest.rw,
-    GetImageRequest.rw,
-    GetMusicRequest.rw,
     ListGamesRequest.rw,
     PingMessage.rw
   )
 }
 
-// Server to Client messages
+// Server to Client messages.
+//
+// upickle's macroRW omits a field whose value equals its default, so fields the client relies on (flags, lists)
+// have no defaults here: they are always sent. Optional fields default to None and are omitted when absent.
 sealed trait ServerMessage extends WebSocketMessage
 object ServerMessage {
   implicit val rw: ReadWriter[ServerMessage] = ReadWriter.merge(
     ConnectedMessage.rw,
     GameStartedMessage.rw,
     GameLoadedMessage.rw,
+    SessionResumedMessage.rw,
     CommandResponseMessage.rw,
     TextChunkMessage.rw,
     StreamCompleteMessage.rw,
     TranscriptionMessage.rw,
     ImageReadyMessage.rw,
     MusicReadyMessage.rw,
-    ImageDataMessage.rw,
-    MusicDataMessage.rw,
+    MediaFailedMessage.rw,
     GamesListMessage.rw,
     ErrorMessage.rw,
     PongMessage.rw
@@ -59,10 +61,24 @@ object NewGameRequest {
 }
 
 case class LoadGameRequest(
-  gameId: String
+  gameId: String,
+  tts: Option[Boolean] = None,
+  stt: Option[Boolean] = None,
+  music: Option[Boolean] = None,
+  image: Option[Boolean] = None
 ) extends ClientMessage
 object LoadGameRequest {
   implicit val rw: ReadWriter[LoadGameRequest] = macroRW
+}
+
+/** Re-attaches a reconnected client to its session. Answered with [[SessionResumedMessage]], or an [[ErrorMessage]]
+  * with details `SESSION_EXPIRED`, in which case the client should load its game again.
+  */
+case class ResumeSessionRequest(
+  sessionId: String
+) extends ClientMessage
+object ResumeSessionRequest {
+  implicit val rw: ReadWriter[ResumeSessionRequest] = macroRW
 }
 
 case class CommandRequest(
@@ -85,20 +101,6 @@ case class AudioCommandRequest(
 ) extends ClientMessage
 object AudioCommandRequest {
   implicit val rw: ReadWriter[AudioCommandRequest] = macroRW
-}
-
-case class GetImageRequest(
-  messageIndex: Int
-) extends ClientMessage
-object GetImageRequest {
-  implicit val rw: ReadWriter[GetImageRequest] = macroRW
-}
-
-case class GetMusicRequest(
-  messageIndex: Int
-) extends ClientMessage
-object GetMusicRequest {
-  implicit val rw: ReadWriter[GetMusicRequest] = macroRW
 }
 
 case class ListGamesRequest() extends ClientMessage
@@ -131,12 +133,12 @@ case class GameStartedMessage(
   messageIndex: Int,
   scene: Option[SceneData] = None,
   audio: Option[String] = None,
-  hasImage: Boolean = false,
-  hasMusic: Boolean = false,
-  ttsEnabled: Boolean = true,
-  sttEnabled: Boolean = true,
-  imageEnabled: Boolean = true,
-  musicEnabled: Boolean = true
+  hasImage: Boolean,
+  hasMusic: Boolean,
+  ttsEnabled: Boolean,
+  sttEnabled: Boolean,
+  imageEnabled: Boolean,
+  musicEnabled: Boolean
 ) extends ServerMessage
 object GameStartedMessage {
   implicit val rw: ReadWriter[GameStartedMessage] = macroRW
@@ -147,10 +149,23 @@ case class GameLoadedMessage(
   gameId: String,
   conversation: Seq[ConversationEntry],
   currentLocation: Option[String] = None,
-  currentScene: Option[SceneData] = None
+  currentScene: Option[SceneData] = None,
+  ttsEnabled: Boolean,
+  sttEnabled: Boolean,
+  imageEnabled: Boolean,
+  musicEnabled: Boolean
 ) extends ServerMessage
 object GameLoadedMessage {
   implicit val rw: ReadWriter[GameLoadedMessage] = macroRW
+}
+
+case class SessionResumedMessage(
+  sessionId: String,
+  gameId: String,
+  messageIndex: Int
+) extends ServerMessage
+object SessionResumedMessage {
+  implicit val rw: ReadWriter[SessionResumedMessage] = macroRW
 }
 
 case class CommandResponseMessage(
@@ -159,8 +174,8 @@ case class CommandResponseMessage(
   command: String,
   scene: Option[SceneData] = None,
   audio: Option[String] = None,
-  hasImage: Boolean = false,
-  hasMusic: Boolean = false
+  hasImage: Boolean,
+  hasMusic: Boolean
 ) extends ServerMessage
 object CommandResponseMessage {
   implicit val rw: ReadWriter[CommandResponseMessage] = macroRW
@@ -180,8 +195,8 @@ case class StreamCompleteMessage(
   duration: Long,
   scene: Option[SceneData] = None,
   audio: Option[String] = None,
-  hasImage: Boolean = false,
-  hasMusic: Boolean = false
+  hasImage: Boolean,
+  hasMusic: Boolean
 ) extends ServerMessage
 object StreamCompleteMessage {
   implicit val rw: ReadWriter[StreamCompleteMessage] = macroRW
@@ -211,23 +226,13 @@ object MusicReadyMessage {
   implicit val rw: ReadWriter[MusicReadyMessage] = macroRW
 }
 
-case class ImageDataMessage(
+/** Media announced for a message (hasImage / hasMusic) could not be produced; `kind` is "image" or "music". */
+case class MediaFailedMessage(
   messageIndex: Int,
-  image: String,
-  status: String = "ready"
+  kind: String
 ) extends ServerMessage
-object ImageDataMessage {
-  implicit val rw: ReadWriter[ImageDataMessage] = macroRW
-}
-
-case class MusicDataMessage(
-  messageIndex: Int,
-  music: String,
-  mood: String,
-  status: String = "ready"
-) extends ServerMessage
-object MusicDataMessage {
-  implicit val rw: ReadWriter[MusicDataMessage] = macroRW
+object MediaFailedMessage {
+  implicit val rw: ReadWriter[MediaFailedMessage] = macroRW
 }
 
 case class GamesListMessage(
@@ -243,10 +248,13 @@ case class ErrorMessage(
 ) extends ServerMessage
 object ErrorMessage {
   implicit val rw: ReadWriter[ErrorMessage] = macroRW
+
+  /** `details` of the error answering a [[ResumeSessionRequest]] for a session that no longer exists. */
+  val SessionExpired: String = "SESSION_EXPIRED"
 }
 
 case class PongMessage(
-  timestamp: Long = System.currentTimeMillis()
+  timestamp: Long
 ) extends ServerMessage
 object PongMessage {
   implicit val rw: ReadWriter[PongMessage] = macroRW
@@ -257,8 +265,8 @@ object PongMessage {
 case class SceneData(
   locationName: String,
   exits: Seq[ExitData],
-  items: Seq[String] = Seq.empty,
-  npcs: Seq[String] = Seq.empty
+  items: Seq[String],
+  npcs: Seq[String]
 )
 object SceneData {
   implicit val rw: ReadWriter[SceneData] = macroRW
@@ -288,4 +296,59 @@ case class GameInfo(
 )
 object GameInfo {
   implicit val rw: ReadWriter[GameInfo] = macroRW
+}
+
+/** The wire format: every message is `{"type": "<name>", "data": {...fields}}`, where the name is the class name
+  * without its `Request`/`Message` suffix, starting lower case (e.g. `StreamCommandRequest` is `streamCommand`).
+  */
+object ProtocolCodec {
+  private def wireName(className: String): String = {
+    val base = className.stripSuffix("Request").stripSuffix("Message")
+    base.take(1).toLowerCase + base.drop(1)
+  }
+
+  private val clientClassByType: Map[String, String] = Seq(
+    "NewGameRequest",
+    "LoadGameRequest",
+    "ResumeSessionRequest",
+    "CommandRequest",
+    "StreamCommandRequest",
+    "AudioCommandRequest",
+    "ListGamesRequest",
+    "PingMessage"
+  ).map(c => wireName(c) -> c).toMap
+
+  /** The wire type name of a server message. */
+  def typeOf(message: ServerMessage): String = wireName(message.getClass.getSimpleName)
+
+  /** Decodes a client message; fields may be at the top level or inside `data`. */
+  def decode(text: String): Either[String, ClientMessage] =
+    try {
+      val json = ujson.read(text)
+      val obj = json.obj
+      val msgType = obj.get("type").map(_.str).toRight("Missing 'type' field in client message")
+      msgType.flatMap { t =>
+        clientClassByType.get(t).toRight(s"Unknown client message type: $t").map { className =>
+          val source = obj.get("data") match {
+            case Some(data: ujson.Obj) => data.value
+            case _ => obj
+          }
+          val fields = ujson.Obj()
+          source.foreach { case (k, v) => if (k != "type") fields(k) = v }
+          fields("$type") = className
+          read[ClientMessage](fields)
+        }
+      }
+    } catch {
+      case e: Exception => Left(s"Invalid client message: ${e.getMessage}")
+    }
+
+  /** Encodes a server message as `{"type": ..., "data": {...}}`. */
+  def encode(message: ServerMessage): String = {
+    val fields = ujson.Obj()
+    writeJs[ServerMessage](message).obj.foreach { case (k, v) => if (!k.startsWith("$")) fields(k) = v }
+    val result = ujson.Obj("type" -> typeOf(message))
+    if (fields.value.nonEmpty) result("data") = fields
+    ujson.write(result)
+  }
 }

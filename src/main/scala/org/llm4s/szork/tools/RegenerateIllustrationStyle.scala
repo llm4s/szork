@@ -1,8 +1,8 @@
 package org.llm4s.szork.tools
 
-import org.llm4s.szork.media.ImageGeneration
+import org.llm4s.szork.api.SzorkConfig
+import org.llm4s.szork.media.SceneImages
 import java.nio.file.{Files, Paths}
-import java.util.Base64
 
 /** Regenerates just the illustration style sample, with a black and white sketch aesthetic.
   *
@@ -18,14 +18,12 @@ object RegenerateIllustrationStyle {
       Files.createDirectories(outputDir)
     }
 
-    // Try to create ImageGeneration - will throw if API key not configured
-    val imageGen =
-      try
-        ImageGeneration()
-      catch {
-        case _: IllegalStateException =>
-          println("ERROR: OpenAI API key not configured!")
-          println("Please set the OPENAI_API_KEY environment variable")
+    // The llm4s image client for the configured provider (SZORK_IMAGE_PROVIDER and its credentials)
+    val imageClient =
+      SceneImages.config(SzorkConfig.instance).flatMap(SceneImages.llm4sClient(_, tracing = None)) match {
+        case Right(client) => client
+        case Left(reason) =>
+          println(s"ERROR: scene images unavailable: $reason")
           sys.exit(1)
       }
 
@@ -40,10 +38,9 @@ object RegenerateIllustrationStyle {
     println(s"Generating new illustration sample...")
     println(s"Prompt: ${fullPrompt.take(150)}...")
 
-    imageGen.generateScene(fullPrompt, "") match { // Empty style to avoid adding "fantasy art" etc
-      case Right(base64Image) =>
-        // Save the base64 image to a file
-        val imageData = Base64.getDecoder.decode(base64Image)
+    imageClient.generateImage(fullPrompt, SceneImages.Options) match {
+      case Right(image) =>
+        val imageData = image.asBytes
         val outputPath = outputDir.resolve("illustration-sample.png")
         Files.write(outputPath, imageData)
         println(s"✓ Saved new illustration sample to: $outputPath")
@@ -56,7 +53,7 @@ object RegenerateIllustrationStyle {
         println("The new image emphasizes clean line work without shading for a minimalist look.")
 
       case Left(error) =>
-        println(s"✗ Failed to generate illustration sample: $error")
+        println(s"✗ Failed to generate illustration sample: ${error.message}")
         sys.exit(1)
     }
   }

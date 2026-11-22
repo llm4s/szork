@@ -1,6 +1,6 @@
 package org.llm4s.szork.adapters
 
-import org.llm4s.szork.media.{ImageGeneration, MusicGeneration, TextToSpeech, SpeechToText}
+import org.llm4s.szork.media.{MusicGeneration, TextToSpeech, SpeechToText}
 import org.llm4s.szork.spi._
 import org.llm4s.szork.error.ErrorHandling._
 
@@ -17,17 +17,6 @@ class DefaultSTTClient extends STTClient {
     impl.flatMap(_.transcribeBytes(audioBytes, filename))
 }
 
-class DefaultImageClient extends ImageClient {
-  private val impl = ImageGeneration()
-  override def generateScene(
-    prompt: String,
-    style: String,
-    gameId: Option[String],
-    locationId: Option[String]): SzorkResult[String] =
-    // The engine sends a fully styled prompt; `style` (the art style id) is not appended to it again
-    impl.generateSceneWithCache(prompt, "", gameId, locationId)
-}
-
 class DefaultMusicClient extends MusicClient {
   private val impl = MusicGeneration()
   override def isAvailable: Boolean = impl.isAvailable
@@ -38,18 +27,4 @@ class DefaultMusicClient extends MusicClient {
     locationId: Option[String]): SzorkResult[String] =
     // Scenes name one of the Dungeon Master's moods; anything else plays the default mood
     impl.generateMusicWithCache(MusicGeneration.MusicMoods.orDefault(mood), context, gameId, locationId)
-}
-
-object DefaultClients {
-  def createTTSClient(): Option[TTSClient] =
-    Some(new DefaultTTSClient())
-
-  def createSTTClient(): Option[STTClient] =
-    Some(new DefaultSTTClient())
-
-  def createImageClient(): Option[ImageClient] =
-    Some(new DefaultImageClient())
-
-  def createMusicClient(): Option[MusicClient] =
-    Some(new DefaultMusicClient())
 }

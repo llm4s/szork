@@ -12,7 +12,7 @@ import org.llm4s.szork.game._
 import org.llm4s.szork.websocket.TypedWebSocketServer
 import org.llm4s.szork.persistence.GamePersistence
 import org.llm4s.szork.error.PersistenceError
-import org.llm4s.szork.media.MediaCache
+import org.llm4s.szork.media.{MediaCache, SceneImages}
 
 /** Game theme configuration with prompt text.
   *
@@ -65,16 +65,10 @@ object SzorkServer extends cask.Main with cask.Routes {
   private val sttRequested = config.sttEnabled
   private val musicRequested = config.musicEnabled
 
-  private val imageRequested = config.imageGenerationEnabled && config.imageProvider != ImageProvider.None
-  private val imageKeysPresent: Boolean = ImageProvider.imageCredsAvailable(config.imageProvider)
-
   logger.info("=== Feature Availability ===")
   logger.info(s"LLM Text Generation: ${config.llmConfig.map(_.provider).getOrElse("Unavailable")}")
-  logger.info(s"Images: ${
-      if (imageRequested && imageKeysPresent) s"Enabled (${ImageProvider.toString(config.imageProvider)})"
-      else if (imageRequested) s"Disabled (missing credentials for ${ImageProvider.toString(config.imageProvider)})"
-      else "Disabled"
-    }")
+  logger.info(
+    s"Images: ${SceneImages.config(config).fold(reason => s"Disabled ($reason)", c => s"Enabled (${c.provider} ${c.model})")}")
   logger.info(s"Music: ${
       if (musicRequested && replicateKeyPresent) "Enabled (Replicate)"
       else if (musicRequested) "Disabled (REPLICATE_API_KEY not set)"
@@ -93,9 +87,7 @@ object SzorkServer extends cask.Main with cask.Routes {
   logger.info("===========================")
 
   @get("/api/feature-flags")
-  def featureFlags(): ujson.Value = {
-    val imageRequested = config.imageGenerationEnabled && config.imageProvider != ImageProvider.None
-    val imageCreds = ImageProvider.imageCredsAvailable(config.imageProvider)
+  def featureFlags(): ujson.Value =
     ujson.Obj(
       "llm" -> ujson.Obj(
         "provider" -> config.llmConfig.map(_.provider).getOrElse(""),
@@ -104,7 +96,7 @@ object SzorkServer extends cask.Main with cask.Routes {
       "image" -> ujson.Obj(
         "enabled" -> config.imageGenerationEnabled,
         "provider" -> ImageProvider.toString(config.imageProvider),
-        "available" -> (imageRequested && imageCreds)
+        "available" -> capabilities.image
       ),
       "music" -> ujson.Obj(
         "enabled" -> config.musicEnabled,
@@ -119,7 +111,6 @@ object SzorkServer extends cask.Main with cask.Routes {
         "available" -> (config.sttEnabled && openAIKeyPresent)
       )
     )
-  }
 
   // Validate configuration
   config.validate() match {
@@ -142,6 +133,8 @@ object SzorkServer extends cask.Main with cask.Routes {
   }
   // The Dungeon Master agents' tracing (TRACING_MODE), shared by every game
   private val tracing = AgentTracing.fromEnvironment
+  // One llm4s image client for every game's scene images, traced with the Dungeon Master (None: no scene images)
+  private val sceneImages = SceneImages.fromConfig(config, tracing)
 
   // Cask's debug mode sends exception details to clients in error responses
   override def debugMode: Boolean = false
@@ -251,7 +244,7 @@ object SzorkServer extends cask.Main with cask.Routes {
   }
 
   private val sessionManager = new SessionManager()
-  private val capabilities = Capabilities.from(config)
+  private val capabilities = Capabilities.from(config).copy(image = sceneImages.isDefined)
 
   private def daemonPool(name: String, threads: Int) = Executors.newFixedThreadPool(
     threads,
@@ -276,7 +269,7 @@ object SzorkServer extends cask.Main with cask.Routes {
     address = new java.net.InetSocketAddress(config.host, wsPort),
     sessionManager = sessionManager,
     capabilities = capabilities,
-    engineFactory = EngineFactory.default(llmClient, tracing, config.dmContextWindow),
+    engineFactory = EngineFactory.default(llmClient, tracing, config.dmContextWindow, sceneImages),
     sttClient = Option.when(capabilities.stt)(new org.llm4s.szork.adapters.DefaultSTTClient()),
     workPool = workPool,
     mediaEC = ExecutionContext.fromExecutor(mediaPool),

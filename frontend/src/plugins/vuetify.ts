@@ -1,5 +1,6 @@
 import "@mdi/font/css/materialdesignicons.css";
 import "vuetify/styles";
+import "@/styles/reset.css";
 import { createVuetify } from "vuetify";
 
 /** Vuetify, in a dark theme (its components are imported where used, by vite-plugin-vuetify). */

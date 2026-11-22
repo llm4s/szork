@@ -19,8 +19,8 @@
     <v-row v-else class="game-row ma-0">
       <v-col cols="12" md="8" class="mx-auto game-col pa-0">
         <div class="game-wrapper">
-          <v-card-title class="text-h5 game-title">
-            <v-row align="center" justify="space-between">
+          <v-card-title class="text-headline-small game-title">
+            <v-row class="align-center justify-space-between">
               <v-col cols="auto">SZork - {{ title }}</v-col>
               <v-col cols="auto">
                 <GameHeaderControls

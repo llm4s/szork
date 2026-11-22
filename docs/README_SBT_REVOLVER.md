@@ -56,41 +56,41 @@ You can also use the standard sbt-revolver commands directly:
 
 ```bash
 # Start with revolver
-sbt szork/reStart
+sbt reStart
 
 # Stop with revolver
-sbt szork/reStop
+sbt reStop
 
 # Check status
-sbt szork/reStatus
+sbt reStatus
 
 # Watch mode (triggered restart)
-sbt ~szork/reStart
+sbt ~reStart
 ```
 
 ## Configuration
 
 The sbt-revolver configuration for Szork includes:
 
-- Main class: `org.llm4s.szork.SzorkServer`
+- Main class: `org.llm4s.szork.api.SzorkServer`
 - JVM options: `-Xmx1g -XX:MaxMetaspaceSize=512m`
-- Port: 8080
-- Host: 0.0.0.0
-- Watch sources: All Scala files in szork/src, src/main/scala, and shared/src/main/scala
+- Ports: 8090 (HTTP) and 9002 (WebSocket)
+- Host: 127.0.0.1 (set `SZORK_HOST` to change)
+- Watch sources: all Scala files under `src/`
 
 ## Troubleshooting
 
 If the server fails to start:
 
-1. Check if port 8080 is already in use
-2. Ensure all dependencies are resolved: `sbt szork/compile`
+1. Check if port 8090 or 9002 is already in use
+2. Ensure all dependencies are resolved: `sbt compile`
 3. Check the logs for compilation errors
 4. Try stopping and starting again: `sbt szorkStop` then `sbt szorkStart`
 
 ## Development Workflow
 
 1. Open a terminal and run `sbt "~szorkStart"`
-2. The server will start on http://localhost:8080
+2. The server will start on http://localhost:8090
 3. Make changes to any Scala files
 4. Save the file - the server will automatically recompile and restart
 5. Test your changes immediately

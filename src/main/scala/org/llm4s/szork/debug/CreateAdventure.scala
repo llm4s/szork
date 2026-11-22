@@ -9,7 +9,7 @@ import scala.util.{Try, Success, Failure}
 
 /** Debug script to create a new adventure and save the initial state.
   *
-  * Usage: sbt "runMain org.llm4s.szork.debug.CreateAdventure <game-id> [--theme <theme>] [--art-style <style>]"
+  * Usage: sbt "runMain org.llm4s.szork.debug.CreateAdventure [--theme <theme>] [--art-style <style>]"
   *
   * Example: sbt "runMain org.llm4s.szork.debug.CreateAdventure test-game-1" sbt "runMain
   * org.llm4s.szork.debug.CreateAdventure fantasy-quest --theme 'medieval fantasy' --art-style illustration"
@@ -24,11 +24,6 @@ object CreateAdventure {
   )
 
   def main(args: Array[String]): Unit = {
-    if (args.isEmpty) {
-      printUsage()
-      System.exit(1)
-    }
-
     val config = parseArgs(args) match {
       case Success(cfg) => cfg
       case Failure(ex) =>
@@ -170,15 +165,12 @@ object CreateAdventure {
   }
 
   private def parseArgs(args: Array[String]): Try[Config] = Try {
-    if (args.isEmpty) {
-      throw new IllegalArgumentException("Game ID is required")
-    }
-
-    val gameId = args(0)
+    // Save directories only accept generated ids, so the tool makes one (and prints it)
+    val gameId = IdGenerator.gameId()
     var theme = "classic fantasy adventure"
     var artStyle = "fantasy"
 
-    var i = 1
+    var i = 0
     while (i < args.length)
       args(i) match {
         case "--theme" =>
@@ -198,27 +190,25 @@ object CreateAdventure {
 
   private def printUsage(): Unit =
     println("""
-      |Usage: sbt "runMain org.llm4s.szork.debug.CreateAdventure <game-id> [OPTIONS]"
+      |Usage: sbt "runMain org.llm4s.szork.debug.CreateAdventure [OPTIONS]"
       |
-      |Arguments:
-      |  <game-id>           Unique game identifier (required)
+      |Creates a new game (with a generated id, printed at the end) and plays its opening turn.
       |
       |Options:
       |  --theme <theme>     Adventure theme (default: "classic fantasy adventure")
       |  --art-style <style> Art style: fantasy|pixel|illustration|painting|comic (default: "fantasy")
       |
       |Examples:
-      |  sbt "runMain org.llm4s.szork.debug.CreateAdventure test-game-1"
-      |  sbt "runMain org.llm4s.szork.debug.CreateAdventure space-quest --theme 'sci-fi space adventure' --art-style comic"
+      |  sbt "runMain org.llm4s.szork.debug.CreateAdventure"
+      |  sbt "runMain org.llm4s.szork.debug.CreateAdventure --theme 'sci-fi space adventure' --art-style comic"
       |
       |Output:
       |  Creates szork-saves/<game-id>/step-0001/ with:
-      |    - game.json              : Game metadata
       |    - metadata.json          : Step metadata
-      |    - state.json             : Complete game state
+      |    - state.json             : Complete game state, including the agent conversation
       |    - response.txt           : Narration text
       |    - response.json          : Structured response (scene)
-      |    - messages.json          : Agent messages
       |    - outline.json           : Adventure outline
+      |  and szork-saves/<game-id>/game.json with the game's metadata.
       |""".stripMargin)
 }

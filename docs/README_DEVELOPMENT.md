@@ -2,7 +2,7 @@
 
 ## Build Configuration
 
-Szork is a standalone Scala 2.13 project that depends on the LLM4S library for AI integration.
+Szork is a standalone Scala 3 project built on the LLM4S library (0.6) for its AI features.
 
 ## Building and Running
 
@@ -11,7 +11,7 @@ Szork is a standalone Scala 2.13 project that depends on the LLM4S library for A
 sbt compile
 
 # Run the full server (requires LLM configuration)
-sbt "runMain org.llm4s.szork.SzorkServer"
+sbt "runMain org.llm4s.szork.api.SzorkServer"
 
 # Or use the convenient aliases:
 sbt szorkStart    # Start the server
@@ -38,23 +38,31 @@ The frontend is in the `frontend` directory. To develop:
 1. Terminal 1: Run the backend server (see above)
 2. Terminal 2: 
    ```bash
-   cd szork/frontend
+   cd frontend
    npm install
    npm run dev
    ```
 
 The frontend dev server runs on http://localhost:3090 and proxies API calls to the backend on port 8090.
 
+## Testing
+
+```bash
+sbt test                                   # Backend tests (no network; a fake LLM drives the engine)
+sbt "testOnly *WebSocketServerSpec"        # One suite
+RUN_INTEGRATION=true sbt "testOnly *AdventureIntegrationSpec"   # 20 turns against a real LLM
+cd frontend && npm test                    # Frontend tests (Vitest)
+```
+
+CI also compiles with `-Werror`, checks formatting (`sbt scalafmtCheckAll`) and runs `npm run lint:check`.
+
 ## Architecture
 
-- `SzorkServer.scala` - Full game server with LLM integration
-- `SzorkSimpleServer.scala` - Simple test server without LLM
-- `frontend/` - Vue.js/Vuetify frontend application
+See the main [README](../README.md#architecture) for the package layout and how a turn works.
 
 ## Dependencies
 
-Szork is a standalone project that uses:
-- **LLM4S v0.1.11**: For LLM orchestration and agent functionality
-- **Cask**: Web framework for HTTP server
-- **Java-WebSocket**: For real-time communication
-- **Various AI SDKs**: OpenAI, Anthropic for LLM integration
+- **LLM4S 0.6**: `llm4s-agent`, `llm4s-openai`, `llm4s-anthropic`, `llm4s-image`, `llm4s-speech`, `llm4s-observability`
+- **Cask**: HTTP server
+- **Java-WebSocket**: WebSocket server
+- **Vue 3 / Vuetify 3**: frontend

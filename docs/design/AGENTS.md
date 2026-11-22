@@ -14,7 +14,7 @@
 - Frontend build/lint/format: `npm run build`, `npm run lint`, `npm run format`.
 
 ## Coding Style & Naming Conventions
-- Scala 2.13. Use 2‑space indentation, avoid wildcard imports, keep methods small and cohesive.
+- Scala 3. Use 2‑space indentation, avoid wildcard imports, keep methods small and cohesive.
 - Naming: `PascalCase` for classes/objects, `camelCase` for vals/methods, `SCREAMING_SNAKE_CASE` for constants.
 - Package layout mirrors directories under `org.llm4s.szork`.
 - Frontend uses ESLint + Prettier; prefer Composition API, typed props/emit, single-file components in `PascalCase.vue`.

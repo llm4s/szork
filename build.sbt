@@ -30,11 +30,7 @@ lazy val root = (project in file("."))
     scalacOptions ++= Seq(
       "-feature",
       "-unchecked",
-      "-deprecation",
-      // TypedWebSocketServer still has old-style implicit arguments and an if/else Option match the exhaustivity
-      // checker cannot see through; silence those two warnings for that file only until it is updated.
-      "-Wconf:src=.*/websocket/TypedWebSocketServer\\.scala&msg=Implicit parameters should be provided with a `using` clause:s",
-      "-Wconf:src=.*/websocket/TypedWebSocketServer\\.scala&msg=match may not be exhaustive:s"
+      "-deprecation"
     ),
     
     // Dependencies

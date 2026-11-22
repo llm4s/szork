@@ -9,7 +9,7 @@ import org.llm4s.error.LLMError
   */
 class FakeLLMClient extends LLMClient {
   private def replyFor(conversation: Conversation): Completion = {
-    val lastUser = conversation.messages.reverse.collectFirst { case UserMessage(c) => c }.getOrElse("")
+    val lastUser = conversation.messages.reverse.collectFirst { case u: UserMessage => u.content }.getOrElse("")
     val (narration, json) =
       if (lastUser
           .toLowerCase()
@@ -57,7 +57,7 @@ class FakeLLMClient extends LLMClient {
     val content = s"$narration\n<<<JSON>>>\n${ujson.write(json)}"
     Completion(
       id = java.util.UUID.randomUUID().toString,
-      created = System.currentTimeMillis(),
+      created = java.time.Instant.now(),
       content = content,
       model = "fake-llm",
       message = AssistantMessage(Some(content)),
@@ -72,7 +72,12 @@ class FakeLLMClient extends LLMClient {
   override def streamComplete(
     conversation: Conversation,
     options: CompletionOptions,
-    onChunk: StreamedChunk => Unit): Result[Completion] = Right(replyFor(conversation))
+    onChunk: StreamedChunk => Unit): Result[Completion] = {
+    // Stream the reply in small pieces, as a provider would, then return the whole completion
+    val completion = replyFor(conversation)
+    completion.content.grouped(8).foreach(piece => onChunk(StreamedChunk(completion.id, Some(piece))))
+    Right(completion)
+  }
 
   override def getContextWindow(): Int = 8000
   override def getReserveCompletion(): Int = 1000

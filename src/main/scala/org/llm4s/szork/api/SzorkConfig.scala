@@ -60,6 +60,8 @@ case class SzorkConfig(
   llmConfig: Option[LLMConfig] = None,
   // How much of the game's conversation each Dungeon Master model call is sent (None: all of it)
   dmContextWindow: Option[ContextWindowConfig] = Some(GameEngine.DefaultContextWindow),
+  // Whether player commands pass the Dungeon Master's prompt-injection guardrail (PlayerInputGuardrail)
+  inputGuardrailEnabled: Boolean = true,
 
   // Game configuration
   autoSaveEnabled: Boolean = true,
@@ -169,6 +171,8 @@ object SzorkConfig {
     // Load LLM configuration
     val llmConfig = loadLLMConfig()
     val dmContextWindow = loadDmContextWindow()
+    val inputGuardrailEnabled =
+      EnvLoader.get("SZORK_INPUT_GUARDRAIL").map(_.trim.toLowerCase).forall(v => v != "false" && v != "off")
 
     // Media feature flags
     val ttsEnabled = EnvLoader.get("SZORK_TTS_ENABLED").map(_.toLowerCase != "false").getOrElse(true)
@@ -200,6 +204,7 @@ object SzorkConfig {
       musicEnabled = musicEnabled,
       llmConfig = llmConfig,
       dmContextWindow = dmContextWindow,
+      inputGuardrailEnabled = inputGuardrailEnabled,
       autoSaveEnabled = autoSaveEnabled,
       cacheEnabled = cacheEnabled,
       cacheDirectory = cacheDirectory,
@@ -334,6 +339,7 @@ object SzorkConfig {
         w.maxMessages.fold(s"${w.maxTokens.getOrElse(0)} tokens")(m => s"$m messages")
       }
       logger.info(s"DM context window: $window")
+      logger.info(s"DM input guardrail: ${if (config.inputGuardrailEnabled) "Enabled" else "Disabled"}")
       logger.info(s"TTS: ${if (config.ttsEnabled) "Enabled" else "Disabled"}")
       logger.info(s"STT: ${if (config.sttEnabled) "Enabled" else "Disabled"}")
       logger.info(s"Music: ${if (config.musicEnabled) "Enabled" else "Disabled"}")

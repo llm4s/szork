@@ -3,7 +3,8 @@ package org.llm4s.szork.game
 import org.llm4s.agent.{Agent, AgentResult, AgentStatus, ContextWindowConfig}
 import org.llm4s.agent.events.AgentEvents
 import org.llm4s.agent.graph.{GraphRuntime, RunConfig, StreamEvent, ThreadId}
-import org.llm4s.agent.graph.middleware.ContextWindowMiddleware
+import org.llm4s.agent.graph.middleware.{ContextWindowMiddleware, GuardrailMiddleware}
+import org.llm4s.agent.guardrails.InputGuardrail
 import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{Message, UserMessage, AssistantMessage, SystemMessage, ToolMessage}
@@ -46,6 +47,9 @@ import org.llm4s.szork.streaming.StreamingJsonParser
   *   Optional tracing for the agent's runs
   * @param contextWindow
   *   How much of the conversation each model call is sent (None sends all of it); see [[GameEngine.contextWindowFor]]
+  * @param inputGuardrails
+  *   Guardrails each player command must pass before the Dungeon Master sees it (empty: none); a refused command is
+  *   answered with [[PlayerInputGuardrail.Refusal]]
   * @param llmClient
   *   LLM client for AI narrative generation (implicit)
   */
@@ -59,7 +63,8 @@ class GameEngine(
   imageClient: Option[ImageClient] = None,
   musicClient: Option[MusicClient] = None,
   tracing: Option[Tracing] = None,
-  contextWindow: Option[ContextWindowConfig] = Some(GameEngine.DefaultContextWindow)
+  contextWindow: Option[ContextWindowConfig] = Some(GameEngine.DefaultContextWindow),
+  inputGuardrails: Seq[InputGuardrail] = PlayerInputGuardrail.default
 )(implicit llmClient: LLMClient) {
   private implicit val logger: org.slf4j.Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
@@ -121,7 +126,7 @@ class GameEngine(
     // (the trigger message is not shown to the user)
     startNewConversation(Vector.empty)
 
-    runTurn(GameConstants.Prompts.INIT_ADVENTURE, listener = None) match {
+    runTurn(GameConstants.Prompts.INIT_ADVENTURE, listener = None).flatMap(answered) match {
       case Right(result) =>
         val outcome = completeTurn(result)
         logger.info(s"[$sessionId] Game initialized: ${outcome.scene.map(_.locationId).getOrElse("no scene")}")
@@ -156,15 +161,25 @@ class GameEngine(
     logger.debug(s"[$sessionId] Processing command (streaming=${onTextChunk.isDefined}): $command")
 
     // Track user command in conversation history (pure core state)
+    val stateBefore = coreState
     coreState = CoreEngine.trackUser(coreState, command)
 
     val textStartTime = System.currentTimeMillis()
     runTurn(command, onTextChunk.map(narrationListener)) match {
+      case Right(result) if result.status.isInstanceOf[AgentStatus.Blocked] =>
+        // An input guardrail refused the command before the model saw it: the game is as it was, and the Dungeon
+        // Master answers in character
+        coreState = stateBefore
+        lastTurnChangedLocation = false
+        lastValidationIssues = None
+        val audio = if (generateAudio) synthesize(PlayerInputGuardrail.Refusal) else None
+        Right(GameResponse(PlayerInputGuardrail.Refusal, audio, coreState.currentScene, refused = true))
+
       case Right(result) =>
         logger.debug(s"[$sessionId] Turn completed in ${System.currentTimeMillis() - textStartTime}ms")
         val outcome = completeTurn(result)
         val audio = if (generateAudio) synthesize(outcome.narration) else None
-        Right(GameResponse(outcome.narration, audio, outcome.scene.orElse(coreState.currentScene)))
+        Right(GameResponse(outcome.narration, audio, outcome.scene.orElse(coreState.currentScene), refused = false))
 
       case Left(error) =>
         val szorkError = AIError(s"Error processing command: ${error.message}", llmError = Some(error))
@@ -258,6 +273,9 @@ class GameEngine(
 
   /** Builds the Dungeon Master agents for `systemPrompt`: one streaming, one not, sharing this engine's runtime.
     *
+    * Each player command must pass the input guardrails (llm4s's `GuardrailMiddleware`); a refused command ends the
+    * turn `AgentStatus.Blocked` without a model call, storing nothing of it.
+    *
     * With a context window, each model call is sent the system prompt (which holds the adventure outline, and is never
     * pruned) and as much of the recent conversation as fits; the current turn is always sent whole, and a tool call is
     * never sent without its result.
@@ -270,7 +288,11 @@ class GameEngine(
       .withMaxSteps(GameEngine.MaxModelCallsPerTurn)
       .withOutput(DungeonMasterOutput.schema)
       .withRuntime(runtime)
-    val windowed = modelWindow.fold(base)(window => base.withMiddleware(new ContextWindowMiddleware(window)))
+    // The input guardrails check each turn's command before the agent starts (beforeAgent); the context window trims
+    // what each model call is sent (wrapModelCall), so the two are independent
+    val guarded =
+      if (inputGuardrails.isEmpty) base else base.withMiddleware(new GuardrailMiddleware(inputGuardrails, Nil))
+    val windowed = modelWindow.fold(guarded)(window => guarded.withMiddleware(new ContextWindowMiddleware(window)))
     val builder = tracing.fold(windowed)(windowed.withTracing)
     for {
       blocking <- builder.build()
@@ -299,7 +321,8 @@ class GameEngine(
     *
     * Continues the current thread, or starts a new one seeded with `history`. A completed turn updates `history` from
     * the thread. A failed turn leaves `history` as it was and drops the thread (llm4s keeps a failed turn's thread for
-    * recovery, which the game does not use), so the player can simply try the command again.
+    * recovery, which the game does not use), so the player can simply try the command again. A turn an input guardrail
+    * blocked is returned with its `Blocked` status and leaves `history` as it was; its thread stored nothing of it.
     */
   private def runTurn(query: String, listener: Option[StreamEvent => Unit]): Result[AgentResult] =
     agents.flatMap { dm =>
@@ -321,8 +344,17 @@ class GameEngine(
               threadId = Some(turnThread)
               forgetThread()
               Left(GameEngine.TurnNotCompleted("the turn was suspended"))
+            case AgentStatus.Blocked(guardrail, reason) =>
+              // The reason names the patterns that matched, never the command
+              logger.warn(s"[$sessionId] Command refused by guardrail $guardrail: $reason")
+              // A thread this turn opened holds no conversation yet; the next turn opens another, seeded with history
+              if (threadId.isEmpty) {
+                threadId = Some(result.threadId)
+                forgetThread()
+              }
+              Right(result)
             case status =>
-              // Completed, or ended at a limit or guardrail: either way the thread can take the next turn
+              // Completed, or ended at a step or token limit: either way the thread can take the next turn
               threadId = Some(result.threadId)
               history = result.messages
               lastTurnStart = turnStart
@@ -342,6 +374,12 @@ class GameEngine(
           Left(error)
       }
     }
+
+  /** `result` if the turn was answered; a turn a guardrail blocked is an error. */
+  private def answered(result: AgentResult): Result[AgentResult] = result.status match {
+    case AgentStatus.Blocked(guardrail, _) => Left(GameEngine.TurnNotCompleted(s"guardrail $guardrail refused it"))
+    case _ => Right(result)
+  }
 
   /** Retrieves and clears any validation issues from the last response parsing.
     *
@@ -595,7 +633,9 @@ object GameEngine {
   /** The Dungeon Master, compiled twice from the same settings: without and with streaming. */
   private final case class DungeonMaster(blocking: Agent, streaming: Agent)
 
-  /** A turn that ran but did not complete with an answer (a step or token limit, a guardrail, a suspension). */
+  /** A turn that ran but did not complete with an answer (a step or token limit, a suspension, or a guardrail where a
+    * refusal is not expected).
+    */
   final case class TurnNotCompleted(reason: String) extends LLMError {
     override def message: String = s"The Dungeon Master did not finish the turn: $reason"
   }
@@ -624,6 +664,8 @@ object GameEngine {
     *   Optional tracing for the agent's runs
     * @param contextWindow
     *   How much of the conversation each model call is sent (None sends all of it)
+    * @param inputGuardrails
+    *   Guardrails each player command must pass (empty: none)
     * @return
     *   Configured GameEngine instance
     */
@@ -638,7 +680,8 @@ object GameEngine {
     imageClient: Option[ImageClient] = None,
     musicClient: Option[MusicClient] = None,
     tracing: Option[Tracing] = None,
-    contextWindow: Option[ContextWindowConfig] = Some(DefaultContextWindow)
+    contextWindow: Option[ContextWindowConfig] = Some(DefaultContextWindow),
+    inputGuardrails: Seq[InputGuardrail] = PlayerInputGuardrail.default
   ): GameEngine =
     new GameEngine(
       sessionId,
@@ -650,5 +693,6 @@ object GameEngine {
       imageClient,
       musicClient,
       tracing,
-      contextWindow)(using llmClient)
+      contextWindow,
+      inputGuardrails)(using llmClient)
 }

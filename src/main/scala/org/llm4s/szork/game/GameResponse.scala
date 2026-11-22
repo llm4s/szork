@@ -11,5 +11,8 @@ package org.llm4s.szork.game
   *   The narration as Base64-encoded speech, if it was requested and a text-to-speech client is configured
   * @param scene
   *   The player's current scene
+  * @param refused
+  *   Whether an input guardrail refused the command: the text is the Dungeon Master's in-character refusal, the model
+  *   never saw the command, and the game is unchanged (so there is nothing to save)
   */
-final case class GameResponse(text: String, audioBase64: Option[String], scene: Option[GameScene])
+final case class GameResponse(text: String, audioBase64: Option[String], scene: Option[GameScene], refused: Boolean)

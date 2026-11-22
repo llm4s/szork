@@ -25,8 +25,8 @@ object DebugHelpers {
     val toolCalls = scala.collection.mutable.ListBuffer[ToolCallInfo]()
 
     messages.foreach {
-      case AssistantMessage(_, calls) if calls.nonEmpty =>
-        calls.foreach { tc =>
+      case assistant: AssistantMessage if assistant.hasToolCalls =>
+        assistant.toolCalls.foreach { tc =>
           toolCalls += ToolCallInfo(
             id = tc.id,
             name = tc.name,
@@ -35,12 +35,12 @@ object DebugHelpers {
             timestamp = System.currentTimeMillis()
           )
         }
-      case ToolMessage(toolCallId, content) =>
+      case tool: ToolMessage =>
         // Update the result for the matching tool call
-        val idx = toolCalls.indexWhere(_.id == toolCallId)
+        val idx = toolCalls.indexWhere(_.id == tool.toolCallId)
         if (idx >= 0) {
           val existing = toolCalls(idx)
-          toolCalls(idx) = existing.copy(result = Some(content))
+          toolCalls(idx) = existing.copy(result = Some(tool.content))
         }
       case _ => // Ignore other message types
     }
@@ -64,28 +64,28 @@ object DebugHelpers {
     messages.zipWithIndex.foreach { case (msg, idx) =>
       sb.append(s"[Message ${idx + 1}] ")
       msg match {
-        case SystemMessage(content) =>
+        case system: SystemMessage =>
           sb.append("SYSTEM:\n")
-          sb.append(s"${content.take(200)}...\n\n")
+          sb.append(s"${system.content.take(200)}...\n\n")
 
-        case UserMessage(content) =>
+        case user: UserMessage =>
           sb.append("USER:\n")
-          sb.append(s"$content\n\n")
+          sb.append(s"${user.content}\n\n")
 
-        case AssistantMessage(contentOpt, toolCalls) =>
+        case assistant: AssistantMessage =>
           sb.append("ASSISTANT:\n")
-          contentOpt.foreach(c => sb.append(s"$c\n"))
-          if (toolCalls.nonEmpty) {
+          assistant.contentOpt.foreach(c => sb.append(s"$c\n"))
+          if (assistant.hasToolCalls) {
             sb.append("Tool Calls:\n")
-            toolCalls.foreach { tc =>
+            assistant.toolCalls.foreach { tc =>
               sb.append(s"  - ${tc.name}(${ujson.write(tc.arguments, indent = 0)})\n")
             }
           }
           sb.append("\n")
 
-        case ToolMessage(toolCallId, content) =>
-          sb.append(s"TOOL RESULT (id=$toolCallId):\n")
-          sb.append(s"$content\n\n")
+        case tool: ToolMessage =>
+          sb.append(s"TOOL RESULT (id=${tool.toolCallId}):\n")
+          sb.append(s"${tool.content}\n\n")
       }
     }
 

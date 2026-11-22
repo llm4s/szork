@@ -3,6 +3,7 @@ package org.llm4s.szork.api
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.config.{ConfigReader, EnvLoader}
+import org.llm4s.security.Secret
 import org.slf4j.Logger
 
 /** Image generation provider options
@@ -91,7 +92,7 @@ case class LLMConfig(
     provider.toLowerCase match {
       case "openai" =>
         org.llm4s.llmconnect.config.OpenAIConfig(
-          apiKey = apiKey,
+          apiKey = Secret(apiKey),
           model = model.getOrElse("gpt-4o"),
           organization = None,
           baseUrl = baseUrl.getOrElse("https://api.openai.com/v1"),
@@ -100,7 +101,7 @@ case class LLMConfig(
         )
       case "anthropic" =>
         org.llm4s.llmconnect.config.AnthropicConfig(
-          apiKey = apiKey,
+          apiKey = Secret(apiKey),
           model = model.getOrElse("claude-3-opus-20240229"),
           baseUrl = baseUrl.getOrElse("https://api.anthropic.com"),
           contextWindow = 200000,
@@ -109,7 +110,7 @@ case class LLMConfig(
       case "llama" | "local" =>
         // Use OpenAI-compatible config for local LLaMA servers
         org.llm4s.llmconnect.config.OpenAIConfig(
-          apiKey = if (apiKey == "not-required") "sk-no-key-required" else apiKey,
+          apiKey = Secret(if (apiKey == "not-required") "sk-no-key-required" else apiKey),
           model = model.getOrElse("llama2"),
           organization = None,
           baseUrl = baseUrl.getOrElse("http://localhost:11434/v1"),

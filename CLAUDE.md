@@ -58,8 +58,8 @@ Copy `.env` file with required API keys:
 - Configuration validation and LLM client initialization
 
 **GameEngine.scala** - Core game logic and AI integration
-- LLM4S Agent orchestration with tool calling
-- Streaming and non-streaming text generation
+- LLM4S `Agent` (built with `Agent.builder`) with tool calling; the game conversation is one agent thread
+- Streaming (`agent.stream` + `AgentEvents.TextDelta`) and non-streaming turns over a shared `GraphRuntime`
 - Scene parsing and game state management
 - Audio/image generation coordination
 - Step-based persistence with complete conversation history tracking

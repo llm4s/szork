@@ -270,6 +270,7 @@ export default defineComponent({
       messages: wsMessages,
       isConnected,
       isStreaming,
+      awaitingResponse,
       savedGames,
       ttsEnabled,
       sttEnabled,
@@ -296,7 +297,8 @@ export default defineComponent({
     // Local UI state
     const userInput = ref("");
     const gameOutput = ref<HTMLElement>();
-    const loading = computed(() => isStreaming.value);
+    // Waiting for the response to a typed or spoken command
+    const loading = computed(() => isStreaming.value || awaitingResponse.value);
     const recording = ref(false);
     const mediaRecorder = ref<MediaRecorder | null>(null);
     const audioChunks = ref<Blob[]>([]);
@@ -318,6 +320,12 @@ export default defineComponent({
     const speechInputRequested = ref(true);
     // The microphone stream while recording, released when recording stops or the view unmounts
     let micStream: MediaStream | null = null;
+    // Whether the push-to-talk button is held, and whether the microphone is being requested
+    let micPressed = false;
+    let acquiringMic = false;
+    let unmounted = false;
+    // The game this view last asked to load (gameLoaded may not have arrived yet)
+    let requestedGameId: string | null = null;
     
     // Map WebSocket messages to the expected format for the UI
     const messages = computed(() => {
@@ -374,6 +382,15 @@ export default defineComponent({
     };
     
     const backToSelection = () => {
+      resetGame();
+      // Clear the game ID from the URL if present
+      if (route.params.gameId) {
+        router.push("/");
+      }
+    };
+
+    /** Leave the current game for the selection screen. */
+    const resetGame = () => {
       // Clean up any existing audio
       if (currentBackgroundMusic.value) {
         currentBackgroundMusic.value.pause();
@@ -392,12 +409,8 @@ export default defineComponent({
       setupStarted.value = false;
       selectionStarted.value = true;
       clearMessages();
+      requestedGameId = null;
       adventureTitle.value = "Generative Adventuring";
-      
-      // Clear the game ID from the URL if present
-      if (route.params.gameId) {
-        router.push('/');
-      }
     };
 
     const goBackToSelection = () => {
@@ -433,10 +446,13 @@ export default defineComponent({
 
     const loadGame = async (gameId: string) => {
       log(`Loading game: ${gameId}`);
+      requestedGameId = gameId;
       stopBackgroundMusic();
       // The server answers with gameLoaded, or an error that sets loadFailed
       await wsLoadGame(gameId);
       gameStarted.value = true;
+      setupStarted.value = false;
+      selectionStarted.value = false;
       if (route.params.gameId !== gameId) router.push(`/game/${gameId}`);
       await scrollToBottom();
     };
@@ -455,6 +471,19 @@ export default defineComponent({
     watch(currentGameId, (id) => {
       if (id && gameStarted.value && route.params.gameId !== id) router.replace(`/game/${id}`);
     });
+
+    // Both routes use this view, so browser back/forward changes the gameId prop without
+    // remounting: load the game it names, or leave the game when it names none
+    watch(
+      () => props.gameId,
+      (id) => {
+        if (id) {
+          if (id !== requestedGameId && id !== currentGameId.value) loadGame(id);
+        } else if (gameStarted.value) {
+          resetGame();
+        }
+      }
+    );
 
     const stopBackgroundMusic = () => {
       if (currentBackgroundMusic.value) {
@@ -502,7 +531,8 @@ export default defineComponent({
 
     const sendCommand = async () => {
       const command = userInput.value.trim();
-      if (!command) return;
+      // One command at a time, so responses cannot arrive out of order
+      if (!command || loading.value) return;
 
       // Clear input
       userInput.value = "";
@@ -526,15 +556,28 @@ export default defineComponent({
 
     const startRecording = async () => {
       log("Start recording called");
-      if (recording.value) {
+      micPressed = true;
+      if (recording.value || acquiringMic) {
         log("Already recording, ignoring");
         return;
       }
-      
+
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        acquiringMic = true;
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } finally {
+          acquiringMic = false;
+        }
         micStream = stream;
-        
+        // The button was released (or the view closed) while the browser asked for permission
+        if (!micPressed || unmounted) {
+          log("Button released before the microphone was ready, not recording");
+          releaseMicrophone();
+          return;
+        }
+
         // Try to use a format that's more compatible with Whisper
         let options = {};
         // Try different formats in order of preference
@@ -553,30 +596,34 @@ export default defineComponent({
           }
         }
         
-        mediaRecorder.value = new MediaRecorder(stream, options);
+        const recorder = new MediaRecorder(stream, options);
+        mediaRecorder.value = recorder;
         audioChunks.value = [];
 
-        mediaRecorder.value.ondataavailable = (event) => {
+        recorder.ondataavailable = (event) => {
           if (event.data.size > 0) {
             audioChunks.value.push(event.data);
           }
         };
 
-        mediaRecorder.value.onstop = async () => {
-          // Try to use a more compatible audio format
-          const mimeType = mediaRecorder.value?.mimeType || "audio/webm";
+        recorder.onstop = async () => {
+          // Release this recording's stream (a newer recording may have its own by now)
+          stream.getTracks().forEach((track) => track.stop());
+          if (micStream === stream) micStream = null;
+          // Stopped because the view closed: there is no game to send the command to
+          if (unmounted) return;
+          const mimeType = recorder.mimeType || "audio/webm";
           const audioBlob = new Blob(audioChunks.value, { type: mimeType });
           log("Recording stopped, mime type:", mimeType, "size:", audioBlob.size);
           await sendAudioCommand(audioBlob);
-          
-          releaseMicrophone();
         };
 
-        mediaRecorder.value.start();
+        recorder.start();
         recording.value = true;
         log("Recording started successfully");
       } catch (error) {
         log("Error accessing microphone:", error);
+        releaseMicrophone();
         addLocalMessage("Error: Could not access microphone. Please check permissions.");
       }
     };
@@ -588,6 +635,7 @@ export default defineComponent({
 
     const stopRecording = () => {
       log("Stop recording called", "recording:", recording.value);
+      micPressed = false;
       if (mediaRecorder.value && recording.value) {
         mediaRecorder.value.stop();
         recording.value = false;
@@ -607,18 +655,19 @@ export default defineComponent({
         await scrollToBottom();
 
         // Convert blob to base64
-        const reader = new FileReader();
-        reader.readAsDataURL(audioBlob);
-        const base64Audio = await new Promise<string>((resolve) => {
-          reader.onloadend = () => {
+        const base64Audio = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
             const base64 = reader.result as string;
             // Remove the data:audio/webm;base64, prefix
             resolve(base64.split(',')[1]);
           };
+          reader.onerror = () => reject(reader.error ?? new Error("Could not read the recording"));
+          reader.readAsDataURL(audioBlob);
         });
 
         // Send via WebSocket - the transcription and response will come via WebSocket events
-        await wsSendAudioCommand(base64Audio);
+        await wsSendAudioCommand(base64Audio, imageGenerationEnabled.value);
       } catch (error) {
         addLocalMessage("Error processing audio. Please try again.");
         log("Error sending audio:", error);
@@ -644,7 +693,7 @@ export default defineComponent({
         }
         
         // Create audio element
-        const audioUrl = `data:audio/mp3;base64,${audioBase64}`;
+        const audioUrl = `data:audio/mpeg;base64,${audioBase64}`;
         log(`[${sessionId.value || 'no-session'}] Creating audio element with URL length:`, audioUrl.length);
         
         const audio = new Audio(audioUrl);
@@ -710,7 +759,7 @@ export default defineComponent({
         }
         
         // Create new audio element
-        const audioUrl = `data:audio/mp3;base64,${musicBase64}`;
+        const audioUrl = `data:audio/mpeg;base64,${musicBase64}`;
         const newMusic = new Audio(audioUrl);
         newMusic.volume = backgroundMusicVolume.value;
         newMusic.loop = true; // Loop background music
@@ -810,8 +859,9 @@ export default defineComponent({
       }
       
       // Check if there's a game ID in the URL
-      const gameIdFromRoute = route.params.gameId as string;
-      if (gameIdFromRoute) {
+      const gameIdFromRoute = props.gameId;
+      // A navigation while connecting may already have loaded it
+      if (gameIdFromRoute && gameIdFromRoute !== requestedGameId) {
         log(`Found game ID in URL: ${gameIdFromRoute}`);
         loadGame(gameIdFromRoute);
       } else {
@@ -823,6 +873,7 @@ export default defineComponent({
 
     onUnmounted(() => {
       log("Component unmounting, cleaning up audio and microphone");
+      unmounted = true;
       if (mediaRecorder.value && recording.value) mediaRecorder.value.stop();
       releaseMicrophone();
       // Clean up background music

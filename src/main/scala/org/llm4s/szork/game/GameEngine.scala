@@ -74,9 +74,11 @@ class GameEngine(
   private var outline: Option[AdventureOutline] = adventureOutline
   private var systemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, outline)
 
-  // This game's inventory, read and changed by the agent's tools
+  // This game's inventory and world state, read and changed by the agent's tools. The world state outlives the
+  // context window: what happened in turns the model is no longer sent is still there.
   private val inventory = new PlayerInventory()
-  private val toolRegistry = new ToolRegistry(GameTools.forInventory(inventory))
+  private val world = WorldState.seededFrom(outline)
+  private val toolRegistry = new ToolRegistry(GameTools.forInventory(inventory) ++ GameTools.forWorld(world))
 
   // The Dungeon Master is an llm4s Agent; the game's conversation is one of its threads.
   // Two agents are compiled from the same settings - one streaming, one not - over a shared
@@ -120,6 +122,7 @@ class GameEngine(
     logger.info(s"[$sessionId] Initializing game with theme: $themeDescription")
 
     inventory.replaceWith(Nil)
+    world.replaceWith(WorldSnapshot.fromOutline(outline))
     coreState = CoreState()
 
     // A new game is a new thread, opened with the init adventure prompt as its first turn
@@ -236,7 +239,10 @@ class GameEngine(
 
     val previousLocation = coreState.currentScene.map(_.locationId)
     val scene = interpreted.data.collect { case scene: GameScene => scene }
-    scene.foreach(s => coreState = CoreEngine.applyScene(coreState, s))
+    scene.foreach { s =>
+      coreState = CoreEngine.applyScene(coreState, s)
+      world.enter(s.locationId, s.locationName)
+    }
     lastTurnChangedLocation = scene.exists(s => !previousLocation.contains(s.locationId))
     coreState = CoreEngine.trackAssistant(coreState, interpreted.narration)
 
@@ -264,6 +270,9 @@ class GameEngine(
 
   /** The items the player is carrying. */
   def getInventory: List[String] = inventory.list
+
+  /** The state of the game world: exits, location facts, characters met and quest progress. */
+  def getWorldState: WorldSnapshot = world.snapshot
 
   /** Returns the full conversation history (without the system prompt) as of the last completed turn.
     *
@@ -456,6 +465,7 @@ class GameEngine(
       visitedLocations = coreState.visitedLocations,
       conversationHistory = coreState.conversationHistory,
       inventory = inventory.list,
+      worldState = world.snapshot,
       createdAt = createdAt,
       lastSaved = clock.now(),
       lastPlayed = clock.now(),
@@ -482,6 +492,10 @@ class GameEngine(
       conversationHistory = state.conversationHistory
     )
     inventory.replaceWith(state.inventory)
+    // A state without a world (made before it was kept) starts from the world its outline plans
+    world.replaceWith(
+      if (state.worldState == WorldSnapshot.empty) WorldSnapshot.fromOutline(state.adventureOutline)
+      else state.worldState)
     totalPlayTime = state.totalPlayTime
     sessionStartTime = clock.now() // Reset session timer when restoring
     adventureTitle = state.adventureTitle
@@ -604,8 +618,10 @@ class GameEngine(
 /** Factory for creating GameEngine instances. */
 object GameEngine {
 
-  /** Model calls allowed in one turn: enough for a few inventory tool calls and the answer, not a runaway loop. */
-  val MaxModelCallsPerTurn: Int = 8
+  /** Model calls allowed in one turn: enough for several tool calls (checking an exit, unlocking it, using up the key,
+    * recording quest progress), the answer and a correction of it, but not a runaway loop.
+    */
+  val MaxModelCallsPerTurn: Int = 12
 
   /** The text-to-speech voice used for narration (SZORK_TTS_VOICE, default nova). */
   val NarrationVoice: String =

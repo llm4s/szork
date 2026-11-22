@@ -1,7 +1,7 @@
 package org.llm4s.szork.persistence
 
 import org.llm4s.szork.api.{GameTheme, ArtStyle}
-import org.llm4s.szork.game.{GameScene, AdventureOutline}
+import org.llm4s.szork.game.{GameScene, AdventureOutline, WorldSnapshot}
 import org.llm4s.llmconnect.model.Message
 import org.llm4s.szork.error.ErrorHandling._
 
@@ -25,7 +25,8 @@ case class GameState(
   lastPlayed: Long,
   totalPlayTime: Long, // Total play time in milliseconds
   adventureTitle: Option[String] = None,
-  agentMessages: List[Message] = Nil // The Dungeon Master's conversation (llm4s thread history)
+  agentMessages: List[Message] = Nil, // The Dungeon Master's conversation (llm4s thread history)
+  worldState: WorldSnapshot = WorldSnapshot.empty // Exits, location facts, characters met, quest progress
 )
 
 case class GameMetadata(

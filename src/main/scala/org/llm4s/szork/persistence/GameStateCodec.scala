@@ -1,7 +1,7 @@
 package org.llm4s.szork.persistence
 
 import org.llm4s.szork.api.{GameTheme, ArtStyle}
-import org.llm4s.szork.game.{GameScene, AdventureGenerator, Exit}
+import org.llm4s.szork.game.{GameScene, AdventureGenerator, Exit, WorldSnapshot}
 import ujson._
 
 object GameStateCodec {
@@ -41,7 +41,8 @@ object GameStateCodec {
       "totalPlayTime" -> ts(state.totalPlayTime),
       "adventureTitle" -> state.adventureTitle.map(Str(_)).getOrElse(Null),
       "adventureOutline" -> state.adventureOutline.map(AdventureGenerator.outlineToJson).getOrElse(Null),
-      "agentMessages" -> state.agentMessages.map(MessageCodec.toJson)
+      "agentMessages" -> state.agentMessages.map(MessageCodec.toJson),
+      "worldState" -> upickle.default.writeJs(state.worldState)
     )
 
   private def readTs(v: Value): Long = v match {
@@ -50,7 +51,10 @@ object GameStateCodec {
     case _ => 0L
   }
 
-  def fromJson(json: Value): GameState =
+  def fromJson(json: Value): GameState = {
+    val adventureOutline = json.obj.get("adventureOutline").flatMap {
+      case Null => None; case v => Some(AdventureGenerator.outlineFromJson(v))
+    }
     GameState(
       gameId = json("gameId").str,
       theme = json("theme") match {
@@ -95,9 +99,13 @@ object GameStateCodec {
       totalPlayTime = readTs(json("totalPlayTime")),
       adventureTitle =
         json.obj.get("adventureTitle").flatMap { case Null => None; case s => Some(s.str) }.filter(_.nonEmpty),
-      adventureOutline = json.obj.get("adventureOutline").flatMap {
-        case Null => None; case v => Some(AdventureGenerator.outlineFromJson(v))
-      },
-      agentMessages = json("agentMessages").arr.map(MessageCodec.fromJson).toList
+      adventureOutline = adventureOutline,
+      agentMessages = json("agentMessages").arr.map(MessageCodec.fromJson).toList,
+      // A save from before the world state was kept starts from the world its outline plans
+      worldState = json.obj.get("worldState") match {
+        case None | Some(Null) => WorldSnapshot.fromOutline(adventureOutline)
+        case Some(v) => upickle.default.read[WorldSnapshot](v)
+      }
     )
+  }
 }

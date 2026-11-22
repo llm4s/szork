@@ -88,7 +88,7 @@ See `frontend/src/types/WebSocketProtocol.ts` for the client protocol and `src/m
 
 ### Technology Stack
 - **Backend**: Scala 2.13 with Cask web framework
-- **AI Integration**: LLM4S library for LLM orchestration
+- **AI Integration**: LLM4S 0.6 (`llm4s-agent`, `llm4s-openai`, `llm4s-anthropic`, `llm4s-image`) for LLM orchestration
 - **Frontend**: Vue 3 + Vuetify 3 + TypeScript
 - **Real-time**: WebSockets for streaming responses
 - **Build Tool**: sbt with hot reload support
@@ -99,8 +99,7 @@ See `frontend/src/types/WebSocketProtocol.ts` for the client protocol and `src/m
 szork/
 ├── src/main/scala/org/llm4s/szork/
 │   ├── SzorkServer.scala         # Main server with all endpoints
-│   ├── GameEngine.scala          # Core game logic and LLM integration
-│   ├── StreamingAgent.scala      # Streaming LLM responses
+│   ├── GameEngine.scala          # Core game logic; runs the llm4s Agent (threads, streaming events)
 │   ├── GameTools.scala           # Tool definitions for the AI agent
 │   ├── ImageGeneration.scala     # AI image generation
 │   ├── TextToSpeech.scala        # TTS integration

@@ -22,7 +22,7 @@ class FakeLLMClientInvalid extends LLMClient {
     val content = s"$narration\n<<<JSON>>>\n${ujson.write(json)}"
     Completion(
       id = java.util.UUID.randomUUID().toString,
-      created = System.currentTimeMillis(),
+      created = java.time.Instant.now(),
       content = content,
       model = "fake-llm-invalid",
       message = AssistantMessage(Some(content)),

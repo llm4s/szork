@@ -2,6 +2,8 @@ ThisBuild / scalaVersion := "3.8.4"
 ThisBuild / organization := "org.llm4s"
 ThisBuild / organizationName := "llm4s"
 
+val llm4sVersion = "0.6.0"
+
 lazy val root = (project in file("."))
   .enablePlugins(RevolverPlugin)
   .settings(
@@ -36,8 +38,11 @@ lazy val root = (project in file("."))
     
     // Dependencies
     libraryDependencies ++= Seq(
-      // Core LLM4S library (Scala 3 default build)
-      "org.llm4s" %% "core" % "0.3.2",
+      // LLM4S modules: agent runtime, LLM providers, and image generation
+      "org.llm4s" %% "llm4s-agent"     % llm4sVersion,
+      "org.llm4s" %% "llm4s-openai"    % llm4sVersion,
+      "org.llm4s" %% "llm4s-anthropic" % llm4sVersion,
+      "org.llm4s" %% "llm4s-image"     % llm4sVersion,
       
       // Cask for web server
       "com.lihaoyi" %% "cask" % "0.11.3",
@@ -48,11 +53,6 @@ lazy val root = (project in file("."))
       "ch.qos.logback" % "logback-classic" % "1.5.34",
       "io.github.cdimascio"           %  "dotenv-java"     % "3.2.0",
       "org.slf4j"      % "log4j-over-slf4j" % "2.0.18",
-      
-      // LLM provider dependencies
-      "com.azure"          % "azure-ai-openai" % "1.0.0-beta.16",
-      "com.anthropic"      % "anthropic-java"  % "2.11.1",
-      "com.knuddels"       % "jtokkit"         % "1.1.0",
       
       // HTTP and WebSocket
       "com.lihaoyi"       %% "requests"        % "0.9.0",

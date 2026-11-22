@@ -2,8 +2,10 @@ package org.llm4s.szork.media
 
 import org.slf4j.{Logger, LoggerFactory}
 import org.llm4s.config.EnvLoader
+import org.llm4s.error.LLMError
 import org.llm4s.imagegeneration
-import org.llm4s.imagegeneration._
+import org.llm4s.imagegeneration.{ImageGenerationOptions, ImageSize}
+import org.llm4s.media.MediaType
 import org.llm4s.szork.api.{SzorkConfig, ImageProvider}
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
@@ -13,10 +15,10 @@ class ImageGeneration {
   private val config = SzorkConfig.instance
 
   // Configure image generation provider based on configuration
-  // LLM4S image client factories now return Either[ImageGenerationError, ImageGenerationClient].
+  // LLM4S image client factories return Either[LLMError, ImageGenerationClient].
   // Unwrap into an Option, logging (and disabling images) on construction failure.
-  private def unwrapClient(result: Either[imagegeneration.ImageGenerationError, imagegeneration.ImageGenerationClient])
-    : Option[imagegeneration.ImageGenerationClient] =
+  private def unwrapClient(
+    result: Either[LLMError, imagegeneration.ImageGenerationClient]): Option[imagegeneration.ImageGenerationClient] =
     result match {
       case Right(client) => Some(client)
       case Left(error) =>
@@ -124,7 +126,7 @@ class ImageGeneration {
         // Configure options for image generation
         val options = ImageGenerationOptions(
           size = ImageSize.Square512, // 512x512 for good quality with reasonable file size
-          format = ImageFormat.PNG
+          format = MediaType.Png
         )
 
         // Use LLM4S image generation

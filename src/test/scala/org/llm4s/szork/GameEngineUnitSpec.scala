@@ -2,13 +2,13 @@ package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
-import org.llm4s.szork.stubs.FakeLLMClient
+import org.llm4s.szork.stubs.ScriptedDm
 import org.llm4s.szork.game.GameEngine
 
 class GameEngineUnitSpec extends AnyFunSuite with Matchers {
 
-  test("initialize and process commands without network using FakeLLMClient") {
-    implicit val llm = new FakeLLMClient()
+  test("initialize and process commands without network using a scripted Dungeon Master") {
+    val llm = ScriptedDm()
     val engine = GameEngine.create(llmClient = llm, sessionId = "test-session", theme = Some("underground realm"))
 
     val init = engine.initialize()

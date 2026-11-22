@@ -1,0 +1,24 @@
+/*
+ * Vuetify 4 no longer resets margins and padding globally. Restore the spacing reset that the app's
+ * raw headings, paragraphs and lists were laid out against (from the Vuetify 4 upgrade guide).
+ */
+@layer vuetify-core.reset {
+  ul,
+  ol,
+  figure,
+  details,
+  summary {
+    padding: 0;
+    margin: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p {
+    margin: 0;
+  }
+}

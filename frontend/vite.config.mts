@@ -35,6 +35,17 @@ export default defineConfig({
     },
     extensions: [".js", ".json", ".mjs", ".ts", ".vue"],
   },
+  optimizeDeps: {
+    // Vuetify 4 upgrade guide: pre-bundle the overlay components together so they share one overlay
+    // stack in dev (otherwise tooltips/menus can render behind dialogs)
+    include: [
+      "vuetify/components/VOverlay",
+      "vuetify/components/VDialog",
+      "vuetify/components/VMenu",
+      "vuetify/components/VSelect",
+      "vuetify/components/VTooltip",
+    ],
+  },
   test: {
     // Vuetify's components import their CSS, so Vite (not Node) must load them in tests
     server: { deps: { inline: ["vuetify"] } },

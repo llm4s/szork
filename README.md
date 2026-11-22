@@ -105,8 +105,7 @@ szork/
 │   ├── persistence/  # Step-based save/load
 │   ├── streaming/    # Narration extraction from the streamed JSON answer
 │   └── debug/        # CLI tools to create and step through games
-├── frontend/         # Vue 3 / Vuetify web interface
-└── talk/             # Presentation materials
+└── frontend/         # Vue 3 / Vuetify web interface
 ```
 
 ### How a turn works
@@ -180,6 +179,7 @@ This project was created as a demonstration for the talk **"Scala Meets GenAI: B
 - 📅 **Scala Days 2025** - August 21, 2025
 - 📍 SwissTech Convention Center, EPFL, Lausanne 🇨🇭
 - 🔗 [Talk Details](https://scaladays.org/editions/2025/talks/scala-meets-genai-build-the)
+- 🎞️ Slides and talk material: [llm4s/szork-talks](https://github.com/llm4s/szork-talks)
 
 ## 👥 Contributors
 

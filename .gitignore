@@ -42,3 +42,8 @@ runs/
 *~
 .#*
 build.sbt.save
+
+# Talk material lives in llm4s/szork-talks
+talk/
+talks-ppt/
+*.pptx

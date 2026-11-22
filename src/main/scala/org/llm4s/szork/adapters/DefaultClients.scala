@@ -35,11 +35,9 @@ class DefaultMusicClient extends MusicClient {
     mood: String,
     context: String,
     gameId: Option[String],
-    locationId: Option[String]): SzorkResult[String] = {
-    // Scenes name one of the moods the validator allows; anything else plays as exploration
-    val musicMood = impl.MusicMoods.byName(mood).getOrElse(impl.MusicMoods.EXPLORATION)
-    impl.generateMusicWithCache(musicMood, context, gameId, locationId)
-  }
+    locationId: Option[String]): SzorkResult[String] =
+    // Scenes name one of the Dungeon Master's moods; anything else plays the default mood
+    impl.generateMusicWithCache(MusicGeneration.MusicMoods.orDefault(mood), context, gameId, locationId)
 }
 
 object DefaultClients {

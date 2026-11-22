@@ -1,21 +1,8 @@
 package org.llm4s.szork.game
 
-import org.llm4s.szork.error.ValidationError
-import org.llm4s.llmconnect.model._
+import scala.util.Try
 
 object ResponseInterpreter {
-  // Helper to extract just narrationText from JSON when full parsing fails
-  def extractNarrationTextFromJson(response: String): Option[String] =
-    try
-      if (response.trim.startsWith("{") && response.contains("narrationText")) {
-        val json = ujson.read(response)
-        json.obj.get("narrationText").map(_.str)
-      } else None
-    catch {
-      case _: Exception =>
-        val pattern = """"narrationText"\s*:\s*"([^"]+(?:\\.[^"]+)*)"""".r
-        pattern.findFirstMatchIn(response).map(_.group(1).replace("\\\"", "\"").replace("\\n", "\n"))
-    }
 
   /** A turn's answer, interpreted: the structured data if it is usable, the narration to show the player, and any
     * problems found (errors or warnings) for diagnostics.
@@ -25,13 +12,15 @@ object ResponseInterpreter {
   val FallbackNarration: String =
     "I apologize, but there was an error processing the game response. Please try your command again."
 
-  /** Interprets the Dungeon Master's JSON answer.
+  /** Interprets the Dungeon Master's answer to a completed turn.
     *
-    * Structured data with only warnings is used as-is. If the data has errors or cannot be parsed, the player still
-    * sees the narration - the JSON's narrationText, or the text itself if it is not JSON - never raw JSON.
+    * llm4s accepts an answer only once it is JSON matching [[DungeonMasterOutput.schema]] (stripped of any code fence
+    * or prose round it), so `answer` is that JSON and always has a string `narrationText`. Structured data with only
+    * warnings is used as-is. If it breaks the game's own rules or cannot be read as game data, the player still sees
+    * its narration - never raw JSON.
     */
   def interpret(answer: String): Interpretation =
-    GameResponseParser.parse(answer) match {
+    GameResponseData.fromJson(answer) match {
       case Right(data) =>
         val findings = GameResponseValidator.check(data)
         val issues = Option(findings.errors ++ findings.warnings).filter(_.nonEmpty)
@@ -41,10 +30,11 @@ object ResponseInterpreter {
         Interpretation(None, narrationOf(answer).getOrElse(FallbackNarration), Some(List(error.message)))
     }
 
-  /** The narration in an answer that could not be parsed. */
-  private def narrationOf(answer: String): Option[String] = {
-    val trimmed = answer.trim
-    if (trimmed.contains("{")) GameResponseParser.extractJson(trimmed).flatMap(extractNarrationTextFromJson)
-    else Some(trimmed).filter(_.nonEmpty)
-  }
+  /** The narration of an answer that could not be read as game data. */
+  private def narrationOf(answer: String): Option[String] =
+    Try(ujson.read(answer)).toOption
+      .flatMap(_.objOpt)
+      .flatMap(_.get("narrationText"))
+      .flatMap(_.strOpt)
+      .filter(_.trim.nonEmpty)
 }

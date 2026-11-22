@@ -12,9 +12,10 @@ class MediaPlannerSpec extends AnyFunSuite with Matchers {
   }
 
   test("scene music moods are looked up by name") {
-    val music = MusicGeneration()
-    music.MusicMoods.byName("combat") shouldBe Some(music.MusicMoods.COMBAT)
-    music.MusicMoods.byName(" Mystery ") shouldBe Some(music.MusicMoods.MYSTERY)
-    music.MusicMoods.byName("tense") shouldBe None
+    import MusicGeneration.MusicMoods
+    MusicMoods.byName("combat") shouldBe Some(MusicMoods.COMBAT)
+    MusicMoods.byName(" Mystery ") shouldBe Some(MusicMoods.MYSTERY)
+    MusicMoods.byName("tense") shouldBe None
+    MusicMoods.orDefault("tense") shouldBe MusicMoods.EXPLORATION
   }
 }

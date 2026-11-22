@@ -9,8 +9,8 @@ import org.llm4s.szork.api.MediaNetworkConfig
 import org.llm4s.szork.api.MusicPollConfig
 import java.util.Base64
 import ujson._
-import java.io.ByteArrayOutputStream
 import java.net.URI
+import scala.util.{Failure, Success, Try, Using}
 
 class MusicGeneration {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
@@ -337,8 +337,27 @@ class MusicGeneration {
       }
     }
 
+    // Stop the prediction rather than let it run on (and be billed) after we have given up on it
+    cancelPrediction(predictionId)
     Left(MusicGenerationError("Timeout waiting for music generation", retryable = true))
   }
+
+  /** Asks Replicate to cancel `predictionId`; a failure is only logged. */
+  private def cancelPrediction(predictionId: String): Unit =
+    replicateApiKey.foreach { key =>
+      Try(
+        post(
+          s"https://api.replicate.com/v1/predictions/$predictionId/cancel",
+          headers = Map("Authorization" -> s"Bearer $key"),
+          readTimeout = net.readTimeoutMs,
+          connectTimeout = net.connectTimeoutMs,
+          check = false
+        )) match {
+        case Success(response) if response.statusCode == 200 => logger.info(s"Cancelled prediction $predictionId")
+        case Success(response) => logger.warn(s"Could not cancel prediction $predictionId: ${response.statusCode}")
+        case Failure(e) => logger.warn(s"Could not cancel prediction $predictionId: ${e.getMessage}")
+      }
+    }
 
   private def downloadAndEncodeAudio(audioUrl: String): SzorkResult[String] =
     try {
@@ -351,18 +370,8 @@ class MusicGeneration {
         connection.setConnectTimeout(net.connectTimeoutMs)
         connection.setReadTimeout(net.readTimeoutMs)
       } catch { case _: Throwable => () }
-      val inputStream = connection.getInputStream
-
-      val outputStream = new ByteArrayOutputStream()
-      val buffer = new Array[Byte](4096)
-      var bytesRead = 0
-
-      while ({ bytesRead = inputStream.read(buffer); bytesRead != -1 })
-        outputStream.write(buffer, 0, bytesRead)
-
-      inputStream.close()
-      val audioBytes = outputStream.toByteArray
-      outputStream.close()
+      // Closed even when the read fails part way
+      val audioBytes = Using.resource(connection.getInputStream)(_.readAllBytes())
 
       val base64Audio = Base64.getEncoder.encodeToString(audioBytes)
       logger.info(s"Downloaded and encoded audio, size: ${audioBytes.length} bytes")

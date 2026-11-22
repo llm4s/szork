@@ -111,8 +111,9 @@ RUN_INTEGRATION=true sbt "testOnly *AdventureIntegrationSpec"  # Against a real 
 cd frontend && npm test                   # Frontend tests
 ```
 
-Test fakes answer in the structured output format via `stubs/DmAnswers`. CI compiles with `-Werror` and checks
-`scalafmtCheckAll`.
+Tests script the LLM with the llm4s testkit's `ScriptedLLMClient`: `stubs/ScriptedDm` plays a small cavern and takes
+per-test rules, `stubs/DmAnswers` builds structured answers, and `calls`/`lastCall` give the recorded requests. CI
+compiles main and test sources with `-Werror` and checks `scalafmtCheckAll`.
 
 ## Code Style
 

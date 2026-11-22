@@ -208,22 +208,6 @@ export class WebSocketClient {
     return this.isConnected;
   }
 
-  /**
-   * Checks whether the server accepts a connection within `timeout` ms, then closes that connection.
-   */
-  async checkServerAvailability(timeout = 3000): Promise<boolean> {
-    const timedOut = new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeout));
-    const opened = this.connect().then(
-      () => true,
-      () => false
-    );
-    try {
-      return await Promise.race([opened, timedOut]);
-    } finally {
-      this.disconnect();
-    }
-  }
-
   // ============= Convenience methods =============
 
   newGame(

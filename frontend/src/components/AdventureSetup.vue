@@ -183,9 +183,11 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted } from "vue";
+import { defineComponent, ref, computed, onMounted, watch } from "vue";
 import axios from "axios";
-import { WebSocketClient } from "@/services/WebSocketClient";
+
+// The shortest custom theme description worth validating
+const MIN_CUSTOM_THEME_LENGTH = 10;
 
 interface Theme {
   id: string;
@@ -324,7 +326,11 @@ export default defineComponent({
     
     const canProceedFromTheme = computed(() => {
       if (selectedTheme.value === "custom") {
-        return customThemeInput.value.trim().length > 10 && !customThemeError.value && !validatingCustomTheme.value;
+        return (
+          customThemeInput.value.trim().length >= MIN_CUSTOM_THEME_LENGTH &&
+          !customThemeError.value &&
+          !validatingCustomTheme.value
+        );
       }
       return selectedTheme.value !== null;
     });
@@ -341,22 +347,29 @@ export default defineComponent({
       selectedStyle.value = styleId;
     };
     
+    // Editing the description invalidates the last validation (and its error)
+    watch(customThemeInput, () => {
+      validatedCustomTheme.value = "";
+      customThemeError.value = "";
+    });
+
     const validateCustomTheme = async () => {
-      if (customThemeInput.value.trim().length < 10) {
+      const theme = customThemeInput.value;
+      if (theme.trim().length < MIN_CUSTOM_THEME_LENGTH) {
         customThemeError.value = "Please provide a more detailed description";
         return;
       }
-      
+
       validatingCustomTheme.value = true;
       customThemeError.value = "";
-      
+
       try {
-        const response = await axios.post("/api/game/validate-theme", {
-          theme: customThemeInput.value
-        });
-        
+        const response = await axios.post("/api/game/validate-theme", { theme });
+        // The description changed while it was being validated: this result is stale
+        if (customThemeInput.value !== theme) return;
+
         if (response.data.valid) {
-          validatedCustomTheme.value = response.data.enhancedTheme || customThemeInput.value;
+          validatedCustomTheme.value = response.data.enhancedTheme || theme;
           customThemeError.value = "";
         } else {
           customThemeError.value = response.data.message || "This theme may not work well for an adventure game";
@@ -364,7 +377,7 @@ export default defineComponent({
       } catch (error) {
         console.error("Error validating theme:", error);
         // Allow the theme anyway if validation fails
-        validatedCustomTheme.value = customThemeInput.value;
+        if (customThemeInput.value === theme) validatedCustomTheme.value = theme;
       } finally {
         validatingCustomTheme.value = false;
       }
@@ -373,7 +386,7 @@ export default defineComponent({
     const proceedToStyle = () => {
       if (selectedTheme.value === "custom" && !validatedCustomTheme.value) {
         validateCustomTheme().then(() => {
-          if (!customThemeError.value) {
+          if (validatedCustomTheme.value) {
             currentStep.value = "style";
           }
         });
@@ -441,21 +454,25 @@ export default defineComponent({
       }
     };
     
-    // Check server availability on mount
+    // Fetch the server's feature flags on mount; an answer also shows the server is available
     onMounted(async () => {
       checkingServer.value = true;
-      const wsClient = new WebSocketClient();
       try {
-        serverAvailable.value = await wsClient.checkServerAvailability(3000);
-        if (!serverAvailable.value) {
-          console.warn('[AdventureSetup] Server is not available');
-        }
+        const response = await axios.get("/api/feature-flags", { timeout: 3000 });
+        featureFlags.value = response.data;
+        featureFlagsLoaded.value = true;
+        serverAvailable.value = true;
+        // A feature the server cannot provide starts switched off
+        const offered = (flag: { enabled: boolean; available: boolean }) => flag.enabled && flag.available;
+        enableImages.value = offered(featureFlags.value.image);
+        enableMusic.value = offered(featureFlags.value.music);
+        enableTTS.value = offered(featureFlags.value.tts);
+        enableSTT.value = offered(featureFlags.value.stt);
       } catch (error) {
-        console.error('[AdventureSetup] Error checking server:', error);
+        console.warn("[AdventureSetup] Server is not available:", error);
         serverAvailable.value = false;
       } finally {
         checkingServer.value = false;
-        wsClient.disconnect();
       }
     });
     

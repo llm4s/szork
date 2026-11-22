@@ -48,50 +48,6 @@ object DebugHelpers {
     toolCalls.toList
   }
 
-  /** Format conversation as human-readable text.
-    *
-    * Produces a formatted text output of the conversation history suitable for logging or manual review.
-    *
-    * @param messages
-    *   Sequence of agent messages
-    * @return
-    *   Formatted conversation string
-    */
-  def formatConversation(messages: Seq[Message]): String = {
-    val sb = new StringBuilder()
-    sb.append("=== CONVERSATION HISTORY ===\n\n")
-
-    messages.zipWithIndex.foreach { case (msg, idx) =>
-      sb.append(s"[Message ${idx + 1}] ")
-      msg match {
-        case system: SystemMessage =>
-          sb.append("SYSTEM:\n")
-          sb.append(s"${system.content.take(200)}...\n\n")
-
-        case user: UserMessage =>
-          sb.append("USER:\n")
-          sb.append(s"${user.content}\n\n")
-
-        case assistant: AssistantMessage =>
-          sb.append("ASSISTANT:\n")
-          assistant.contentOpt.foreach(c => sb.append(s"$c\n"))
-          if (assistant.hasToolCalls) {
-            sb.append("Tool Calls:\n")
-            assistant.toolCalls.foreach { tc =>
-              sb.append(s"  - ${tc.name}(${ujson.write(tc.arguments, indent = 0)})\n")
-            }
-          }
-          sb.append("\n")
-
-        case tool: ToolMessage =>
-          sb.append(s"TOOL RESULT (id=${tool.toolCallId}):\n")
-          sb.append(s"${tool.content}\n\n")
-      }
-    }
-
-    sb.toString()
-  }
-
   /** Print step summary to console.
     *
     * Displays a formatted summary of a game step including:

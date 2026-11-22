@@ -49,14 +49,6 @@ case class MusicGenerationError(
   override def userMessage: String = "Unable to generate background music."
 }
 
-// Category: Game logic errors
-case class GameStateError(
-  message: String,
-  override val cause: Option[Throwable] = None
-) extends SzorkError {
-  override def userMessage: String = "There was an issue with the game state."
-}
-
 // Category: Validation errors
 case class ValidationError(
   issues: List[String]

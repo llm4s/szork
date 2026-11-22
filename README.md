@@ -172,9 +172,9 @@ Set in `.env` (see `.env.example`) or the environment:
 - [Debug Tools](docs/DEBUG_TOOLS.md) - Create and step through games from the command line
 - [Frontend README](frontend/README.md) - Frontend development, features, and configuration
 - [Claude Code Guide](CLAUDE.md) - Guide for AI assistants working with this codebase
-- [Documentation Index](docs/README.md) - Complete documentation directory and archive
+- [Documentation Index](docs/README.md) - Complete documentation directory
 
-For additional design documents and historical information, see the [docs/](docs/) directory.
+For additional design documents, see the [docs/](docs/) directory.
 
 ## 🎤 About
 

@@ -59,7 +59,7 @@ object ImageProvider {
 case class SzorkConfig(
   // Server configuration
   port: Int = 8090,
-  host: String = "0.0.0.0",
+  host: String = "127.0.0.1",
 
   // Image generation configuration
   imageGenerationEnabled: Boolean = true,
@@ -77,7 +77,10 @@ case class SzorkConfig(
   autoSaveEnabled: Boolean = true,
   cacheEnabled: Boolean = true,
   cacheDirectory: String = "szork-cache",
-  savesDirectory: String = "szork-saves"
+  savesDirectory: String = "szork-saves",
+
+  // Browser origins allowed to open the WebSocket
+  allowedOrigins: Set[String] = Set("http://localhost:3090", "http://127.0.0.1:3090")
 )
 
 case class LLMConfig(
@@ -149,7 +152,12 @@ object SzorkConfig {
       .getOrElse(8090)
 
     // Load host
-    val host = EnvLoader.get("SZORK_HOST").getOrElse("0.0.0.0")
+    val host = EnvLoader.get("SZORK_HOST").getOrElse("127.0.0.1")
+    // Browser origins allowed to open the WebSocket (comma-separated); defaults to the dev frontend and this server
+    val allowedOrigins = EnvLoader
+      .get("SZORK_ALLOWED_ORIGINS")
+      .map(_.split(",").map(_.trim).filter(_.nonEmpty).toSet)
+      .getOrElse(Set(3090, port).flatMap(p => Set(s"http://localhost:$p", s"http://127.0.0.1:$p")))
 
     // Load image generation settings
     val imageGenerationEnabled = EnvLoader
@@ -187,6 +195,7 @@ object SzorkConfig {
     SzorkConfig(
       port = port,
       host = host,
+      allowedOrigins = allowedOrigins,
       imageGenerationEnabled = imageGenerationEnabled,
       imageProvider = imageProvider,
       ttsEnabled = ttsEnabled,

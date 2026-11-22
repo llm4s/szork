@@ -2,6 +2,7 @@ package org.llm4s.szork.media
 
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.persistence.GameDirs
 import java.nio.file.{Files, Path, Paths}
 import java.nio.charset.StandardCharsets
 import java.util.Base64
@@ -41,7 +42,7 @@ object MediaCache {
 
   // Ensure cache directory structure exists
   private def ensureCacheDir(gameId: String): Path = {
-    val gameDir = Paths.get(CACHE_DIR, gameId)
+    val gameDir = GameDirs.resolve(Paths.get(CACHE_DIR), gameId)
     val imagesDir = gameDir.resolve("images")
     val musicDir = gameDir.resolve("music")
 
@@ -196,7 +197,7 @@ object MediaCache {
   // Cache Management
   def clearGameCache(gameId: String): SzorkResult[Unit] =
     try {
-      val gameDir = Paths.get(CACHE_DIR, gameId)
+      val gameDir = GameDirs.resolve(Paths.get(CACHE_DIR), gameId)
       if (Files.exists(gameDir)) {
         deleteDirectoryRecursively(gameDir)
         logger.info(s"Cleared cache for game: $gameId")
@@ -212,7 +213,7 @@ object MediaCache {
 
   def getCacheStats(gameId: String): Map[String, Any] =
     try {
-      val gameDir = Paths.get(CACHE_DIR, gameId)
+      val gameDir = GameDirs.resolve(Paths.get(CACHE_DIR), gameId)
       if (Files.exists(gameDir)) {
         val imageCount =
           if (Files.exists(gameDir.resolve("images"))) Using.resource(Files.list(gameDir.resolve("images")))(_.count())

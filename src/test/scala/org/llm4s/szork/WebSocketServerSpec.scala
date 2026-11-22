@@ -10,7 +10,8 @@ import org.scalatest.matchers.should.Matchers
 import scala.concurrent.ExecutionContext
 import org.llm4s.szork.api._
 import org.llm4s.szork.error.ErrorHandling.SzorkResult
-import org.llm4s.szork.spi.STTClient
+import org.llm4s.szork.error.ImageGenerationError
+import org.llm4s.szork.spi.{ImageClient, STTClient}
 import org.llm4s.szork.game.{GameEngine, PlayerInputGuardrail}
 import org.llm4s.szork.stubs.{FakeImageClient, ScriptedDm}
 import org.llm4s.szork.websocket.TypedWebSocketServer
@@ -28,6 +29,9 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
   private val workPool = Executors.newFixedThreadPool(4)
   private val mediaPool = Executors.newFixedThreadPool(2)
 
+  // Games with the theme "no-images" have an image provider that always fails
+  private val failingImages: ImageClient = (_, _, _, _) => Left(ImageGenerationError("provider down"))
+
   private val engineFactory: EngineFactory = (sessionId, theme, artStyle, outline, features) =>
     Right(
       GameEngine.create(
@@ -36,7 +40,9 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
         theme,
         artStyle,
         outline,
-        imageClient = Option.when(features.image)(new FakeImageClient())))
+        imageClient =
+          Option.when(features.image)(if (theme.contains("no-images")) failingImages else new FakeImageClient())
+      ))
 
   // Every recording says "go north", which moves the player to a new scene
   private val sttClient: STTClient = new STTClient {
@@ -184,6 +190,17 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
 
     c.sendJson("type" -> "streamCommand", "command" -> "go north")
     c.await("streamComplete")("data")("scene")("locationName").str shouldBe "Small Hall"
+    c.close()
+  }
+
+  test("an announced image that cannot be generated is reported as mediaFailed") {
+    val c = connect()
+    c.sendJson("type" -> "newGame", "theme" -> "no-images", "image" -> true)
+    val started = c.await("gameStarted")("data")
+    started("hasImage").bool shouldBe true
+    val failed = c.await("mediaFailed")("data")
+    failed("messageIndex").num shouldBe started("messageIndex").num
+    failed("kind").str shouldBe "image"
     c.close()
   }
 

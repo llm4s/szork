@@ -4,7 +4,7 @@ import org.llm4s.szork.error.ErrorHandling._
 
 import org.slf4j.{Logger, LoggerFactory}
 import requests._
-import org.llm4s.config.EnvLoader
+import org.llm4s.config.{ConfigReader, EnvLoader}
 import org.llm4s.szork.api.MediaNetworkConfig
 import org.llm4s.szork.api.MusicPollConfig
 import org.llm4s.szork.game.DungeonMasterOutput
@@ -13,18 +13,21 @@ import ujson._
 import java.net.URI
 import scala.util.{Failure, Success, Try, Using}
 
-class MusicGeneration {
+/** Background music from Replicate's MusicGen, cached per game and location.
+  *
+  * @param replicateApiKey
+  *   the Replicate key (None: music is unavailable)
+  * @param net
+  *   timeouts for the Replicate calls
+  * @param poll
+  *   how long to wait for a prediction
+  */
+class MusicGeneration(replicateApiKey: Option[String], net: MediaNetworkConfig, poll: MusicPollConfig) {
   import MusicGeneration.MusicMood
 
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
-  private val net = MediaNetworkConfig.instance
-  private val replicateApiKey =
-    EnvLoader.get("REPLICATE_API_KEY").filter(key => key.nonEmpty && !key.contains("YOUR_REPLICATE_API_KEY"))
 
   def isAvailable: Boolean = replicateApiKey.isDefined
-
-  def generateMusic(mood: MusicMood, context: String = ""): SzorkResult[String] =
-    generateMusicWithCache(mood, context, None, None)
 
   def generateMusicWithCache(
     mood: MusicMood,
@@ -125,9 +128,7 @@ class MusicGeneration {
     }
   }
 
-  private def pollPrediction(
-    predictionId: String,
-    maxAttempts: Int = MusicPollConfig.instance.maxAttempts): SzorkResult[String] = {
+  private def pollPrediction(predictionId: String, maxAttempts: Int = poll.maxAttempts): SzorkResult[String] = {
     if (!isAvailable) {
       return Left(ConfigurationError("Music generation not available - REPLICATE_API_KEY not configured"))
     }
@@ -160,7 +161,7 @@ class MusicGeneration {
             return Left(MusicGenerationError(s"Generation failed: $error", retryable = false))
 
           case "processing" | "starting" =>
-            Thread.sleep(MusicPollConfig.instance.pollIntervalMs) // Wait before polling again
+            Thread.sleep(poll.pollIntervalMs) // Wait before polling again
             attempts += 1
 
           case _ =>
@@ -224,7 +225,13 @@ class MusicGeneration {
 }
 
 object MusicGeneration {
-  def apply(): MusicGeneration = new MusicGeneration()
+
+  /** Music with REPLICATE_API_KEY from `reader` (unavailable without it) and the given timeouts and polling. */
+  def apply(net: MediaNetworkConfig, poll: MusicPollConfig, reader: ConfigReader = EnvLoader): MusicGeneration =
+    new MusicGeneration(
+      reader.get("REPLICATE_API_KEY").filter(key => key.nonEmpty && !key.contains("YOUR_REPLICATE_API_KEY")),
+      net,
+      poll)
 
   case class MusicMood(
     name: String,

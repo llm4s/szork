@@ -5,9 +5,11 @@ import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.agent.ContextWindowConfig
 import org.llm4s.config.{ConfigReader, EnvLoader}
 import org.llm4s.szork.game.GameEngine
-import org.llm4s.szork.media.SceneImages
+import org.llm4s.szork.media.{MediaCache, SceneImages}
+import org.llm4s.szork.persistence.StepPersistence
 import org.llm4s.security.Secret
 import org.slf4j.Logger
+import java.nio.file.Paths
 
 /** Image generation provider options
   */
@@ -40,21 +42,28 @@ object ImageProvider {
   }
 }
 
-/** Configuration for the Szork game server
+/** Configuration for the Szork game server.
+  *
+  * [[SzorkConfig.load]] is the one reader of Szork's own `SZORK_*` settings; everything else is handed the values it
+  * needs. Provider credentials (OPENAI_API_KEY and the like) are read where the clients that use them are built.
   */
 case class SzorkConfig(
   // Server configuration
   port: Int = 8090,
+  wsPort: Int = 9002,
   host: String = "127.0.0.1",
 
   // Image generation configuration
   imageGenerationEnabled: Boolean = true,
   imageProvider: ImageProvider = ImageProvider.None,
 
-  // Audio/speech/media feature flags
+  // Audio/speech/media feature flags and settings
   ttsEnabled: Boolean = true,
   sttEnabled: Boolean = true,
   musicEnabled: Boolean = true,
+  speech: SpeechConfig = SpeechConfig(),
+  mediaNetwork: MediaNetworkConfig = MediaNetworkConfig(),
+  musicPoll: MusicPollConfig = MusicPollConfig(),
 
   // LLM configuration
   llmConfig: Option[LLMConfig] = None,
@@ -63,15 +72,19 @@ case class SzorkConfig(
   // Whether player commands pass the Dungeon Master's prompt-injection guardrail (PlayerInputGuardrail)
   inputGuardrailEnabled: Boolean = true,
 
-  // Game configuration
+  // Saves and the media cache
   autoSaveEnabled: Boolean = true,
-  cacheEnabled: Boolean = true,
-  cacheDirectory: String = "szork-cache",
   savesDirectory: String = "szork-saves",
+  cache: MediaCacheConfig = MediaCacheConfig(),
+
+  // How long a session with no connection lives before it expires
+  sessionTtlMinutes: Int = SzorkConfig.DefaultSessionTtlMinutes,
 
   // Browser origins allowed to open the WebSocket
   allowedOrigins: Set[String] = Set("http://localhost:3090", "http://127.0.0.1:3090")
-)
+) {
+  def sessionTtlMillis: Long = sessionTtlMinutes.toLong * 60 * 1000
+}
 
 case class LLMConfig(
   provider: String,
@@ -124,16 +137,19 @@ object LLMConfig {
 }
 
 object SzorkConfig {
+  val DefaultSessionTtlMinutes: Int = 30
+
+  /** The configuration from the environment (.env and the process environment), for the command-line tools. */
   lazy val instance: SzorkConfig = load()
 
-  /** Get an LLM client using the current configuration */
-  def getLLMClient(): Either[String, org.llm4s.llmconnect.LLMClient] =
-    instance.llmConfig match {
-      case Some(config) =>
+  /** An LLM client for `config`'s provider. */
+  def getLLMClient(config: SzorkConfig = instance): Either[String, org.llm4s.llmconnect.LLMClient] =
+    config.llmConfig match {
+      case Some(llm) =>
         try
           org.llm4s.model.ModelRegistryService.default().left.map(_.message).flatMap { registry =>
             given org.llm4s.model.ModelRegistryService = registry
-            org.llm4s.llmconnect.LLMConnect.getClient(config.toProviderConfig).left.map(_.message)
+            org.llm4s.llmconnect.LLMConnect.getClient(llm.toProviderConfig).left.map(_.message)
           }
         catch {
           case e: Exception => Left(s"Failed to create LLM client: ${e.getMessage}")
@@ -142,73 +158,41 @@ object SzorkConfig {
         Left("No LLM configuration found")
     }
 
-  private def load(): SzorkConfig = {
-    // Load port
-    val port = EnvLoader
-      .get("SZORK_PORT")
-      .flatMap(p => scala.util.Try(p.toInt).toOption)
-      .getOrElse(8090)
+  /** The configuration in `env`. A feature flag is on unless set to `false`; a number that does not parse, and an empty
+    * value, are ignored.
+    */
+  def load(env: ConfigReader = EnvLoader): SzorkConfig = {
+    def setting(key: String): Option[String] = env.get(key).map(_.trim).filter(_.nonEmpty)
+    def flag(key: String): Boolean = !setting(key).exists(_.equalsIgnoreCase("false"))
+    def int(key: String): Option[Int] = setting(key).flatMap(_.toIntOption)
 
-    // Load host
-    val host = EnvLoader.get("SZORK_HOST").getOrElse("127.0.0.1")
+    val port = int("SZORK_PORT").getOrElse(8090)
     // Browser origins allowed to open the WebSocket (comma-separated); defaults to the dev frontend and this server
-    val allowedOrigins = EnvLoader
-      .get("SZORK_ALLOWED_ORIGINS")
+    val allowedOrigins = setting("SZORK_ALLOWED_ORIGINS")
       .map(_.split(",").map(_.trim).filter(_.nonEmpty).toSet)
       .getOrElse(Set(3090, port).flatMap(p => Set(s"http://localhost:$p", s"http://127.0.0.1:$p")))
 
-    // Load image generation settings
-    val imageGenerationEnabled = EnvLoader
-      .get("SZORK_IMAGE_GENERATION_ENABLED")
-      .map(_.toLowerCase != "false")
-      .getOrElse(true)
-
-    val imageProviderStr = EnvLoader.get("SZORK_IMAGE_PROVIDER")
-    val imageProvider = imageProviderStr
-      .map(ImageProvider.fromString)
-      .getOrElse(ImageProvider.None)
-
-    // Load LLM configuration
-    val llmConfig = loadLLMConfig()
-    val dmContextWindow = loadDmContextWindow()
-    val inputGuardrailEnabled =
-      EnvLoader.get("SZORK_INPUT_GUARDRAIL").map(_.trim.toLowerCase).forall(v => v != "false" && v != "off")
-
-    // Media feature flags
-    val ttsEnabled = EnvLoader.get("SZORK_TTS_ENABLED").map(_.toLowerCase != "false").getOrElse(true)
-    val sttEnabled = EnvLoader.get("SZORK_STT_ENABLED").map(_.toLowerCase != "false").getOrElse(true)
-    val musicEnabled = EnvLoader.get("SZORK_MUSIC_ENABLED").map(_.toLowerCase != "false").getOrElse(true)
-
-    // Load game settings
-    val autoSaveEnabled = EnvLoader
-      .get("SZORK_AUTO_SAVE")
-      .map(_.toLowerCase != "false")
-      .getOrElse(true)
-
-    val cacheEnabled = EnvLoader
-      .get("SZORK_CACHE_ENABLED")
-      .map(_.toLowerCase != "false")
-      .getOrElse(true)
-
-    val cacheDirectory = EnvLoader.get("SZORK_CACHE_DIR").getOrElse("szork-cache")
-    val savesDirectory = EnvLoader.get("SZORK_SAVES_DIR").getOrElse("szork-saves")
-
     SzorkConfig(
       port = port,
-      host = host,
+      wsPort = int("SZORK_WS_PORT").getOrElse(9002),
+      host = setting("SZORK_HOST").getOrElse("127.0.0.1"),
       allowedOrigins = allowedOrigins,
-      imageGenerationEnabled = imageGenerationEnabled,
-      imageProvider = imageProvider,
-      ttsEnabled = ttsEnabled,
-      sttEnabled = sttEnabled,
-      musicEnabled = musicEnabled,
-      llmConfig = llmConfig,
-      dmContextWindow = dmContextWindow,
-      inputGuardrailEnabled = inputGuardrailEnabled,
-      autoSaveEnabled = autoSaveEnabled,
-      cacheEnabled = cacheEnabled,
-      cacheDirectory = cacheDirectory,
-      savesDirectory = savesDirectory
+      imageGenerationEnabled = flag("SZORK_IMAGE_GENERATION_ENABLED"),
+      imageProvider = setting("SZORK_IMAGE_PROVIDER").map(ImageProvider.fromString).getOrElse(ImageProvider.None),
+      ttsEnabled = flag("SZORK_TTS_ENABLED"),
+      sttEnabled = flag("SZORK_STT_ENABLED"),
+      musicEnabled = flag("SZORK_MUSIC_ENABLED"),
+      speech = SpeechConfig.load(env),
+      mediaNetwork = MediaNetworkConfig.load(env),
+      musicPoll = MusicPollConfig.load(env),
+      llmConfig = loadLLMConfig(env),
+      dmContextWindow = loadDmContextWindow(env),
+      inputGuardrailEnabled =
+        setting("SZORK_INPUT_GUARDRAIL").map(_.toLowerCase).forall(v => v != "false" && v != "off"),
+      autoSaveEnabled = flag("SZORK_AUTO_SAVE"),
+      savesDirectory = setting("SZORK_SAVES_DIR").getOrElse("szork-saves"),
+      cache = MediaCacheConfig.load(env),
+      sessionTtlMinutes = int("SZORK_SESSION_TTL_MINUTES").filter(_ > 0).getOrElse(DefaultSessionTtlMinutes)
     )
   }
 
@@ -232,83 +216,50 @@ object SzorkConfig {
     }
   }
 
-  /** The LLM to use, from SZORK_LLM_PROVIDER or else whichever provider's settings are present. */
+  /** The LLM to use, from SZORK_LLM_PROVIDER or else whichever provider's settings are present.
+    *
+    * Hand-written rather than llm4s's `Llm4sConfig.defaultProvider()`: that reads `llm4s.providers` from Typesafe
+    * config, which sees neither Szork's .env file nor SZORK_LLM_PROVIDER/SZORK_LLM_MODEL, and has no "whichever key is
+    * set" fallback.
+    */
   private[szork] def loadLLMConfig(env: ConfigReader = EnvLoader): Option[LLMConfig] = {
-    // Try to detect LLM provider from environment
     val openAIKey = env.get("OPENAI_API_KEY")
     val anthropicKey = env.get("ANTHROPIC_API_KEY")
     val llamaUrl = env.get("LLAMA_BASE_URL")
+    val model = env.get("SZORK_LLM_MODEL")
 
-    // Check for explicit provider setting
-    val explicitProvider = env.get("SZORK_LLM_PROVIDER").map(_.toLowerCase)
+    def openAI = openAIKey.map(key =>
+      LLMConfig("openai", key, model.orElse(Some(LLMConfig.DefaultOpenAIModel)), env.get("OPENAI_BASE_URL")))
+    def anthropic = anthropicKey.map(key =>
+      LLMConfig("anthropic", key, model.orElse(Some(LLMConfig.DefaultAnthropicModel)), env.get("ANTHROPIC_BASE_URL")))
+    // Without LLAMA_BASE_URL, LLMConfig.toProviderConfig's default, which ends in /v1
+    def llama = LLMConfig("llama", "not-required", model.orElse(Some(LLMConfig.DefaultLlamaModel)), llamaUrl)
 
-    explicitProvider match {
-      case Some("openai") =>
-        openAIKey.map(key =>
-          LLMConfig(
-            provider = "openai",
-            apiKey = key,
-            model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultOpenAIModel)),
-            baseUrl = env.get("OPENAI_BASE_URL")
-          ))
-
-      case Some("anthropic") =>
-        anthropicKey.map(key =>
-          LLMConfig(
-            provider = "anthropic",
-            apiKey = key,
-            model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultAnthropicModel)),
-            baseUrl = env.get("ANTHROPIC_BASE_URL")
-          ))
-
-      case Some("llama") | Some("local") =>
-        Some(
-          LLMConfig(
-            provider = "llama",
-            apiKey = "not-required",
-            model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultLlamaModel)),
-            baseUrl = llamaUrl // unset: LLMConfig.toProviderConfig's default, which ends in /v1
-          ))
-
-      case _ =>
-        // Auto-detect based on available keys
-        if (openAIKey.isDefined) {
-          openAIKey.map(key =>
-            LLMConfig(
-              provider = "openai",
-              apiKey = key,
-              model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultOpenAIModel)),
-              baseUrl = env.get("OPENAI_BASE_URL")
-            ))
-        } else if (anthropicKey.isDefined) {
-          anthropicKey.map(key =>
-            LLMConfig(
-              provider = "anthropic",
-              apiKey = key,
-              model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultAnthropicModel)),
-              baseUrl = env.get("ANTHROPIC_BASE_URL")
-            ))
-        } else if (llamaUrl.isDefined) {
-          Some(
-            LLMConfig(
-              provider = "llama",
-              apiKey = "not-required",
-              model = env.get("SZORK_LLM_MODEL").orElse(Some(LLMConfig.DefaultLlamaModel)),
-              baseUrl = llamaUrl
-            ))
-        } else {
-          None
-        }
+    env.get("SZORK_LLM_PROVIDER").map(_.toLowerCase) match {
+      case Some("openai") => openAI
+      case Some("anthropic") => anthropic
+      case Some("llama") | Some("local") => Some(llama)
+      case _ => openAI.orElse(anthropic).orElse(llamaUrl.map(_ => llama))
     }
   }
 
   implicit class ConfigOps(config: SzorkConfig) {
+
+    /** Points the save directory and media cache, which are shared by everything in the process, at this config's. */
+    def useStorage(): Unit = {
+      StepPersistence.useSaveDirectory(Paths.get(config.savesDirectory))
+      MediaCache.configure(config.cache)
+    }
+
     def validate(): SzorkResult[Unit] = {
       val errors = scala.collection.mutable.ListBuffer[String]()
 
-      // Validate port
+      // Validate ports
       if (config.port < 1 || config.port > 65535) {
         errors += s"Invalid port: ${config.port}"
+      }
+      if (config.wsPort < 1 || config.wsPort > 65535) {
+        errors += s"Invalid WebSocket port: ${config.wsPort}"
       }
 
       // An image provider that was chosen but cannot be used (its credentials are missing)
@@ -329,23 +280,17 @@ object SzorkConfig {
 
     def logConfiguration(logger: Logger): Unit = {
       logger.info("=== Szork Configuration ===")
-      logger.info(s"Server: ${config.host}:${config.port}")
-      logger.info(s"Image Generation: ${
-          if (config.imageGenerationEnabled) s"Enabled (${ImageProvider.toString(config.imageProvider)})"
-          else "Disabled"
-        }")
+      logger.info(s"Server: http://${config.host}:${config.port}, WebSocket ws://${config.host}:${config.wsPort}")
       logger.info(s"LLM Provider: ${config.llmConfig.map(_.provider).getOrElse("Not configured")}")
       val window = config.dmContextWindow.fold("whole conversation") { w =>
         w.maxMessages.fold(s"${w.maxTokens.getOrElse(0)} tokens")(m => s"$m messages")
       }
       logger.info(s"DM context window: $window")
       logger.info(s"DM input guardrail: ${if (config.inputGuardrailEnabled) "Enabled" else "Disabled"}")
-      logger.info(s"TTS: ${if (config.ttsEnabled) "Enabled" else "Disabled"}")
-      logger.info(s"STT: ${if (config.sttEnabled) "Enabled" else "Disabled"}")
-      logger.info(s"Music: ${if (config.musicEnabled) "Enabled" else "Disabled"}")
       logger.info(s"Auto-save: ${if (config.autoSaveEnabled) "Enabled" else "Disabled"}")
-      logger.info(s"Cache: ${if (config.cacheEnabled) s"Enabled (${config.cacheDirectory})" else "Disabled"}")
+      logger.info(s"Cache: ${if (config.cache.enabled) s"Enabled (${config.cache.directory})" else "Disabled"}")
       logger.info(s"Saves Directory: ${config.savesDirectory}")
+      logger.info(s"Session TTL: ${config.sessionTtlMinutes} minutes")
       logger.info("========================")
     }
   }

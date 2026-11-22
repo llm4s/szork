@@ -8,7 +8,7 @@ import java.nio.file.attribute.FileTime
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import org.slf4j.{Logger, LoggerFactory}
-import org.llm4s.config.EnvLoader
+import org.llm4s.szork.api.MediaCacheConfig
 import java.security.MessageDigest
 import scala.collection.concurrent.TrieMap
 import scala.jdk.CollectionConverters._
@@ -19,7 +19,7 @@ import scala.util.Using
   * Layout: `<root>/<gameId>/{images,music}/<file>` plus a `metadata.json` index per game. Each game's index is updated
   * under that game's lock, and every file is written atomically, so concurrent image and music writes cannot lose each
   * other's entries or expose half-written files. A cache hit refreshes the file's timestamp, and the cache as a whole
-  * is pruned oldest-first to SZORK_CACHE_MAX_BYTES, dropping files unused for SZORK_CACHE_TTL_MS.
+  * is pruned oldest-first to its maximum size, dropping files unused for longer than its TTL ([[MediaCacheConfig]]).
   *
   * Clearing a game's cache (when the game is deleted) also stops anything being cached for it afterwards: an image or
   * music job still running for the deleted game finds it marked deleted and writes nothing. Game ids are never reused,
@@ -27,22 +27,18 @@ import scala.util.Using
   */
 object MediaCache {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
-  private val DefaultTtlMs = 7L * 24 * 60 * 60 * 1000 // 7 days
-  private val DefaultMaxBytes = 500L * 1024 * 1024 // 500MB, for the whole cache
+  // The server's settings (SzorkConfig.cache), set at startup; tests point the directory at a temporary one
+  @volatile private var settings: MediaCacheConfig = MediaCacheConfig()
 
-  private def cacheTtlMs: Long =
-    EnvLoader.get("SZORK_CACHE_TTL_MS").flatMap(_.toLongOption).getOrElse(DefaultTtlMs)
-  private def cacheMaxBytes: Long =
-    EnvLoader.get("SZORK_CACHE_MAX_BYTES").flatMap(_.toLongOption).getOrElse(DefaultMaxBytes)
+  private def cacheRoot: Path = Paths.get(settings.directory)
+  // When disabled, nothing is read or written
+  private def enabled: Boolean = settings.enabled
 
-  // SZORK_CACHE_DIR, default "szork-cache". Tests point it at a temporary directory.
-  @volatile private var cacheRoot: Path = Paths.get(EnvLoader.get("SZORK_CACHE_DIR").getOrElse("szork-cache"))
-
-  // SZORK_CACHE_ENABLED=false turns the cache off: nothing is read or written
-  private val enabled: Boolean = !EnvLoader.get("SZORK_CACHE_ENABLED").exists(_.trim.equalsIgnoreCase("false"))
+  /** Uses `config` from now on. */
+  def configure(config: MediaCacheConfig): Unit = settings = config
 
   /** Caches under `dir` from now on. */
-  private[szork] def useCacheDirectory(dir: Path): Unit = cacheRoot = dir
+  private[szork] def useCacheDirectory(dir: Path): Unit = settings = settings.copy(directory = dir.toString)
 
   private val gameLocks = TrieMap[String, Object]()
   // Games whose cache was cleared: nothing is cached for them again. Set and checked under the game's lock.
@@ -192,8 +188,8 @@ object MediaCache {
   /** Removes cached media unused for longer than the TTL, then the least recently used until the whole cache fits. */
   private[szork] def prune(
     now: Long = System.currentTimeMillis(),
-    ttlMs: Long = cacheTtlMs,
-    maxBytes: Long = cacheMaxBytes): Unit =
+    ttlMs: Long = settings.ttlMs,
+    maxBytes: Long = settings.maxBytes): Unit =
     PruneLock.synchronized {
       try {
         val files = mediaFiles()

@@ -2,6 +2,7 @@ package org.llm4s.szork.debug
 
 import org.llm4s.szork.game._
 import org.llm4s.szork.api.{AgentTracing, GameTheme, ArtStyle, SzorkConfig}
+import org.llm4s.szork.api.SzorkConfig.ConfigOps
 import org.llm4s.szork.persistence.{GameMetadataHelper, StepData, StepPersistence}
 import org.slf4j.LoggerFactory
 import scala.util.{Try, Success, Failure}
@@ -38,6 +39,9 @@ object CreateAdventure {
     println()
 
     try {
+      // The save directory (SZORK_SAVES_DIR) and media cache the server uses
+      SzorkConfig.instance.useStorage()
+
       // Initialize LLM client
       println("Initializing LLM client...")
       implicit val llmClient: org.llm4s.llmconnect.LLMClient = SzorkConfig.getLLMClient() match {

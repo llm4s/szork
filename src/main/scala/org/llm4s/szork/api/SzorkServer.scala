@@ -1,18 +1,23 @@
 package org.llm4s.szork.api
 
 import cask._
-import org.slf4j.LoggerFactory
-import org.llm4s.config.EnvLoader
+import io.undertow.Undertow
+import org.slf4j.{Logger, LoggerFactory}
 import org.llm4s.llmconnect.LLMClient
+import org.llm4s.llmconnect.model.{Conversation, SystemMessage, UserMessage}
+import org.llm4s.trace.Tracing
 import scala.concurrent.{Await, ExecutionContext}
 import scala.concurrent.duration._
 import scala.util.Try
-import java.util.concurrent.Executors
+import java.net.InetSocketAddress
+import java.util.concurrent.{ExecutorService, Executors}
+import org.llm4s.szork.adapters.DefaultSTTClient
 import org.llm4s.szork.game._
 import org.llm4s.szork.websocket.TypedWebSocketServer
 import org.llm4s.szork.persistence.GamePersistence
 import org.llm4s.szork.error.PersistenceError
 import org.llm4s.szork.media.{MediaCache, SceneImages}
+import org.llm4s.szork.spi.STTClient
 
 /** Game theme configuration with prompt text.
   *
@@ -41,53 +46,144 @@ case class ArtStyle(
   name: String
 )
 
-/** Main HTTP server providing REST API and WebSocket endpoints.
+/** The Szork server: the HTTP API ([[SzorkRoutes]]) and the gameplay WebSocket server, from the configuration and
+  * clients it is given. `start` opens both; `stop` closes them and the thread pools, the LLM client and tracing.
   *
-  * Serves the Szork web interface and manages game sessions. Integrates with TypedWebSocketServer for real-time
-  * gameplay communication.
+  * The save directory and media cache are process-wide, so creating a server points them at `config`'s.
   */
-object SzorkServer extends cask.Main with cask.Routes {
+final class SzorkApp(
+  val config: SzorkConfig,
+  llmClient: LLMClient,
+  val capabilities: Capabilities,
+  engineFactory: EngineFactory,
+  sttClient: Option[STTClient],
+  tracing: Option[Tracing]
+) {
+  import SzorkConfig.ConfigOps
 
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
-  // Load and validate configuration
-  private val config = SzorkConfig.instance
+  config.useStorage()
 
-  // Log the configuration
-  config.logConfiguration(logger)
-  logger.info("Hot reload is enabled - file changes will trigger restart")
+  private def daemonPool(name: String, threads: Int): ExecutorService = Executors.newFixedThreadPool(
+    threads,
+    { (r: Runnable) =>
+      val t = new Thread(r, name)
+      t.setDaemon(true)
+      t
+    })
+  // Session work (turns, saves) runs here, one task at a time per session; media generation has its own pools so
+  // slow image or music providers cannot hold up turns. Music has a pool of its own because each job blocks for up
+  // to ~30s while it polls Replicate, which would otherwise hold up images.
+  private val workPool = daemonPool("szork-work", 16)
+  private val mediaPool = daemonPool("szork-media", 4)
+  private val musicPool = daemonPool("szork-music", 4)
 
-  // Feature availability summary based on environment/config
-  private val openAIKeyPresent = EnvLoader.get("OPENAI_API_KEY").exists(_.nonEmpty)
-  private val replicateKeyPresent = EnvLoader.get("REPLICATE_API_KEY").exists(_.nonEmpty)
+  val wsServer: TypedWebSocketServer = new TypedWebSocketServer(
+    address = new InetSocketAddress(config.host, config.wsPort),
+    sessionManager = new SessionManager(),
+    capabilities = capabilities,
+    engineFactory = engineFactory,
+    sttClient = sttClient,
+    workPool = workPool,
+    mediaEC = ExecutionContext.fromExecutor(mediaPool),
+    musicEC = ExecutionContext.fromExecutor(musicPool),
+    autoSave = config.autoSaveEnabled,
+    sessionTtlMillis = config.sessionTtlMillis,
+    allowedOrigins = Some(config.allowedOrigins)
+  )
 
-  private val ttsRequested = config.ttsEnabled
-  private val sttRequested = config.sttEnabled
-  private val musicRequested = config.musicEnabled
+  val routes: SzorkRoutes = new SzorkRoutes(config, capabilities, llmClient, tracing, wsServer)
 
-  logger.info("=== Feature Availability ===")
-  logger.info(s"LLM Text Generation: ${config.llmConfig.map(_.provider).getOrElse("Unavailable")}")
-  logger.info(
-    s"Images: ${SceneImages.config(config).fold(reason => s"Disabled ($reason)", c => s"Enabled (${c.provider} ${c.model})")}")
-  logger.info(s"Music: ${
-      if (musicRequested && replicateKeyPresent) "Enabled (Replicate)"
-      else if (musicRequested) "Disabled (REPLICATE_API_KEY not set)"
+  private val caskMain = new cask.Main {
+    override def allRoutes: Seq[cask.Routes] = Seq(routes)
+    // Cask's debug mode sends exception details to clients in error responses
+    override def debugMode: Boolean = false
+  }
+  private val http =
+    Undertow.builder.addHttpListener(config.port, config.host).setHandler(caskMain.defaultHandler).build
+
+  def start(): Unit = {
+    wsServer.setReuseAddr(true)
+    wsServer.start()
+    http.start()
+    SzorkApp.logFeatures(logger, config, capabilities)
+    logger.info("=== Network Endpoints ===")
+    logger.info(s"HTTP        : http://${config.host}:${config.port}")
+    logger.info(s"WebSocket   : ws://${config.host}:${config.wsPort}")
+    logger.info("Env Overrides: SZORK_HOST, SZORK_PORT, SZORK_WS_PORT")
+    logger.info(s"Dev Helper  : Vite proxy ws://localhost:3090/ws -> ws://localhost:${config.wsPort}")
+    logger.info("==========================")
+  }
+
+  def stop(): Unit = {
+    def quietly(what: String)(action: => Unit): Unit =
+      try action
+      catch { case e: Throwable => logger.warn(s"Shutdown: $what failed: ${e.getMessage}") }
+    quietly("stopping the HTTP server")(http.stop())
+    quietly("stopping the WebSocket server")(wsServer.stop(1000))
+    quietly("stopping the thread pools") {
+      workPool.shutdownNow(); mediaPool.shutdownNow(); musicPool.shutdownNow(); caskMain.executionContext.shutdown()
+    }
+    // Langfuse sends traces in batches: flush the last one
+    quietly("shutting down tracing")(tracing.foreach(_.shutdown()))
+    quietly("closing the LLM client")(llmClient.close())
+  }
+}
+
+object SzorkApp {
+
+  /** A server with the real clients for `config`: its LLM, tracing (TRACING_MODE), scene images and speech. */
+  def fromConfig(config: SzorkConfig): Either[String, SzorkApp] =
+    SzorkConfig.getLLMClient(config).map { llmClient =>
+      // The Dungeon Master agents' tracing, shared by every game
+      val tracing = AgentTracing.fromEnvironment
+      // One llm4s image client for every game's scene images, traced with the Dungeon Master (None: no scene images)
+      val sceneImages = SceneImages.fromConfig(config, tracing)
+      val capabilities = Capabilities.from(config).copy(image = sceneImages.isDefined)
+      new SzorkApp(
+        config,
+        llmClient,
+        capabilities,
+        EngineFactory.default(llmClient, tracing, config, sceneImages),
+        Option.when(capabilities.stt)(new DefaultSTTClient(config.speech)),
+        tracing
+      )
+    }
+
+  /** Logs which optional features the server provides, and why any it does not are off. */
+  private[api] def logFeatures(logger: Logger, config: SzorkConfig, capabilities: Capabilities): Unit = {
+    def feature(available: Boolean, enabled: Boolean, provider: String, missing: String): String =
+      if (available) s"Enabled ($provider)"
+      else if (enabled) s"Disabled ($missing not set)"
       else "Disabled (by config)"
-    }")
-  logger.info(s"Speech-to-Text: ${
-      if (sttRequested && openAIKeyPresent) "Enabled (OpenAI Whisper)"
-      else if (sttRequested) "Disabled (OPENAI_API_KEY not set)"
-      else "Disabled (by config)"
-    }")
-  logger.info(s"Text-to-Speech: ${
-      if (ttsRequested && openAIKeyPresent) "Enabled (OpenAI TTS)"
-      else if (ttsRequested) "Disabled (OPENAI_API_KEY not set)"
-      else "Disabled (by config)"
-    }")
-  logger.info("===========================")
+    logger.info("=== Feature Availability ===")
+    logger.info(s"LLM Text Generation: ${config.llmConfig.map(_.provider).getOrElse("Unavailable")}")
+    logger.info(
+      s"Images: ${SceneImages.config(config).fold(reason => s"Disabled ($reason)", c => s"Enabled (${c.provider} ${c.model})")}")
+    logger.info(s"Music: ${feature(capabilities.music, config.musicEnabled, "Replicate", "REPLICATE_API_KEY")}")
+    logger.info(s"Speech-to-Text: ${feature(capabilities.stt, config.sttEnabled, "OpenAI Whisper", "OPENAI_API_KEY")}")
+    logger.info(s"Text-to-Speech: ${feature(capabilities.tts, config.ttsEnabled, "OpenAI TTS", "OPENAI_API_KEY")}")
+    logger.info("===========================")
+  }
+}
+
+/** The HTTP API: feature flags, saved games, theme validation and adventure generation. All gameplay goes through the
+  * WebSocket server.
+  */
+final class SzorkRoutes(
+  config: SzorkConfig,
+  capabilities: Capabilities,
+  llmClient: LLMClient,
+  tracing: Option[Tracing],
+  wsServer: TypedWebSocketServer
+) extends cask.Routes {
+
+  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   @get("/api/feature-flags")
-  def featureFlags(): ujson.Value =
+  def featureFlags(): ujson.Value = {
+    def flag(enabled: Boolean, available: Boolean) = ujson.Obj("enabled" -> enabled, "available" -> available)
     ujson.Obj(
       "llm" -> ujson.Obj(
         "provider" -> config.llmConfig.map(_.provider).getOrElse(""),
@@ -98,46 +194,11 @@ object SzorkServer extends cask.Main with cask.Routes {
         "provider" -> ImageProvider.toString(config.imageProvider),
         "available" -> capabilities.image
       ),
-      "music" -> ujson.Obj(
-        "enabled" -> config.musicEnabled,
-        "available" -> (config.musicEnabled && replicateKeyPresent)
-      ),
-      "tts" -> ujson.Obj(
-        "enabled" -> config.ttsEnabled,
-        "available" -> (config.ttsEnabled && openAIKeyPresent)
-      ),
-      "stt" -> ujson.Obj(
-        "enabled" -> config.sttEnabled,
-        "available" -> (config.sttEnabled && openAIKeyPresent)
-      )
+      "music" -> flag(config.musicEnabled, capabilities.music),
+      "tts" -> flag(config.ttsEnabled, capabilities.tts),
+      "stt" -> flag(config.sttEnabled, capabilities.stt)
     )
-
-  // Validate configuration
-  config.validate() match {
-    case Left(error) =>
-      logger.error("Configuration validation failed:")
-      error.message.split("\n").foreach(line => logger.error(s"  - $line"))
-      logger.warn("Server will continue but some features may not work")
-    case Right(_) =>
-      logger.info("Configuration validation successful")
   }
-
-  // One LLM client, shared by every game and request; fail fast if it cannot be created
-  private val llmClient: LLMClient = SzorkConfig.getLLMClient() match {
-    case Right(client) =>
-      logger.info("LLM client initialized successfully")
-      client
-    case Left(error) =>
-      logger.error(s"Failed to initialize LLM client: $error")
-      throw new IllegalStateException(s"LLM initialization failed: $error")
-  }
-  // The Dungeon Master agents' tracing (TRACING_MODE), shared by every game
-  private val tracing = AgentTracing.fromEnvironment
-  // One llm4s image client for every game's scene images, traced with the Dungeon Master (None: no scene images)
-  private val sceneImages = SceneImages.fromConfig(config, tracing)
-
-  // Cask's debug mode sends exception details to clients in error responses
-  override def debugMode: Boolean = false
 
   // POST endpoints accept only JSON bodies: a cross-site page can send a "simple" text/plain POST without a CORS
   // preflight, but not an application/json one, so this stops other sites spending the server's API credits.
@@ -157,11 +218,15 @@ object SzorkServer extends cask.Main with cask.Routes {
   }
 
   private def validateThemeDescription(themeDescription: String): ujson.Value = {
-
     logger.info(s"Validating custom theme: ${themeDescription.take(100)}...")
 
-    // Use LLM to validate and enhance the theme
-    import org.llm4s.llmconnect.model.{SystemMessage, UserMessage, Conversation}
+    // When the validator cannot be asked or its answer is unreadable, the player proceeds with their theme
+    val unvalidated = ujson.Obj(
+      "validated" -> false,
+      "valid" -> true,
+      "message" -> "",
+      "enhancedTheme" -> themeDescription
+    )
 
     val validationPrompt =
       s"""Analyze this adventure game theme idea and determine if it would work well for a text-based adventure game:
@@ -181,149 +246,43 @@ object SzorkServer extends cask.Main with cask.Routes {
         |- Opportunities for puzzles, challenges, or mysteries
         |- Interesting locations to visit
         |""".stripMargin
-    try {
-      val conversation = Conversation( // Conversation is used in client.complete below
-        Seq(
-          SystemMessage(
-            "You are an expert game designer specializing in text adventure games. Evaluate theme ideas and enhance them."),
-          UserMessage(validationPrompt)
-        ))
+    val conversation = Conversation(
+      Seq(
+        SystemMessage(
+          "You are an expert game designer specializing in text adventure games. Evaluate theme ideas and enhance them."),
+        UserMessage(validationPrompt)
+      ))
 
-      llmClient.complete(conversation) match {
-        case Right(response) =>
-          val responseText = response.content
-          // Try to parse JSON from response
-          val jsonStart = responseText.indexOf('{')
-          val jsonEnd = responseText.lastIndexOf('}')
-          if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            val jsonStr = responseText.substring(jsonStart, jsonEnd + 1)
-            try {
-              val parsed = ujson.read(jsonStr)
+    Try(llmClient.complete(conversation)).toEither.left.map(_.getMessage).flatMap(_.left.map(_.message)) match {
+      case Right(response) =>
+        val text = response.content
+        val (start, end) = (text.indexOf('{'), text.lastIndexOf('}'))
+        Try(ujson.read(text.substring(start, end + 1))).filter(_ => start >= 0 && end > start).toOption match {
+          case Some(parsed) =>
+            Try(
               ujson.Obj(
                 "valid" -> parsed("valid"),
                 "message" -> parsed.obj.getOrElse("message", ujson.Str("")).str,
                 "enhancedTheme" -> parsed.obj.getOrElse("enhancedTheme", ujson.Str(themeDescription)).str
-              )
-            } catch {
-              case _: Exception =>
-                // The validator's answer was unreadable: let the player proceed with their theme
-                ujson.Obj(
-                  "validated" -> false,
-                  "valid" -> true,
-                  "message" -> "",
-                  "enhancedTheme" -> themeDescription
-                )
-            }
-          } else {
-            // The validator gave no JSON: let the player proceed with their theme
-            ujson.Obj(
-              "validated" -> false,
-              "valid" -> true,
-              "message" -> "",
-              "enhancedTheme" -> themeDescription
-            )
-          }
-        case Left(error) =>
-          logger.error(s"Failed to validate theme: $error")
-          ujson.Obj(
-            "validated" -> false,
-            "valid" -> true,
-            "message" -> "",
-            "enhancedTheme" -> themeDescription
-          )
-      }
-    } catch {
-      case e: Exception =>
-        logger.error(s"Error validating theme", e)
-        ujson.Obj(
-          "valid" -> true,
-          "message" -> "",
-          "enhancedTheme" -> themeDescription
-        )
+              )).getOrElse(unvalidated)
+          case None => unvalidated
+        }
+      case Left(error) =>
+        logger.error(s"Failed to validate theme: $error")
+        unvalidated
     }
   }
 
-  private val sessionManager = new SessionManager()
-  private val capabilities = Capabilities.from(config).copy(image = sceneImages.isDefined)
-
-  private def daemonPool(name: String, threads: Int) = Executors.newFixedThreadPool(
-    threads,
-    { (r: Runnable) =>
-      val t = new Thread(r, name)
-      t.setDaemon(true)
-      t
-    })
-  // Session work (turns, saves) runs here, one task at a time per session; media generation has its own pools so
-  // slow image or music providers cannot hold up turns. Music has a pool of its own because each job blocks for up
-  // to ~30s while it polls Replicate, which would otherwise hold up images.
-  private val workPool = daemonPool("szork-work", 16)
-  private val mediaPool = daemonPool("szork-media", 4)
-  private val musicPool = daemonPool("szork-music", 4)
-
-  // Start WebSocket server for all game communication
-  private val wsPort = org.llm4s.config.EnvLoader
-    .get("SZORK_WS_PORT")
-    .flatMap(p => scala.util.Try(p.toInt).toOption)
-    .getOrElse(9002) // Default WS port
-  private val wsServer = new TypedWebSocketServer(
-    address = new java.net.InetSocketAddress(config.host, wsPort),
-    sessionManager = sessionManager,
-    capabilities = capabilities,
-    engineFactory = EngineFactory.default(
-      llmClient,
-      tracing,
-      config.dmContextWindow,
-      sceneImages,
-      inputGuardrail = config.inputGuardrailEnabled),
-    sttClient = Option.when(capabilities.stt)(new org.llm4s.szork.adapters.DefaultSTTClient()),
-    workPool = workPool,
-    mediaEC = ExecutionContext.fromExecutor(mediaPool),
-    musicEC = ExecutionContext.fromExecutor(musicPool),
-    autoSave = config.autoSaveEnabled,
-    allowedOrigins = Some(config.allowedOrigins)
-  )
-  wsServer.start()
-  sys.addShutdownHook {
-    def quietly(what: String)(action: => Unit): Unit =
-      try action
-      catch { case e: Throwable => logger.warn(s"Shutdown: $what failed: ${e.getMessage}") }
-    quietly("stopping the WebSocket server")(wsServer.stop(1000))
-    quietly("stopping the thread pools") { workPool.shutdownNow(); mediaPool.shutdownNow(); musicPool.shutdownNow() }
-    // Langfuse sends traces in batches: flush the last one
-    quietly("shutting down tracing")(tracing.foreach(_.shutdown()))
-    quietly("closing the LLM client")(llmClient.close())
-  }
-  logger.info(s"Type-safe WebSocket server started on port $wsPort for all game communication")
-  if (wsPort == config.port) {
-    logger.warn(
-      s"Configured WebSocket port ($wsPort) equals HTTP port (${config.port}). WebSocket uses a separate TCP server; ensure no port conflicts or use a reverse proxy.")
-  }
-
-  // Log a clear network summary block
-  private def logNetworkSummary(): Unit = {
-    logger.info("=== Network Endpoints ===")
-    logger.info(f"HTTP        : http://${config.host}:${config.port}")
-    logger.info(f"WebSocket   : ws://${config.host}:${wsPort}")
-    logger.info("Env Overrides: SZORK_HOST, SZORK_PORT, SZORK_WS_PORT")
-    logger.info("Dev Helper  : Vite proxy ws://localhost:3090/ws -> ws://localhost:" + wsPort)
-    logger.info("==========================")
-  }
-  logNetworkSummary()
-
   @get("/api/health")
-  def health(): ujson.Value = {
-    logger.debug("Health check requested")
+  def health(): ujson.Value =
     ujson.Obj(
       "status" -> "healthy",
       "service" -> "szork-server"
     )
-  }
 
   @get("/api/games")
   def listSavedGames(): ujson.Value = {
-    logger.debug("Listing saved games")
-    val games = GamePersistence.listGames()
-    val gamesJson = games.map { metadata =>
+    val gamesJson = GamePersistence.listGames().map { metadata =>
       ujson.Obj(
         "gameId" -> metadata.gameId,
         "title" -> metadata.adventureTitle,
@@ -343,13 +302,6 @@ object SzorkServer extends cask.Main with cask.Routes {
   @post("/api/game/generate-adventure")
   def generateAdventure(request: Request): ujson.Value = {
     if (!isJson(request)) return notJson
-    if (config.llmConfig.isEmpty) {
-      logger.error("Adventure generation requested but no LLM is configured")
-      return ujson.Obj(
-        "status" -> "error",
-        "message" -> "LLM unavailable: server not configured for text generation"
-      )
-    }
     AdventureRequest.parse(request.text()) match {
       case Left(message) =>
         logger.warn(s"Rejected generate-adventure request: $message")
@@ -360,9 +312,7 @@ object SzorkServer extends cask.Main with cask.Routes {
   }
 
   private def generateAdventureFor(theme: Option[GameTheme]): ujson.Value = {
-    logger.info("Generating adventure outline")
     val themePrompt = theme.map(_.prompt).getOrElse("classic fantasy adventure")
-
     logger.info(s"Generating adventure for theme: ${theme.map(_.name).getOrElse("default")}")
 
     AdventureGenerator.generateAdventureOutline(themePrompt, tracing)(using llmClient) match {
@@ -381,8 +331,6 @@ object SzorkServer extends cask.Main with cask.Routes {
     }
   }
 
-  // All gameplay (new/load game, commands, media notifications) goes through the WebSocket server.
-
   @get("/")
   def serveApp(): String =
     """<!DOCTYPE html>
@@ -393,13 +341,6 @@ object SzorkServer extends cask.Main with cask.Routes {
       |<p>Use the frontend at http://localhost:3090 or the API endpoints directly.</p>
       |</body>
       |</html>""".stripMargin
-
-  override def port: Int = config.port
-  override def host: String = config.host
-
-  logger.info(s"Starting Szork Server on http://$host:$port")
-
-  def allRoutes = Seq(this)
 
   @delete("/api/game/:gameId")
   def deleteGame(gameId: String): ujson.Value = {
@@ -414,18 +355,13 @@ object SzorkServer extends cask.Main with cask.Routes {
         .map(e => PersistenceError(s"Failed to delete game: ${e.getMessage}", Some(e), operation = "delete"))
         .flatten
 
-    // Also clear the media cache for this game
-    val cacheResult = MediaCache.clearGameCache(gameId)
-
     deleteResult match {
       case Right(_) =>
-        logger.info(s"Successfully deleted game: $gameId")
-        // Log cache clearing result but don't fail if cache clearing fails
-        cacheResult match {
-          case Left(error) => logger.warn(s"Failed to clear cache for deleted game $gameId: $error")
-          case _ => logger.info(s"Also cleared cache for deleted game: $gameId")
+        logger.info(s"Deleted game: $gameId")
+        // Clearing the media cache is best effort: the game is gone either way
+        MediaCache.clearGameCache(gameId).left.foreach { error =>
+          logger.warn(s"Failed to clear cache for deleted game $gameId: $error")
         }
-
         ujson.Obj(
           "status" -> "success",
           "message" -> s"Game deleted: $gameId"
@@ -439,6 +375,34 @@ object SzorkServer extends cask.Main with cask.Routes {
     }
   }
 
-  // Initialize routes
   initialize()
+}
+
+/** Starts the server from the environment's configuration (see [[SzorkConfig.load]]). */
+object SzorkServer {
+  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
+
+  def main(args: Array[String]): Unit = {
+    import SzorkConfig.ConfigOps
+    val config = SzorkConfig.load()
+    config.logConfiguration(logger)
+    config.validate().left.foreach { error =>
+      logger.error("Configuration validation failed:")
+      error.message.split("\n").foreach(line => logger.error(s"  - $line"))
+      logger.warn("Server will continue but some features may not work")
+    }
+    if (config.wsPort == config.port)
+      logger.warn(s"The WebSocket port (${config.wsPort}) equals the HTTP port: set SZORK_WS_PORT to another port")
+
+    SzorkApp.fromConfig(config) match {
+      case Left(error) =>
+        // Without an LLM there is no game to play
+        logger.error(s"Failed to initialize LLM client: $error")
+        sys.exit(1)
+      case Right(app) =>
+        app.start()
+        sys.addShutdownHook(app.stop())
+        logger.info(s"Szork server started on http://${config.host}:${config.port}")
+    }
+  }
 }

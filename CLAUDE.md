@@ -53,8 +53,13 @@ Copy `.env.example` to `.env` and fill in keys (the README has the full variable
 
 ### Core Components
 
-**api/SzorkServer.scala** - HTTP server (Cask): feature flags, saved-game list/delete, theme validation and adventure
-generation. Starts the WebSocket server with separate thread pools for session work and media.
+**api/SzorkServer.scala** - `SzorkApp` is the server, built from an injected `SzorkConfig`, LLM client, `Capabilities`
+and `EngineFactory` (so tests start a whole server with scripted LLMs): the WebSocket server with separate thread pools
+for session work and media, and `SzorkRoutes`, the HTTP API (Cask): feature flags, saved-game list/delete, theme
+validation and adventure generation. `object SzorkServer` is the `main` that builds one from the environment.
+
+**api/SzorkConfig.scala** - The one reader of `SZORK_*` settings (`SzorkConfig.load`); everything else is handed the
+values it needs. Add a setting there (and to the README table and `.env.example`), not with `EnvLoader` elsewhere.
 
 **websocket/TypedWebSocketServer.scala** - All gameplay. Each `GameSession` runs its work one task at a time on its own
 `SerialExecutor`; sessions survive reconnects (`resumeSession`) and expire when idle. Media generation runs on its own

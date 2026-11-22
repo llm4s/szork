@@ -16,10 +16,9 @@ import org.llm4s.szork.core.{CoreEngine, CoreState}
 import org.llm4s.szork.spi.{Clock, SystemClock, TTSClient, ImageClient, MusicClient}
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
-import org.llm4s.szork.debug.DebugHelpers
-import org.llm4s.szork.api.{GameTheme, ArtStyle}
+import org.llm4s.szork.api.{GameTheme, ArtStyle, SpeechConfig}
 import org.llm4s.szork.media.MediaPlanner
-import org.llm4s.szork.persistence.{StepData, GameState, StepMetadata}
+import org.llm4s.szork.persistence.{GameState, SceneResponse, StepData, StepMetadata, ToolCallInfo}
 import org.llm4s.szork.streaming.StreamingJsonParser
 
 /** Core game engine managing AI-driven text adventure gameplay.
@@ -39,6 +38,8 @@ import org.llm4s.szork.streaming.StreamingJsonParser
   *   Clock implementation for time tracking (defaults to system time)
   * @param ttsClient
   *   Optional text-to-speech client for narration
+  * @param narrationVoice
+  *   The text-to-speech voice the narration is spoken in
   * @param imageClient
   *   Optional client for scene image generation
   * @param musicClient
@@ -62,6 +63,7 @@ class GameEngine(
   adventureOutline: Option[AdventureOutline] = None,
   clock: Clock = SystemClock,
   ttsClient: Option[TTSClient] = None,
+  narrationVoice: String = SpeechConfig.DefaultVoice,
   imageClient: Option[ImageClient] = None,
   musicClient: Option[MusicClient] = None,
   tracing: Option[Tracing] = None,
@@ -169,16 +171,11 @@ class GameEngine(
   ): SzorkResult[GameResponse] = {
     logger.debug(s"[$sessionId] Processing command (streaming=${onTextChunk.isDefined}): $command")
 
-    // Track user command in conversation history (pure core state)
-    val stateBefore = coreState
-    coreState = CoreEngine.trackUser(coreState, command)
-
     val textStartTime = System.currentTimeMillis()
     runTurn(command, onTextChunk.map(narrationListener)) match {
       case Right(result) if result.status.isInstanceOf[AgentStatus.Blocked] =>
         // An input guardrail refused the command before the model saw it: the game is as it was, and the Dungeon
         // Master answers in character
-        coreState = stateBefore
         lastTurnChangedLocation = false
         lastValidationIssues = None
         val audio = if (generateAudio) synthesize(PlayerInputGuardrail.Refusal) else None
@@ -245,8 +242,8 @@ class GameEngine(
 
   /** Interprets a completed turn's answer and applies it to the game state.
     *
-    * The answer is parsed and validated; a scene moves the player, and the narration is recorded once in the
-    * transcript. If the answer cannot be used as structured data, its narration is still shown.
+    * The answer is parsed and validated, and a scene moves the player. If the answer cannot be used as structured data,
+    * its narration is still shown.
     */
   private def completeTurn(result: AgentResult): TurnOutcome = {
     val answer = result.answer.getOrElse("")
@@ -263,7 +260,6 @@ class GameEngine(
       world.enter(s.locationId, s.locationName)
     }
     lastTurnChangedLocation = scene.exists(s => !previousLocation.contains(s.locationId))
-    coreState = CoreEngine.trackAssistant(coreState, interpreted.narration)
 
     TurnOutcome(interpreted.narration, scene)
   }
@@ -274,7 +270,7 @@ class GameEngine(
   private def synthesize(text: String): Option[String] =
     ttsClient.filter(_ => text.nonEmpty).flatMap { client =>
       val start = System.currentTimeMillis()
-      client.synthesizeToBase64(text, GameEngine.NarrationVoice) match {
+      client.synthesizeToBase64(text, narrationVoice) match {
         case Right(audio) =>
           logger.info(s"[$sessionId] Audio generated in ${System.currentTimeMillis() - start}ms (${text.length} chars)")
           Some(audio)
@@ -298,6 +294,9 @@ class GameEngine(
     * This is the whole thread, not the pruned part a model call is sent; it is what a save stores.
     */
   def getMessages: Vector[Message] = history
+
+  /** The transcript shown to the player, derived from the conversation (see [[Transcript]]). */
+  def getTranscript: List[Transcript.Entry] = Transcript.of(history)
 
   /** Builds the Dungeon Master agents for `systemPrompt`: one streaming, one not, sharing this engine's runtime.
     *
@@ -471,7 +470,8 @@ class GameEngine(
 
   /** Extracts complete game state for persistence.
     *
-    * Captures the transcript, inventory, scene and the Dungeon Master's conversation for save/load.
+    * Captures the inventory, world, scene and the Dungeon Master's conversation (from which the transcript is derived)
+    * for save/load.
     *
     * @param gameId
     *   Unique game identifier
@@ -492,7 +492,6 @@ class GameEngine(
       adventureOutline = outline, // Include the full adventure outline
       currentScene = coreState.currentScene,
       visitedLocations = coreState.visitedLocations,
-      conversationHistory = coreState.conversationHistory,
       inventory = inventory.list,
       worldState = world.snapshot,
       createdAt = createdAt,
@@ -515,11 +514,7 @@ class GameEngine(
     */
   def restoreGameState(state: GameState): Unit = {
     // Restore simple state
-    coreState = coreState.copy(
-      currentScene = state.currentScene,
-      visitedLocations = state.visitedLocations,
-      conversationHistory = state.conversationHistory
-    )
+    coreState = coreState.copy(currentScene = state.currentScene, visitedLocations = state.visitedLocations)
     inventory.replaceWith(state.inventory)
     // A state without a world (made before it was kept) starts from the world its outline plans
     world.replaceWith(
@@ -556,17 +551,7 @@ class GameEngine(
     startNewConversation(valid)
   }
 
-  /** Returns the adventure title if set. */
-  def getAdventureTitle: Option[String] = adventureTitle
-
-  /** Sets the adventure title for this game. */
-  def setAdventureTitle(title: String): Unit =
-    adventureTitle = Some(title)
-
   // Step tracking methods for persistence
-
-  /** Get current step number. */
-  def getCurrentStepNumber: Int = currentStepNumber
 
   /** Increment step number and return the new value. */
   def incrementStepNumber(): Int = {
@@ -609,13 +594,7 @@ class GameEngine(
     response: Option[GameResponse],
     executionTimeMs: Long
   ): StepData = {
-    // Extract tool calls from agent messages
-    val toolCalls = DebugHelpers.extractToolCalls(history.drop(lastTurnStart))
-
-    // Convert response to GameResponse sealed trait
-    val gameResponseOpt: Option[org.llm4s.szork.persistence.GameResponse] = response.flatMap { resp =>
-      resp.scene.map(org.llm4s.szork.persistence.SceneResponse.apply)
-    }
+    val toolCalls = ToolCallInfo.fromMessages(history.drop(lastTurnStart))
 
     val metadata = StepMetadata(
       gameId = gameId,
@@ -636,7 +615,7 @@ class GameEngine(
       gameState = gameState,
       userCommand = userCommand,
       narrationText = narrationText,
-      response = gameResponseOpt,
+      response = response.flatMap(_.scene).map(SceneResponse.apply),
       toolCalls = toolCalls,
       outline = if (currentStepNumber == 1) outline else None
     )
@@ -652,10 +631,6 @@ object GameEngine {
     * subagent's own model call is limited by its task budget ([[DmSubagents.MaxStepsPerTask]]), not counted here.
     */
   val MaxModelCallsPerTurn: Int = 12
-
-  /** The text-to-speech voice used for narration (SZORK_TTS_VOICE, default nova). */
-  val NarrationVoice: String =
-    org.llm4s.config.EnvLoader.get("SZORK_TTS_VOICE").map(_.trim).filter(_.nonEmpty).getOrElse("nova")
 
   /** Conversation tokens sent with each model call by default, besides the system prompt and the current turn. */
   val DefaultContextTokens: Int = 24000
@@ -702,6 +677,8 @@ object GameEngine {
     *   Clock implementation for time tracking
     * @param ttsClient
     *   Optional text-to-speech client
+    * @param narrationVoice
+    *   The text-to-speech voice for narration
     * @param imageClient
     *   Optional image generation client
     * @param musicClient
@@ -725,6 +702,7 @@ object GameEngine {
     adventureOutline: Option[AdventureOutline] = None,
     clock: Clock = SystemClock,
     ttsClient: Option[TTSClient] = None,
+    narrationVoice: String = SpeechConfig.DefaultVoice,
     imageClient: Option[ImageClient] = None,
     musicClient: Option[MusicClient] = None,
     tracing: Option[Tracing] = None,
@@ -739,6 +717,7 @@ object GameEngine {
       adventureOutline,
       clock,
       ttsClient,
+      narrationVoice,
       imageClient,
       musicClient,
       tracing,

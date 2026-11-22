@@ -1,6 +1,6 @@
 package org.llm4s.szork.persistence
 
-import org.llm4s.llmconnect.model.Message
+import org.llm4s.llmconnect.model.{AssistantMessage, Message, ToolMessage}
 import org.llm4s.szork.game.{GameScene, AdventureOutline}
 import ujson.Value
 
@@ -76,7 +76,7 @@ case class StepData(
   gameState: GameState,
   userCommand: Option[String],
   narrationText: String,
-  response: Option[GameResponse],
+  response: Option[StepResponse],
   toolCalls: List[ToolCallInfo] = Nil,
   outline: Option[AdventureOutline] = None
 )
@@ -102,15 +102,30 @@ case class ToolCallInfo(
   timestamp: Long
 )
 
-/** Structured game response recorded with a step: the scene the step described, if any. */
-sealed trait GameResponse {
+object ToolCallInfo {
+
+  /** The tool calls the assistant made in `messages`, each with its result if a tool message answers it. */
+  def fromMessages(messages: Seq[Message]): List[ToolCallInfo] = {
+    val results = messages.collect { case tool: ToolMessage => tool.toolCallId -> tool.content }.toMap
+    messages.toList.flatMap {
+      case assistant: AssistantMessage =>
+        assistant.toolCalls.map { tc =>
+          ToolCallInfo(tc.id, tc.name, tc.arguments, results.get(tc.id), System.currentTimeMillis())
+        }
+      case _ => Nil
+    }
+  }
+}
+
+/** Structured response recorded with a step: the scene the step described, if any. */
+sealed trait StepResponse {
   def narrationText: String
 }
 
 /** Full scene response with location details. */
 case class SceneResponse(
   scene: GameScene
-) extends GameResponse {
+) extends StepResponse {
   override def narrationText: String = scene.narrationText
 }
 
@@ -157,7 +172,7 @@ object StepData {
     gameState: GameState,
     userCommand: String,
     narrationText: String,
-    response: Option[GameResponse],
+    response: Option[StepResponse],
     toolCalls: List[ToolCallInfo],
     executionTimeMs: Long,
     success: Boolean = true,

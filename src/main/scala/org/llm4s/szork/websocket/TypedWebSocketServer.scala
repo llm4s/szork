@@ -15,7 +15,7 @@ import scala.util.{Failure, Success, Try}
 import org.llm4s.szork.websocket.protocol._
 import org.llm4s.szork.api._
 import org.llm4s.szork.game._
-import org.llm4s.szork.persistence.{ConversationEntry => _, GameResponse => _, _}
+import org.llm4s.szork.persistence._
 import org.llm4s.szork.spi.STTClient
 
 /** WebSocket server for gameplay.
@@ -346,7 +346,7 @@ class TypedWebSocketServer(
                   sessionId = sessionId,
                   gameId = request.gameId,
                   messageIndex = engine.getMessageCount,
-                  conversation = gameState.conversationHistory.map(e => ConversationEntry(e.role, e.content)),
+                  conversation = engine.getTranscript.map(e => ConversationEntry(e.role, e.content)),
                   currentLocation = gameState.currentScene.map(_.locationId),
                   currentScene = gameState.currentScene.map(convertScene),
                   ttsEnabled = features.tts,
@@ -373,7 +373,7 @@ class TypedWebSocketServer(
           sessionId = session.id,
           gameId = session.gameId,
           messageIndex = session.engine.getMessageCount,
-          conversation = state.conversationHistory.map(e => ConversationEntry(e.role, e.content)),
+          conversation = session.engine.getTranscript.map(e => ConversationEntry(e.role, e.content)),
           currentLocation = state.currentScene.map(_.locationId),
           currentScene = state.currentScene.map(convertScene),
           ttsEnabled = session.features.tts,

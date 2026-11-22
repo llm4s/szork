@@ -1,52 +1,10 @@
 package org.llm4s.szork.debug
 
 import org.llm4s.szork.game._
-import org.llm4s.szork.persistence.{StepData, ToolCallInfo, SceneResponse}
-import org.llm4s.llmconnect.model._
+import org.llm4s.szork.persistence.{StepData, SceneResponse}
 
-/** Debugging utilities for game development and testing.
-  *
-  * These utilities provide console output and convenience functions for debugging game sessions. The core persistence
-  * logic is now handled by StepPersistence.
-  */
+/** Console summaries for the debug tools ([[CreateAdventure]], [[RunUserStep]]). */
 object DebugHelpers {
-
-  /** Extract tool calls from agent messages.
-    *
-    * Scans through messages to find tool calls and their results, matching ToolMessages with their corresponding
-    * AssistantMessage tool calls.
-    *
-    * @param messages
-    *   Sequence of agent messages
-    * @return
-    *   List of tool call info with results
-    */
-  def extractToolCalls(messages: Seq[Message]): List[ToolCallInfo] = {
-    val toolCalls = scala.collection.mutable.ListBuffer[ToolCallInfo]()
-
-    messages.foreach {
-      case assistant: AssistantMessage if assistant.hasToolCalls =>
-        assistant.toolCalls.foreach { tc =>
-          toolCalls += ToolCallInfo(
-            id = tc.id,
-            name = tc.name,
-            arguments = tc.arguments,
-            result = None,
-            timestamp = System.currentTimeMillis()
-          )
-        }
-      case tool: ToolMessage =>
-        // Update the result for the matching tool call
-        val idx = toolCalls.indexWhere(_.id == tool.toolCallId)
-        if (idx >= 0) {
-          val existing = toolCalls(idx)
-          toolCalls(idx) = existing.copy(result = Some(tool.content))
-        }
-      case _ => // Ignore other message types
-    }
-
-    toolCalls.toList
-  }
 
   /** Print step summary to console.
     *

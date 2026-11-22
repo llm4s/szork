@@ -15,7 +15,6 @@ object ClientMessage {
     CommandRequest.rw,
     StreamCommandRequest.rw,
     AudioCommandRequest.rw,
-    ListGamesRequest.rw,
     PingMessage.rw
   )
 }
@@ -39,7 +38,6 @@ object ServerMessage {
     ImageReadyMessage.rw,
     MusicReadyMessage.rw,
     MediaFailedMessage.rw,
-    GamesListMessage.rw,
     ErrorMessage.rw,
     PongMessage.rw
   )
@@ -50,7 +48,6 @@ object ServerMessage {
 case class NewGameRequest(
   theme: Option[String] = None,
   artStyle: Option[String] = None,
-  imageGeneration: Boolean = true,
   adventureOutline: Option[ujson.Value] = None, // Adventure outline as JSON
   tts: Option[Boolean] = None,
   stt: Option[Boolean] = None,
@@ -104,11 +101,6 @@ case class AudioCommandRequest(
 ) extends ClientMessage
 object AudioCommandRequest {
   implicit val rw: ReadWriter[AudioCommandRequest] = macroRW
-}
-
-case class ListGamesRequest() extends ClientMessage
-object ListGamesRequest {
-  implicit val rw: ReadWriter[ListGamesRequest] = macroRW
 }
 
 case class PingMessage(
@@ -273,13 +265,6 @@ object MediaFailedMessage {
   implicit val rw: ReadWriter[MediaFailedMessage] = macroRW
 }
 
-case class GamesListMessage(
-  games: Seq[GameInfo]
-) extends ServerMessage
-object GamesListMessage {
-  implicit val rw: ReadWriter[GamesListMessage] = macroRW
-}
-
 case class ErrorMessage(
   error: String,
   details: Option[String] = None
@@ -326,16 +311,6 @@ object ConversationEntry {
   implicit val rw: ReadWriter[ConversationEntry] = macroRW
 }
 
-case class GameInfo(
-  gameId: String,
-  theme: String,
-  timestamp: Long,
-  locationName: String
-)
-object GameInfo {
-  implicit val rw: ReadWriter[GameInfo] = macroRW
-}
-
 /** The wire format: every message is `{"type": "<name>", "data": {...fields}}`, where the name is the class name
   * without its `Request`/`Message` suffix, starting lower case (e.g. `StreamCommandRequest` is `streamCommand`).
   */
@@ -352,7 +327,6 @@ object ProtocolCodec {
     "CommandRequest",
     "StreamCommandRequest",
     "AudioCommandRequest",
-    "ListGamesRequest",
     "PingMessage"
   ).map(c => wireName(c) -> c).toMap
 

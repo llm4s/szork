@@ -214,11 +214,10 @@ export class WebSocketClient {
   newGame(
     theme?: string,
     artStyle?: string,
-    imageGeneration = true,
     adventureOutline?: AdventureOutline | null,
     features?: FeatureRequest
   ): void {
-    this.send({ type: "newGame", theme, artStyle, imageGeneration, adventureOutline, ...features });
+    this.send({ type: "newGame", theme, artStyle, adventureOutline, ...features });
   }
 
   loadGame(gameId: string, features?: FeatureRequest): void {

@@ -21,7 +21,6 @@ export interface NewGameRequest extends FeatureRequest {
   type: "newGame";
   theme?: string;
   artStyle?: string;
-  imageGeneration?: boolean;
   adventureOutline?: AdventureOutline | null;
 }
 
@@ -53,10 +52,6 @@ export interface AudioCommandRequest {
   imageGeneration?: boolean;
 }
 
-export interface ListGamesRequest {
-  type: "listGames";
-}
-
 export interface PingMessage {
   type: "ping";
   timestamp?: number;
@@ -69,7 +64,6 @@ export type ClientMessage =
   | CommandRequest
   | StreamCommandRequest
   | AudioCommandRequest
-  | ListGamesRequest
   | PingMessage;
 
 // ============= Server Messages (received from server) =============
@@ -205,13 +199,6 @@ export interface MediaFailedMessage {
   };
 }
 
-export interface GamesListMessage {
-  type: "gamesList";
-  data: {
-    games: GameInfo[];
-  };
-}
-
 export interface ErrorMessage {
   type: "error";
   data: {
@@ -243,7 +230,6 @@ export type ServerMessage =
   | ImageReadyMessage
   | MusicReadyMessage
   | MediaFailedMessage
-  | GamesListMessage
   | ErrorMessage
   | PongMessage;
 
@@ -264,11 +250,4 @@ export interface ExitData {
 export interface ConversationEntry {
   role: string;
   content: string;
-}
-
-export interface GameInfo {
-  gameId: string;
-  theme: string;
-  timestamp: number;
-  locationName: string;
 }

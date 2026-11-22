@@ -97,7 +97,7 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
   }
 
   private def startGame(c: Client): ujson.Value = {
-    c.sendJson("type" -> "newGame", "theme" -> "caves", "imageGeneration" -> true)
+    c.sendJson("type" -> "newGame", "theme" -> "caves", "image" -> true)
     c.await("gameStarted")
   }
 

@@ -1,8 +1,7 @@
 package org.llm4s.szork.debug
 
 import org.llm4s.szork.game._
-import org.llm4s.szork.persistence.{StepData, StepPersistence, GameMetadataHelper, SceneResponse, GameResponse}
-import org.llm4s.szork.adapters.DefaultClients
+import org.llm4s.szork.persistence.{StepData, StepPersistence, GameMetadataHelper}
 import org.llm4s.szork.api.SzorkConfig
 import org.slf4j.LoggerFactory
 import scala.util.{Try, Success, Failure}
@@ -71,20 +70,13 @@ object RunUserStep {
       println("\nRestoring game engine...")
       val sessionId = IdGenerator.sessionId()
 
-      // Create SPI clients (optional, not used in debug mode)
-      val ttsClient = DefaultClients.createTTSClient()
-      val imageClient = DefaultClients.createImageClient()
-      val musicClient = DefaultClients.createMusicClient()
-
+      // No media clients: the debug tools only play the text of a turn
       val engine = GameEngine.create(
         llmClient = llmClient,
         sessionId = sessionId,
         theme = gameState.theme.map(_.prompt),
         artStyle = gameState.artStyle.map(_.id),
-        adventureOutline = gameState.adventureOutline,
-        ttsClient = ttsClient,
-        imageClient = imageClient,
-        musicClient = musicClient
+        adventureOutline = gameState.adventureOutline
       )
 
       // Restore the saved state and step number
@@ -134,27 +126,19 @@ object RunUserStep {
 
       val executionTime = System.currentTimeMillis() - startTime
 
-      // Extract tool calls from the agent conversation
-      val allMessages = engine.getMessages
-      val toolCalls = DebugHelpers.extractToolCalls(allMessages)
-      if (toolCalls.nonEmpty) {
-        println(s"✓ Detected ${toolCalls.length} tool call(s)")
-      }
-
-      // Convert engine GameResponse to StepData GameResponse
-      val gameResponse: Option[GameResponse] = response.scene.map(SceneResponse.apply)
-
-      // Create step data
-      val stepData = StepData.commandStep(
+      // The step, as the server saves it: with this turn's tool calls only
+      val stepData = engine.createStepData(
         gameId = config.gameId,
-        stepNumber = nextStep,
-        gameState = engine.getGameState(config.gameId, gameState.theme, gameState.artStyle),
-        userCommand = config.command,
+        gameTheme = gameState.theme,
+        gameArtStyle = gameState.artStyle,
+        userCommand = Some(config.command),
         narrationText = response.text,
-        response = gameResponse,
-        toolCalls = toolCalls,
+        response = Some(response),
         executionTimeMs = executionTime
       )
+      if (stepData.toolCalls.nonEmpty) {
+        println(s"✓ Detected ${stepData.toolCalls.length} tool call(s)")
+      }
 
       // Save step data
       println(s"\nSaving step $nextStep...")

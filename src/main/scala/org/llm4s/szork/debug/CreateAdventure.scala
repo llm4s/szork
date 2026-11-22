@@ -132,19 +132,19 @@ object CreateAdventure {
         executionTimeMs = executionTime
       )
 
-      // Save using unified persistence
-      StepPersistence.saveGameMetadata(metadata) match {
-        case Right(_) => println("✓ Game metadata saved")
-        case Left(error) =>
-          println(s"ERROR: Failed to save game metadata: ${error.message}")
-          System.exit(1)
-          return
-      }
-
       StepPersistence.saveStep(stepData) match {
         case Right(_) => println("✓ Step 1 saved")
         case Left(error) =>
           println(s"ERROR: Failed to save step: ${error.message}")
+          System.exit(1)
+          return
+      }
+
+      // game.json last, so it never names a step that is not saved
+      StepPersistence.saveGameMetadata(metadata) match {
+        case Right(_) => println("✓ Game metadata saved")
+        case Left(error) =>
+          println(s"ERROR: Failed to save game metadata: ${error.message}")
           System.exit(1)
           return
       }

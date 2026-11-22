@@ -488,7 +488,8 @@ class TypedWebSocketServer(
       outline = outline,
       executionTimeMs = 0L
     )
-    val saved = StepPersistence.saveGameMetadata(metadata).flatMap(_ => StepPersistence.saveStep(stepData))
+    // game.json last: a game is listed only once its first step is complete
+    val saved = StepPersistence.saveStep(stepData).flatMap(_ => StepPersistence.saveGameMetadata(metadata))
     saved.left.foreach(error => logger.error(s"[${session.id}] Initial save failed: ${error.message}"))
   }
 

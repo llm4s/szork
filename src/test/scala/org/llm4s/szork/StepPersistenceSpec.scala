@@ -422,4 +422,28 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     StepPersistence.deleteGame(gameId1)
     StepPersistence.deleteGame(gameId2)
   }
+
+  test("saves replace files by an atomic rename, leaving no temporary files") {
+    def metadata(title: String) = GameMetadata(
+      gameId = testGameId,
+      theme = "fantasy",
+      artStyle = "pixel",
+      adventureTitle = title,
+      createdAt = 1L,
+      lastSaved = 1L,
+      lastPlayed = 1L,
+      totalPlayTime = 0L)
+    def fileKey(path: Path) =
+      Files.readAttributes(path, classOf[java.nio.file.attribute.BasicFileAttributes]).fileKey()
+    val gameJson = testGameDir.resolve("game.json")
+
+    StepPersistence.saveGameMetadata(metadata("First")) shouldBe Right(())
+    val before = fileKey(gameJson)
+    StepPersistence.saveGameMetadata(metadata("Second")) shouldBe Right(())
+
+    // A new file was renamed into place, rather than the old one truncated and rewritten
+    fileKey(gameJson) should not be before
+    StepPersistence.loadGameMetadata(testGameId).map(_.adventureTitle) shouldBe Right("Second")
+    Files.list(testGameDir).iterator().asScala.map(_.getFileName.toString).toList shouldBe List("game.json")
+  }
 }

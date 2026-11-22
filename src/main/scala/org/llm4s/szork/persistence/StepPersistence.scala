@@ -5,6 +5,7 @@ import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import ujson._
 import org.llm4s.szork.game.IdGenerator
+import org.llm4s.szork.media.AtomicFiles
 import java.nio.file.{Files, Path, Paths}
 import java.nio.charset.StandardCharsets
 import org.slf4j.{Logger, LoggerFactory}
@@ -83,15 +84,13 @@ object StepPersistence {
     stepDir
   }
 
-  /** Save JSON with pretty printing. */
-  private def saveJson(path: Path, data: Value): Unit = {
-    val jsonString = ujson.write(data, indent = 2)
-    Files.write(path, jsonString.getBytes(StandardCharsets.UTF_8))
-  }
+  /** Save JSON with pretty printing. Like every save, it is atomic: a crash leaves the old file or the new one. */
+  private def saveJson(path: Path, data: Value): Unit =
+    saveText(path, ujson.write(data, indent = 2))
 
-  /** Save text content. */
+  /** Save text content, atomically. */
   private def saveText(path: Path, content: String): Unit =
-    Files.write(path, content.getBytes(StandardCharsets.UTF_8))
+    AtomicFiles.write(path, content.getBytes(StandardCharsets.UTF_8))
 
   /** Load JSON from file. */
   private def loadJson(path: Path): Value = {
@@ -148,7 +147,7 @@ object StepPersistence {
         Left(PersistenceError(s"Failed to load game metadata: ${e.getMessage}", Some(e), operation = "load"))
     }
 
-  /** Save a complete step. */
+  /** Save a complete step. Callers write the game's game.json after it, so game.json never names a missing step. */
   def saveStep(stepData: StepData): SzorkResult[Unit] =
     try {
       val stepDir = ensureStepDir(stepData.metadata.gameId, stepData.metadata.stepNumber)

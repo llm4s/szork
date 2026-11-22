@@ -76,7 +76,7 @@
               </div>
             </v-card-text>
             <v-card-actions>
-              <v-btn variant="text" color="primary" @click.stop="loadGame(game.gameId)">
+              <v-btn variant="text" color="primary" @click.stop="selectGame(game)">
                 Continue
                 <v-icon end>mdi-play</v-icon>
               </v-btn>
@@ -115,14 +115,12 @@
 <script lang="ts">
 import { defineComponent, ref, onMounted } from "vue";
 import axios from "axios";
-import { useRouter } from "vue-router";
 import type { FeatureFlags, SavedGameSummary } from "@/types/api";
 
 export default defineComponent({
   name: "GameSelection",
   emits: ["start-new-game", "load-game"],
   setup(props, { emit }) {
-    const router = useRouter();
     const savedGames = ref<SavedGameSummary[]>([]);
     const loading = ref(true);
     const featureFlagsLoaded = ref(false);
@@ -204,10 +202,6 @@ export default defineComponent({
       emit("load-game", game.gameId);
     };
 
-    const loadGame = (gameId: string) => {
-      router.push(`/game/${gameId}`);
-    };
-
     const confirmDelete = (game: SavedGameSummary) => {
       gameToDelete.value = game;
       deleteDialog.value = true;
@@ -246,7 +240,6 @@ export default defineComponent({
       formatRelativeDate,
       formatPlayTime,
       selectGame,
-      loadGame,
       confirmDelete,
       deleteGame,
     };

@@ -2,16 +2,12 @@
   <v-container fluid class="game-container pa-0">
     <!-- Intro Screen -->
     <div v-if="!gameStarted && !setupStarted && !selectionStarted" class="intro-screen">
-      <div class="intro-content" v-if="!loading">
+      <div class="intro-content">
         <img src="/SZork_intro.webp" alt="Welcome to Szork" class="intro-image" />
         <v-btn size="x-large" class="begin-button begin-adventure-btn" @click="beginSelection">
           Begin Your Adventure
           <v-icon end>mdi-chevron-right</v-icon>
         </v-btn>
-      </div>
-      <div class="intro-content" v-else>
-        <v-progress-circular indeterminate color="primary" size="64" width="4" />
-        <div class="text-h6 mt-4">Loading saved game...</div>
       </div>
     </div>
 
@@ -175,7 +171,7 @@
           <div class="game-input-wrapper">
             <v-text-field
               v-model="userInput"
-              @keyup.enter="sendCommandMain"
+              @keyup.enter="sendCommand"
               placeholder="Enter your command..."
               variant="outlined"
               density="compact"
@@ -206,7 +202,7 @@
                   <template v-slot:activator="{ props }">
                     <v-btn
                       v-bind="props"
-                      @click="sendCommandMain"
+                      @click="sendCommand"
                       color="primary"
                       variant="text"
                       icon="mdi-send"
@@ -239,23 +235,19 @@ import { useWebSocketGame } from "@/composables/useWebSocketGame";
 import type { AdventureConfig, AdventureOutline, StyleChoice, ThemeChoice } from "@/types/api";
 import type { SceneData } from "@/types/WebSocketProtocol";
 
-// Types are imported from the composable
-type GameMessage = {
+// A message as the view shows it
+type DisplayMessage = {
   text: string;
-  type: "user" | "game" | "system";
-  image?: string | null;
-  messageIndex?: number;
-  hasImage?: boolean;
+  type: "user" | "game";
+  image?: string;
   imageLoading?: boolean;
   scene?: SceneData;
   streaming?: boolean;
-  isUser?: boolean;
-  timestamp?: Date;
-  imageUrl?: string;
-  backgroundMusic?: string;
-  musicMood?: string;
-  isStreaming?: boolean;
 };
+
+// Narration over quieter background music
+const NARRATION_VOLUME = 0.8;
+const MUSIC_VOLUME = 0.3;
 
 export default defineComponent({
   name: "GameView",
@@ -278,21 +270,17 @@ export default defineComponent({
       sessionId,
       gameId: currentGameId,
       messages: wsMessages,
-      isConnected,
       isStreaming,
       awaitingResponse,
-      savedGames,
       ttsEnabled,
       sttEnabled,
       musicEnabled,
       imageEnabled,
       connect,
-      disconnect,
       startNewGame: wsStartNewGame,
       loadGame: wsLoadGame,
       sendCommand: wsSendCommand,
       sendAudioCommand: wsSendAudioCommand,
-      getSavedGames,
       setScrollCallback,
       setPlayBackgroundMusicCallback,
       setPlayAudioNarrationCallback,
@@ -302,6 +290,7 @@ export default defineComponent({
       log: wsLog,
       errorSnackbar,
       errorMessage,
+      showError,
     } = useWebSocketGame();
 
     // Local UI state
@@ -313,7 +302,6 @@ export default defineComponent({
     const mediaRecorder = ref<MediaRecorder | null>(null);
     const audioChunks = ref<Blob[]>([]);
     const narrationEnabled = ref(true);
-    const narrationVolume = ref(0.8);
     const gameStarted = ref(false);
     const setupStarted = ref(false);
     const selectionStarted = ref(false);
@@ -322,9 +310,7 @@ export default defineComponent({
     const adventureOutline = ref<AdventureOutline | null>(null);
     const adventureTitle = ref<string>("Generative Adventuring");
     const backgroundMusicEnabled = ref(true);
-    const backgroundMusicVolume = ref(0.3);
     const currentBackgroundMusic = ref<HTMLAudioElement | null>(null);
-    const currentMusicMood = ref<string | null>(null);
     const currentNarration = ref<HTMLAudioElement | null>(null);
     const imageGenerationEnabled = ref(true);
     const speechInputRequested = ref(true);
@@ -339,7 +325,7 @@ export default defineComponent({
 
     // Map WebSocket messages to the expected format for the UI
     const messages = computed(() => {
-      return wsMessages.value.map((msg): GameMessage => {
+      return wsMessages.value.map((msg): DisplayMessage => {
         if (msg.isUser) {
           return {
             text: `> ${msg.text}`,
@@ -347,12 +333,10 @@ export default defineComponent({
             streaming: false,
           };
         } else {
-          const gameMsg: GameMessage = {
+          const gameMsg: DisplayMessage = {
             text: msg.text,
             type: "game",
-            messageIndex: msg.messageIndex,
             scene: msg.scene,
-            hasImage: msg.hasImage,
             imageLoading: msg.imageLoading,
             streaming: msg.isStreaming || false,
           };
@@ -402,12 +386,7 @@ export default defineComponent({
     /** Leave the current game for the selection screen. */
     const resetGame = () => {
       // Clean up any existing audio
-      if (currentBackgroundMusic.value) {
-        currentBackgroundMusic.value.pause();
-        currentBackgroundMusic.value.src = "";
-        currentBackgroundMusic.value = null;
-        currentMusicMood.value = null;
-      }
+      stopBackgroundMusic();
       if (currentNarration.value) {
         currentNarration.value.pause();
         currentNarration.value.src = "";
@@ -427,10 +406,6 @@ export default defineComponent({
       // Reset from AdventureSetup to GameSelection
       setupStarted.value = false;
       selectionStarted.value = true;
-    };
-
-    const beginSetup = () => {
-      setupStarted.value = true;
     };
 
     const onAdventureReady = (config: AdventureConfig) => {
@@ -498,7 +473,6 @@ export default defineComponent({
         currentBackgroundMusic.value.pause();
         currentBackgroundMusic.value.src = "";
         currentBackgroundMusic.value = null;
-        currentMusicMood.value = null;
       }
     };
 
@@ -514,12 +488,7 @@ export default defineComponent({
         );
 
         // Clean up any existing audio when starting a new game
-        if (currentBackgroundMusic.value) {
-          currentBackgroundMusic.value.pause();
-          currentBackgroundMusic.value.src = "";
-          currentBackgroundMusic.value = null;
-          currentMusicMood.value = null;
-        }
+        stopBackgroundMusic();
 
         // Start game via WebSocket
         await wsStartNewGame(
@@ -540,7 +509,7 @@ export default defineComponent({
         }
       } catch (error) {
         log("Error starting game:", error);
-        alert("Failed to start game. Please try again.");
+        showError("Failed to start game. Please try again.");
         // Go back to setup screen
         gameStarted.value = false;
         setupStarted.value = true;
@@ -563,13 +532,6 @@ export default defineComponent({
       } catch (error) {
         log("Error sending command:", error);
       }
-    };
-
-    // Streaming is handled by the WebSocket composable automatically
-
-    // Just use sendCommand (WebSocket handles streaming)
-    const sendCommandMain = async () => {
-      await sendCommand();
     };
 
     const startRecording = async () => {
@@ -710,7 +672,7 @@ export default defineComponent({
         log(`[${sessionId.value || "no-session"}] Creating audio element with URL length:`, audioUrl.length);
 
         const audio = new Audio(audioUrl);
-        audio.volume = narrationVolume.value;
+        audio.volume = NARRATION_VOLUME;
         currentNarration.value = audio;
 
         // Add event listeners for debugging
@@ -746,7 +708,7 @@ export default defineComponent({
             log(`[${sessionId.value || "no-session"}] Error type:`, error.name, "Message:", error.message);
           });
 
-        log(`[${sessionId.value || "no-session"}] Playing audio narration at volume:`, narrationVolume.value);
+        log(`[${sessionId.value || "no-session"}] Playing audio narration at volume:`, NARRATION_VOLUME);
       } catch (error) {
         log(`[${sessionId.value || "no-session"}] Error creating audio element:`, error);
         log(`[${sessionId.value || "no-session"}] Error details:`, error);
@@ -775,12 +737,10 @@ export default defineComponent({
         // Create new audio element
         const audioUrl = `data:audio/mpeg;base64,${musicBase64}`;
         const newMusic = new Audio(audioUrl);
-        newMusic.volume = backgroundMusicVolume.value;
+        newMusic.volume = MUSIC_VOLUME;
         newMusic.loop = true; // Loop background music
 
-        // Store reference and mood
         currentBackgroundMusic.value = newMusic;
-        currentMusicMood.value = mood;
 
         // Play the music
         newMusic
@@ -792,28 +752,12 @@ export default defineComponent({
             log("Error playing background music:", error);
             // Clean up on error
             currentBackgroundMusic.value = null;
-            currentMusicMood.value = null;
           });
       } catch (error) {
         log("Error creating background music element:", error);
         currentBackgroundMusic.value = null;
-        currentMusicMood.value = null;
       }
     };
-
-    // Watch for background music volume changes
-    watch(backgroundMusicVolume, (newVolume) => {
-      if (currentBackgroundMusic.value && !currentBackgroundMusic.value.paused) {
-        currentBackgroundMusic.value.volume = newVolume;
-      }
-    });
-
-    // Watch for narration volume changes
-    watch(narrationVolume, (newVolume) => {
-      if (currentNarration.value && !currentNarration.value.paused) {
-        currentNarration.value.volume = newVolume;
-      }
-    });
 
     // Watch for background music enabled changes
     watch(backgroundMusicEnabled, (enabled) => {
@@ -891,12 +835,7 @@ export default defineComponent({
       unmounted = true;
       if (mediaRecorder.value && recording.value) mediaRecorder.value.stop();
       releaseMicrophone();
-      // Clean up background music
-      if (currentBackgroundMusic.value) {
-        currentBackgroundMusic.value.pause();
-        currentBackgroundMusic.value.src = "";
-        currentBackgroundMusic.value = null;
-      }
+      stopBackgroundMusic();
       // Clean up narration
       if (currentNarration.value) {
         currentNarration.value.pause();
@@ -910,13 +849,11 @@ export default defineComponent({
       userInput,
       gameOutput,
       sendCommand,
-      sendCommandMain,
       loading,
       recording,
       startRecording,
       stopRecording,
       narrationEnabled,
-      narrationVolume,
       gameStarted,
       setupStarted,
       selectionStarted,
@@ -925,13 +862,9 @@ export default defineComponent({
       loadSelectedGame,
       backToSelection,
       goBackToSelection,
-      beginSetup,
       onAdventureReady,
       backgroundMusicEnabled,
-      backgroundMusicVolume,
-      currentMusicMood,
       loadGame,
-      currentGameId,
       adventureTitle,
       imageGenerationEnabled,
       // Feature flags from server
@@ -939,7 +872,6 @@ export default defineComponent({
       sttEnabled,
       musicEnabled,
       imageEnabled,
-      isConnected,
       errorSnackbar,
       errorMessage,
     };

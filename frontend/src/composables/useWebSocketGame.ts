@@ -5,6 +5,7 @@
 import { ref, onUnmounted, nextTick, getCurrentInstance } from "vue";
 import { WebSocketClient } from "@/services/WebSocketClient";
 import { SESSION_EXPIRED } from "@/types/WebSocketProtocol";
+import type { AdventureOutline } from "@/types/api";
 import type {
   SceneData,
   ConversationEntry,
@@ -72,7 +73,7 @@ export function useWebSocketGame() {
   // Set once the owning component unmounts: late callbacks must not open a new connection
   let disposed = false;
 
-  const log = (message: string, ...args: any[]) => {
+  const log = (message: string, ...args: unknown[]) => {
     console.log(`[Game] ${message}`, ...args);
   };
 
@@ -279,7 +280,7 @@ export function useWebSocketGame() {
     theme?: string,
     artStyle?: string,
     imageGeneration = true,
-    adventureOutline?: any,
+    adventureOutline?: AdventureOutline | null,
     features?: FeatureRequest
   ) => {
     await connect();

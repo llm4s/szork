@@ -236,6 +236,8 @@ import { useRouter, useRoute } from "vue-router";
 import AdventureSetup from "@/components/AdventureSetup.vue";
 import GameSelection from "@/components/GameSelection.vue";
 import { useWebSocketGame } from "@/composables/useWebSocketGame";
+import type { AdventureConfig, AdventureOutline, StyleChoice, ThemeChoice } from "@/types/api";
+import type { SceneData } from "@/types/WebSocketProtocol";
 
 // Types are imported from the composable
 type GameMessage = {
@@ -245,7 +247,7 @@ type GameMessage = {
   messageIndex?: number;
   hasImage?: boolean;
   imageLoading?: boolean;
-  scene?: any;
+  scene?: SceneData;
   streaming?: boolean;
   isUser?: boolean;
   timestamp?: Date;
@@ -315,9 +317,9 @@ export default defineComponent({
     const gameStarted = ref(false);
     const setupStarted = ref(false);
     const selectionStarted = ref(false);
-    const adventureTheme = ref<any>(null);
-    const artStyle = ref<any>(null);
-    const adventureOutline = ref<any>(null);
+    const adventureTheme = ref<ThemeChoice | null>(null);
+    const artStyle = ref<StyleChoice | null>(null);
+    const adventureOutline = ref<AdventureOutline | null>(null);
     const adventureTitle = ref<string>("Generative Adventuring");
     const backgroundMusicEnabled = ref(true);
     const backgroundMusicVolume = ref(0.3);
@@ -431,23 +433,14 @@ export default defineComponent({
       setupStarted.value = true;
     };
 
-    const onAdventureReady = (config: {
-      theme: any;
-      style: any;
-      outline?: any;
-      sessionFeatures?: { image?: boolean; music?: boolean; tts?: boolean; stt?: boolean };
-    }) => {
+    const onAdventureReady = (config: AdventureConfig) => {
       adventureTheme.value = config.theme;
       artStyle.value = config.style;
-      adventureOutline.value = config.outline || null;
-      if (config.sessionFeatures) {
-        if (typeof config.sessionFeatures.image === "boolean")
-          imageGenerationEnabled.value = config.sessionFeatures.image;
-        if (typeof config.sessionFeatures.music === "boolean")
-          backgroundMusicEnabled.value = config.sessionFeatures.music;
-        if (typeof config.sessionFeatures.tts === "boolean") narrationEnabled.value = config.sessionFeatures.tts;
-        if (typeof config.sessionFeatures.stt === "boolean") speechInputRequested.value = config.sessionFeatures.stt;
-      }
+      adventureOutline.value = config.outline;
+      imageGenerationEnabled.value = config.sessionFeatures.image;
+      backgroundMusicEnabled.value = config.sessionFeatures.music;
+      narrationEnabled.value = config.sessionFeatures.tts;
+      speechInputRequested.value = config.sessionFeatures.stt;
       // Set the adventure title if available
       if (config.outline && config.outline.title) {
         adventureTitle.value = config.outline.title;
@@ -529,13 +522,17 @@ export default defineComponent({
         }
 
         // Start game via WebSocket
-        const theme = adventureTheme.value?.name || adventureTheme.value;
-        const artStyleValue = artStyle.value?.id || artStyle.value;
-        await wsStartNewGame(theme, artStyleValue, imageGenerationEnabled.value, adventureOutline.value, {
-          tts: narrationEnabled.value,
-          music: backgroundMusicEnabled.value,
-          stt: speechInputRequested.value,
-        });
+        await wsStartNewGame(
+          adventureTheme.value?.name,
+          artStyle.value?.id,
+          imageGenerationEnabled.value,
+          adventureOutline.value,
+          {
+            tts: narrationEnabled.value,
+            music: backgroundMusicEnabled.value,
+            stt: speechInputRequested.value,
+          }
+        );
 
         // Set the adventure title from the outline if available
         if (adventureOutline.value && adventureOutline.value.title) {

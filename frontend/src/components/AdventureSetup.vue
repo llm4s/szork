@@ -184,6 +184,14 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, watch } from "vue";
 import axios from "axios";
+import type {
+  AdventureConfig,
+  AdventureOutline,
+  FeatureFlag,
+  FeatureFlags,
+  StyleChoice,
+  ThemeChoice,
+} from "@/types/api";
 
 // The shortest custom theme description worth validating
 const MIN_CUSTOM_THEME_LENGTH = 10;
@@ -193,7 +201,7 @@ interface Theme {
   name: string;
   description: string;
   icon: string;
-  prompt?: string;
+  prompt: string;
 }
 
 interface ArtStyle {
@@ -206,7 +214,10 @@ interface ArtStyle {
 
 export default defineComponent({
   name: "AdventureSetup",
-  emits: ["adventure-ready", "back-to-selection"],
+  emits: {
+    "adventure-ready": (config: AdventureConfig) => !!config,
+    "back-to-selection": () => true,
+  },
   setup(_, { emit }) {
     const currentStep = ref<"theme" | "style" | "generating">("theme");
     const selectedTheme = ref<string | null>(null);
@@ -216,14 +227,15 @@ export default defineComponent({
     const validatingCustomTheme = ref(false);
     const startingGame = ref(false);
     const validatedCustomTheme = ref("");
-    const adventureOutline = ref<any>(null);
+    const adventureOutline = ref<AdventureOutline | null>(null);
     const generationStatus = ref("Creating your unique adventure...");
     const generationProgress = ref(0);
     const serverAvailable = ref(true);
     const checkingServer = ref(false);
     const featureFlagsLoaded = ref(false);
-    const featureFlags = ref<any>({
-      image: { enabled: true, available: true },
+    const featureFlags = ref<FeatureFlags>({
+      llm: { provider: "", available: true },
+      image: { enabled: true, provider: "", available: true },
       music: { enabled: true, available: true },
       tts: { enabled: true, available: true },
       stt: { enabled: true, available: true },
@@ -415,7 +427,10 @@ export default defineComponent({
       emit("back-to-selection");
     };
 
-    const generateAdventureOutline = async (themeData: any, styleData: any) => {
+    const generateAdventureOutline = async (
+      themeData: ThemeChoice,
+      styleData: StyleChoice
+    ): Promise<AdventureOutline | null> => {
       let statusInterval: ReturnType<typeof setInterval> | undefined;
       try {
         // Update status messages during generation
@@ -450,7 +465,7 @@ export default defineComponent({
           // Wait a moment to show completion
           await new Promise((resolve) => setTimeout(resolve, 1500));
 
-          return response.data.outline;
+          return response.data.outline as AdventureOutline;
         } else {
           throw new Error(response.data.message || "Failed to generate adventure");
         }
@@ -475,7 +490,7 @@ export default defineComponent({
         featureFlagsLoaded.value = true;
         serverAvailable.value = true;
         // A feature the server cannot provide starts switched off
-        const offered = (flag: { enabled: boolean; available: boolean }) => flag.enabled && flag.available;
+        const offered = (flag: FeatureFlag) => flag.enabled && flag.available;
         enableImages.value = offered(featureFlags.value.image);
         enableMusic.value = offered(featureFlags.value.music);
         enableTTS.value = offered(featureFlags.value.tts);
@@ -497,12 +512,8 @@ export default defineComponent({
         return;
       }
 
-      startingGame.value = true;
-      currentStep.value = "generating";
-      generationProgress.value = 10;
-
-      // Get the theme details
-      let themeData;
+      // Get the theme and style details
+      let themeData: ThemeChoice;
       if (selectedTheme.value === "custom") {
         themeData = {
           id: "custom",
@@ -511,19 +522,16 @@ export default defineComponent({
         };
       } else {
         const theme = predefinedThemes.find((t) => t.id === selectedTheme.value);
-        themeData = {
-          id: theme?.id,
-          name: theme?.name,
-          prompt: theme?.prompt,
-        };
+        if (!theme) return;
+        themeData = { id: theme.id, name: theme.name, prompt: theme.prompt };
       }
-
-      // Get the style details
       const style = artStyles.find((s) => s.id === selectedStyle.value);
-      const styleData = {
-        id: style?.id,
-        name: style?.name,
-      };
+      if (!style) return;
+      const styleData: StyleChoice = { id: style.id, name: style.name };
+
+      startingGame.value = true;
+      currentStep.value = "generating";
+      generationProgress.value = 10;
 
       // Generate the adventure outline
       const outline = await generateAdventureOutline(themeData, styleData);

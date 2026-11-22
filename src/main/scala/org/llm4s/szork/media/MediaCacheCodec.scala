@@ -78,15 +78,14 @@ object MediaCacheCodec {
     MediaIndex(parsed)
   }
 
-  def load(path: Path): MediaIndex = {
-    if (!Files.exists(path)) return MediaIndex(Map.empty)
-    val jsonString = new String(Files.readAllBytes(path), StandardCharsets.UTF_8)
-    try fromJson(ujson.read(jsonString))
-    catch { case _: Throwable => MediaIndex(Map.empty) }
-  }
+  /** The index at `path`: empty if there is none, or None if it exists but cannot be read. */
+  def load(path: Path): Option[MediaIndex] =
+    if (!Files.exists(path)) Some(MediaIndex(Map.empty))
+    else
+      try Some(fromJson(ujson.read(new String(Files.readAllBytes(path), StandardCharsets.UTF_8))))
+      catch { case _: Exception => None }
 
-  def save(path: Path, index: MediaIndex): Unit = {
-    val json = toJson(index)
-    Files.write(path, ujson.write(json, indent = 2).getBytes(StandardCharsets.UTF_8))
-  }
+  /** Writes the index atomically: readers see the old index or the new one, never a partial file. */
+  def save(path: Path, index: MediaIndex): Unit =
+    AtomicFiles.write(path, ujson.write(toJson(index), indent = 2).getBytes(StandardCharsets.UTF_8))
 }

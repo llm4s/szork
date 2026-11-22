@@ -2,12 +2,15 @@ package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
-import org.llm4s.llmconnect.LLM
 import org.llm4s.llmconnect.model.{SystemMessage, UserMessage, Conversation}
-import org.llm4s.config.EnvLoader
+import org.llm4s.szork.api.SzorkConfig
+import org.llm4s.szork.game.{GameEngine, IdGenerator}
 
-/** Integration test: runs an underground realm adventure with an LLM player. Focuses on text-only playthrough (no
-  * images, no audio, no music).
+/** Integration test against a real LLM: an LLM player plays an underground realm adventure for 20 turns, text only
+  * (no images, audio or music), and another call reviews the transcript.
+  *
+  * Skipped unless RUN_INTEGRATION=true and an LLM is configured. Run it with:
+  * `RUN_INTEGRATION=true sbt "testOnly *AdventureIntegrationSpec"`
   */
 class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
 
@@ -22,7 +25,7 @@ class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
     if (!hasLLM) cancel("No LLM provider configured (set OPENAI_API_KEY, ANTHROPIC_API_KEY, or LLAMA_BASE_URL)")
 
     // Initialize game engine with underground realm theme; disable audio in all steps
-    val llmClient = LLM.client(EnvLoader)
+    val llmClient = SzorkConfig.getLLMClient().fold(e => fail(s"LLM client: $e"), identity)
     val engine = GameEngine.create(
       llmClient = llmClient,
       sessionId = IdGenerator.sessionId(),
@@ -37,7 +40,7 @@ class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
     println("[Adventure] Opening scene:\n" + opening + "\n")
 
     // LLM player loop (max 20 steps)
-    val player = LLM.client(EnvLoader)
+    val player = llmClient
     var transcript = Vector[(String, String)]() // (command, response)
     var lastNarration = opening
 
@@ -78,8 +81,11 @@ class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
       println(s"[Player] $command")
 
       val result = engine.processCommand(command, generateAudio = false)
-      result.isRight shouldBe true
+      withClue(s"command '$command': ")(result.isRight shouldBe true)
       val responseText = result.fold(_ => "", _.text)
+      // Structured output means the player only ever sees narration
+      responseText.trim should not be empty
+      responseText.trim should not startWith "{"
       println("[DM] " + responseText + "\n")
 
       transcript = transcript :+ (command -> responseText)
@@ -119,7 +125,9 @@ class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
     val ratingText = ratingResp.fold(_ => "{}", _.message.content)
     println("[Review] " + ratingText)
 
-    // Non-strict check: ensure we got a non-empty response from the reviewer
-    ratingText.trim.length should be > 2
+    // The game kept a structured scene throughout, and the reviewer gave a score
+    engine.getCurrentScene shouldBe defined
+    val score = scala.util.Try(ujson.read(ratingText.substring(ratingText.indexOf('{'), ratingText.lastIndexOf('}') + 1))("score").num)
+    withClue(s"review: $ratingText")(score.isSuccess shouldBe true)
   }
 }

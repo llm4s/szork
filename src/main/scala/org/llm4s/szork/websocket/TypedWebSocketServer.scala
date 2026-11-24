@@ -241,7 +241,7 @@ class TypedWebSocketServer(
     val gameId = IdGenerator.gameId()
     val outline = request.adventureOutline.flatMap { json =>
       Try(AdventureGenerator.outlineFromJson(json)) match {
-        case Success(parsed) => Some(parsed)
+        case Success(parsed) => Some(AdventureGenerator.withSoundMap(parsed))
         case Failure(e) =>
           logger.warn(s"Ignoring unparseable adventure outline: ${e.getMessage}")
           None
@@ -355,7 +355,21 @@ class TypedWebSocketServer(
                   musicEnabled = features.music
                 )
               )
+            if (session eq loaded) sendEnding(session)
         }
+    }
+
+  /** Tells `session`'s connection that its adventure is over, if it is. */
+  private def sendEnding(session: GameSession): Unit =
+    session.engine.ending.foreach(outcome => sendTo(session, GameEndedMessage(session.engine.getMessageCount, outcome)))
+
+  /** After a turn's response: tells the player the adventure is over if this turn ended it (`before` is `engine.ending`
+    * as it was when the turn began).
+    */
+  private def sendEndingReached(session: GameSession, before: Option[String], messageIndex: Int): Unit =
+    session.engine.ending.filter(_ => before.isEmpty).foreach { outcome =>
+      logger.info(s"[${session.id}] The adventure is over: $outcome")
+      sendTo(session, GameEndedMessage(messageIndex, outcome))
     }
 
   /** Switches a joined session to the `features` its new connection asked for, then sends the game as the session has
@@ -382,6 +396,7 @@ class TypedWebSocketServer(
           musicEnabled = session.features.music
         )
       )
+      sendEnding(session)
     }
 
   private def resume(conn: WebSocket, sessionId: String): Unit =
@@ -391,6 +406,7 @@ class TypedWebSocketServer(
     } match {
       case Some(session) =>
         send(conn, SessionResumedMessage(session.id, session.gameId, session.engine.getMessageCount))
+        session.engine.ending.foreach(outcome => send(conn, GameEndedMessage(session.engine.getMessageCount, outcome)))
       case None =>
         send(conn, ErrorMessage("Session expired", Some(ErrorMessage.SessionExpired)))
     }
@@ -399,6 +415,7 @@ class TypedWebSocketServer(
 
   private def playCommand(session: GameSession, command: String, imageWanted: Boolean = true): Unit = {
     val start = System.currentTimeMillis()
+    val endedBefore = session.engine.ending
     session.engine.processCommand(command, generateAudio = session.features.tts) match {
       case Right(response) =>
         val turn = turnMedia(session, imageWanted)
@@ -414,6 +431,7 @@ class TypedWebSocketServer(
             hasMusic = turn.hasMusic
           )
         )
+        sendEndingReached(session, endedBefore, turn.messageIndex)
         afterTurn(session, turn, command, response, System.currentTimeMillis() - start)
       case Left(error) =>
         sendTo(session, ErrorMessage("Command failed", Some(error.message)))
@@ -423,6 +441,7 @@ class TypedWebSocketServer(
   private def playStreamCommand(session: GameSession, request: StreamCommandRequest): Unit = {
     val start = System.currentTimeMillis()
     var chunkCount = 0
+    val endedBefore = session.engine.ending
     session.engine.processCommand(
       request.command,
       generateAudio = session.features.tts,
@@ -447,6 +466,7 @@ class TypedWebSocketServer(
             hasMusic = turn.hasMusic
           )
         )
+        sendEndingReached(session, endedBefore, turn.messageIndex)
         afterTurn(session, turn, request.command, response, duration)
       case Left(error) =>
         sendTo(session, ErrorMessage("Streaming failed", Some(error.message)))
@@ -597,6 +617,7 @@ object TypedWebSocketServer {
     case m: StreamCompleteMessage => s"streamComplete chunks=${m.totalChunks} ${m.duration}ms hasImage=${m.hasImage}"
     case m: ImageReadyMessage => s"imageReady #${m.messageIndex} ${m.image.length} chars"
     case m: MusicReadyMessage => s"musicReady #${m.messageIndex} ${m.mood}"
+    case m: GameEndedMessage => s"gameEnded #${m.messageIndex} ${m.outcome}"
     case m: ErrorMessage => s"error ${m.error}${m.details.fold("")(d => s": ${d.take(200)}")}"
     case m: ServerMessage => ProtocolCodec.typeOf(m)
     case m => m.getClass.getSimpleName

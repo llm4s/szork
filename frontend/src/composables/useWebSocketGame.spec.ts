@@ -353,6 +353,17 @@ describe("useWebSocketGame", () => {
     expect(latest().sentTypes()).toContain("loadGame");
   });
 
+  it("records how the adventure ended, and forgets it with the game", async () => {
+    const game = await startedGame();
+    expect(game.gameOutcome.value).toBeNull();
+
+    latest().receive("gameEnded", { messageIndex: 4, outcome: "completed" });
+    expect(game.gameOutcome.value).toBe("completed");
+
+    game.clearMessages();
+    expect(game.gameOutcome.value).toBeNull();
+  });
+
   it("stops playing and resuming a session another tab took over, until the player takes it back", async () => {
     const game = await startedGame();
     await game.sendCommand("go north");

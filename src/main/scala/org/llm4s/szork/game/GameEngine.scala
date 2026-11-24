@@ -246,8 +246,8 @@ class GameEngine(
 
   /** Interprets a completed turn's answer and applies it to the game state.
     *
-    * The answer is parsed and validated, and a scene moves the player. If the answer cannot be used as structured data,
-    * its narration is still shown.
+    * The answer is parsed and validated, and a scene moves the player - unless it would take them through an exit that
+    * is not open ([[ExitGuard]]). If the answer cannot be used as structured data, its narration is still shown.
     */
   private def completeTurn(result: AgentResult): TurnOutcome = {
     val answer = result.answer.getOrElse("")
@@ -258,14 +258,30 @@ class GameEngine(
     interpreted.issues.foreach(issues => logger.warn(s"[$sessionId] Response issues: ${issues.mkString("; ")}"))
 
     val previousLocation = coreState.currentScene.map(_.locationId)
-    val scene = interpreted.data.collect { case scene: GameScene => scene }
+    val described = interpreted.data.collect { case scene: GameScene => scene }
+    // The exit guard middleware has already held the answer to this rule; this is the one place a move is recorded,
+    // so the rule is checked here too. An answer that still breaks it moves no one, and the player is told why.
+    val shut = described.flatMap(s => ExitGuard.blockedMove(world.snapshot, s.locationId))
+    shut.foreach { move =>
+      logger.error(s"[$sessionId] Refused a move from ${move.from} to ${move.to}: no exit between them is open")
+    }
+    val scene = described.filter(_ => shut.isEmpty)
     scene.foreach { s =>
       coreState = CoreEngine.applyScene(coreState, s)
-      world.enter(s.locationId, s.locationName)
+      world.enter(s.locationId, s.locationName, s.exits.map(e => (e.direction, e.locationId)))
+    }
+    // An action that is not a scene may still change what is here (an item taken, a character appearing): the
+    // current scene, which every response carries to the player, is kept up to date with it
+    interpreted.data.collect { case simple: SimpleResponse => simple }.foreach { simple =>
+      coreState.currentScene.filter(_.locationId == simple.locationId).foreach { current =>
+        val updated =
+          current.copy(items = simple.items.getOrElse(current.items), npcs = simple.npcs.getOrElse(current.npcs))
+        if (updated != current) coreState = coreState.copy(currentScene = Some(updated))
+      }
     }
     lastTurnChangedLocation = scene.exists(s => !previousLocation.contains(s.locationId))
 
-    TurnOutcome(interpreted.narration, scene)
+    TurnOutcome(shut.fold(interpreted.narration)(ExitGuard.shutNarration), scene)
   }
 
   /** Narrates `text` with the configured text-to-speech client, if there is one. */
@@ -290,6 +306,15 @@ class GameEngine(
   /** The items the player is carrying. */
   def getInventory: List[String] = inventory.list
 
+  /** How the adventure ended, if it has: "completed" or "failed", the main quest's status once the Dungeon Master
+    * records either with `update_quest_progress`. The player may play on after it.
+    */
+  def ending: Option[String] =
+    world.snapshot.quest(WorldState.MainQuest).map(_.status).collect {
+      case QuestStatus.Completed => QuestStatus.Completed.wire
+      case QuestStatus.Failed => QuestStatus.Failed.wire
+    }
+
   /** The state of the game world: exits, location facts, characters met and quest progress. */
   def getWorldState: WorldSnapshot = world.snapshot
 
@@ -309,6 +334,9 @@ class GameEngine(
     *
     * Each model call's system prompt ends with the current game state ([[WorldStateMiddleware]]): rendered for that
     * call, after any tool calls earlier in the turn, and never stored in the thread.
+    *
+    * Each answer is held to the exit states ([[ExitGuardMiddleware]]): a scene that would move the player through an
+    * exit that is not open is sent back to the model once, with what is in the way, and never reaches the thread.
     *
     * With a context window, each model call is sent the system prompt (which holds the adventure outline and the game
     * state, and is never pruned) and as much of the recent conversation as fits; the current turn is always sent whole,
@@ -335,7 +363,10 @@ class GameEngine(
       if (inputGuardrails.isEmpty) base else base.withMiddleware(new GuardrailMiddleware(inputGuardrails, Nil))
     // The current game state joins the system prompt of every model call (a prompt section, never stored), so the
     // model reads the location, inventory and quests there instead of calling the read tools
-    val stated = guarded.withMiddleware(new WorldStateMiddleware(world, inventory))
+    // An answer that would move the player through an exit that is not open goes back to the model once, with what
+    // is in the way (wrapModelCall); it wraps the context window, so its corrective request is trimmed like any other
+    val stated =
+      guarded.withMiddleware(new WorldStateMiddleware(world, inventory), new ExitGuardMiddleware(world))
     val windowed = modelWindow.fold(stated)(window => stated.withMiddleware(new ContextWindowMiddleware(window)))
     val builder = tracing.fold(windowed)(windowed.withTracing)
     for {

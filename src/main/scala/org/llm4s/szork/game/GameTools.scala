@@ -235,7 +235,8 @@ object GameTools {
       ToolBuilder[Map[String, Any], WorldChangeResult](
         "set_exit_state",
         "Change an exit's state when the player changes it: unlocks, opens, closes or locks a door, clears or " +
-          "unseals a passage, or discovers a hidden way. The way back from the other side changes with it.",
+          "unseals a passage, or discovers a hidden way. The way back from the other side changes with it. The " +
+          "player moves only through an exit that is open: open it here before a scene that takes them through it.",
         Schema
           .`object`[Map[String, Any]]("Set exit state parameters")
           .withRequiredField(

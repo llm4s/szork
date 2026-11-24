@@ -59,13 +59,16 @@ final case class LocationRecord(
   visited: Boolean
 ) derives ReadWriter
 
-/** A character: whether the player has met them, where they were last seen, and notes on what passed between them. */
+/** A character: whether the player has met them, where they were last seen, notes on what passed between them, and the
+  * location the adventure's design first puts them in (none for a character met only through what they left).
+  */
 final case class NpcRecord(
   name: String,
   role: Option[String],
   met: Boolean,
   lastSeenAt: Option[String],
-  notes: List[String]
+  notes: List[String],
+  foundAt: Option[String] = None
 ) derives ReadWriter
 
 /** A quest (the main one is `main`) and the player's progress with it. */
@@ -136,8 +139,12 @@ object WorldSnapshot {
           visited = false
         )
       },
-      npcs = o.keyCharacters.map(c => NpcRecord(c.name, Some(c.role), met = false, lastSeenAt = None, notes = Nil)),
-      quests = QuestRecord("main", o.mainQuest, QuestStatus.Active, Nil) ::
+      npcs = o.keyCharacters.map { c =>
+        // a character placed somewhere that is not one of the outline's locations is placed nowhere
+        val foundAt = c.location.filter(id => o.keyLocations.exists(_.id == id))
+        NpcRecord(c.name, Some(c.role), met = false, lastSeenAt = None, notes = Nil, foundAt = foundAt)
+      },
+      quests = QuestRecord(WorldState.MainQuest, o.mainQuest, QuestStatus.Active, Nil) ::
         o.subQuests.zipWithIndex.map { case (q, i) => QuestRecord(s"side-${i + 1}", q, QuestStatus.NotStarted, Nil) }
     )
   }
@@ -161,11 +168,21 @@ final class WorldState(initial: WorldSnapshot = WorldSnapshot.empty) {
     result
   }
 
-  /** Records that the player is at `locationId` (a scene described it), adding the location if it is new. */
-  def enter(locationId: String, name: String): Unit = change { s =>
-    val record = s.locations
-      .find(_.id == locationId)
-      .getOrElse(LocationRecord(locationId, name, Nil, Map.empty, visited = false))
+  /** Records that the player is at `locationId` (a scene described it), adding the location if it is new.
+    *
+    * A new location - one the Dungeon Master made up, since the outline's are seeded - is recorded with the scene's
+    * `exits` (direction and target), all open: nothing else knows the ways out of it. A known location keeps the exits
+    * it has, whose states the scene does not decide.
+    */
+  def enter(locationId: String, name: String, exits: List[(String, String)] = Nil): Unit = change { s =>
+    val record = s.locations.find(_.id == locationId).getOrElse {
+      val ways = exits
+        .map((direction, target) => (WorldState.normalizeDirection(direction), target))
+        .filter((direction, target) => direction.nonEmpty && target.nonEmpty && target != locationId)
+        .distinctBy(_._1)
+        .map((direction, target) => ExitRecord(direction, target, ExitState.Open, None))
+      LocationRecord(locationId, name, ways, Map.empty, visited = false)
+    }
     (s.withLocation(record.copy(visited = true)).copy(currentLocation = Some(locationId)), ())
   }
 
@@ -236,7 +253,8 @@ final class WorldState(initial: WorldSnapshot = WorldSnapshot.empty) {
     val where = s.location(location).map(_.id).orElse(location).orElse(s.currentLocation)
     val known = s.npc(name)
     val base = known.getOrElse(NpcRecord(name.trim, None, met = false, lastSeenAt = None, notes = Nil))
-    val record = base.copy(met = true, lastSeenAt = where.orElse(base.lastSeenAt), notes = base.notes ++ note.toList)
+    val record =
+      base.copy(met = true, lastSeenAt = where.orElse(base.lastSeenAt), notes = WorldState.noted(base.notes, note))
     val npcs =
       if (known.isDefined) s.npcs.map(n => if (n.name == base.name) record else n) else s.npcs :+ record
     val first = if (known.exists(_.met)) "Updated" else "Recorded meeting"
@@ -247,12 +265,14 @@ final class WorldState(initial: WorldSnapshot = WorldSnapshot.empty) {
   def updateQuest(quest: String, status: QuestStatus, note: Option[String]): String = change { s =>
     s.quest(quest) match {
       case Some(q) =>
-        val updated = q.copy(status = status, notes = q.notes ++ note.toList)
+        val updated = q.copy(status = status, notes = WorldState.noted(q.notes, note))
         (
           s.copy(quests = s.quests.map(x => if (x.id == q.id) updated else x)),
           s"Quest ${q.id} is now ${status.wire} (was ${q.status.wire})")
       case None =>
-        val id = s"quest-${s.quests.size + 1}"
+        // a game without an outline has no quests seeded: its main quest is recorded under the id that ends the game
+        val id =
+          if (quest.trim.equalsIgnoreCase(WorldState.MainQuest)) WorldState.MainQuest else s"quest-${s.quests.size + 1}"
         (
           s.copy(quests = s.quests :+ QuestRecord(id, quest.trim, status, note.toList)),
           s"Recorded new quest $id: ${status.wire}")
@@ -276,6 +296,15 @@ object WorldState {
     "nw" -> "northwest",
     "se" -> "southeast",
     "sw" -> "southwest")
+
+  /** The id of the main quest, whose completion or failure ends the adventure. */
+  val MainQuest: String = "main"
+
+  /** `notes` with `note` added, unless it is blank or already there (the Dungeon Master often repeats one). */
+  private[game] def noted(notes: List[String], note: Option[String]): List[String] = {
+    def key(text: String) = text.trim.toLowerCase.replaceAll("\\s+", " ").stripSuffix(".")
+    note.map(_.trim).filter(_.nonEmpty).filterNot(n => notes.exists(key(_) == key(n))).fold(notes)(notes :+ _)
+  }
 
   def normalizeDirection(direction: String): String = {
     val d = direction.trim.toLowerCase

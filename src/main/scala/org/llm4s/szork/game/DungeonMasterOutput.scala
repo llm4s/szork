@@ -83,10 +83,24 @@ object DungeonMasterOutput {
     .withProperty(Schema.property("exits", Schema.nullable(Schema.array("fullScene: every exit; simple: null", exit))))
     .withProperty(Schema.property(
       "items",
-      Schema.nullable(Schema.array("fullScene: items here; simple: null", Schema.string("An item")))))
+      Schema.nullable(
+        Schema.array(
+          "fullScene: items here; simple: the items here now if the action changed them or their state (taken, " +
+            "used up, opened, filled, revealed), otherwise null",
+          Schema.string("An item, with its state if it has one")
+        )
+      )
+    ))
     .withProperty(Schema.property(
       "npcs",
-      Schema.nullable(Schema.array("fullScene: characters here; simple: null", Schema.string("A character")))))
+      Schema.nullable(
+        Schema.array(
+          "fullScene: characters here; simple: the characters here now if the action changed who is here (someone " +
+            "appeared or left), otherwise null",
+          Schema.string("A character")
+        )
+      )
+    ))
     .withProperty(Schema
       .property("actionTaken", nullableString("simple: the action, e.g. examine, take, talk; fullScene: null")))
 }

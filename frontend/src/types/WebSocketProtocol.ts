@@ -121,6 +121,20 @@ export interface SessionResumedMessage {
   };
 }
 
+/**
+ * The adventure is over: the main quest was completed or failed. Follows the response of the turn that ended it, and
+ * gameLoaded or sessionResumed for a game that had already ended. The player may keep exploring.
+ */
+export interface GameEndedMessage {
+  type: "gameEnded";
+  data: {
+    messageIndex: number;
+    outcome: GameOutcome;
+  };
+}
+
+export type GameOutcome = "completed" | "failed";
+
 /** Another connection loaded this game and took its session: stop resuming it, and offer to load the game again. */
 export interface SessionTakenOverMessage {
   type: "sessionTakenOver";
@@ -223,6 +237,7 @@ export type ServerMessage =
   | GameLoadedMessage
   | SessionResumedMessage
   | SessionTakenOverMessage
+  | GameEndedMessage
   | CommandResponseMessage
   | TextChunkMessage
   | StreamCompleteMessage

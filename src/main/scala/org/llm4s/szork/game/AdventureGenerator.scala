@@ -2,6 +2,7 @@ package org.llm4s.szork.game
 
 import org.llm4s.agent.Agent
 import org.llm4s.llmconnect.LLMClient
+import org.llm4s.llmconnect.model.CompletionOptions
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.trace.Tracing
@@ -58,10 +59,12 @@ case class ItemOutline(
   purpose: String
 ) derives ReadWriter
 
+@serializeDefaults(true)
 case class CharacterOutline(
   name: String,
   role: String,
-  description: String
+  description: String,
+  location: Option[String] = None
 ) derives ReadWriter
 
 /** Designs adventures with an llm4s agent that answers in the outline schema.
@@ -78,6 +81,11 @@ object AdventureGenerator {
 
   /** Model calls for one outline: the answer (llm4s's one correction is part of the same step). */
   val MaxModelCalls: Int = 1
+
+  /** The most tokens the designer may answer with. An outline is several thousand tokens, and a model that thinks
+    * spends its thinking from the same allowance; llm4s's Anthropic default (2048) cuts the outline short.
+    */
+  val MaxOutputTokens: Int = 16000
 
   private val DesignerPrompt: String =
     """You are a master interactive fiction designer combining the wit of Infocom classics with modern game design sensibilities. You create text adventures that balance atmospheric prose with clear interactivity, respect player intelligence through fair puzzles, and deliver memorable stories full of personality. Your games are known for clever environmental storytelling, satisfying 'aha!' moments, and descriptions that make players want to examine everything.
@@ -135,6 +143,33 @@ object AdventureGenerator {
       |- Add at least one "wow moment" that surprises players
       |- Hide 2-3 easter eggs or secrets for observant players
       |
+      |MAP RULES (the game is played on exactly the locations in keyLocations):
+      |- Every exit's targetId is the id of ANOTHER location in keyLocations. Never give an exit to a place that is
+      |  not in keyLocations: if the story needs somewhere beyond the map (the city above, the open sea, a storeroom),
+      |  either make it one of the key locations or describe it in the prose without an exit
+      |- An exit never leads back to its own location. A wall, a sealed hatch to nowhere or another corner of the same
+      |  room is scenery or an interactable, not an exit
+      |- Every location can be reached from the first one by following exits, and the player can get back: an exit
+      |  from A to B normally has an exit from B to A in the opposite direction
+      |- A location has at most one exit in each direction, and every location id is used once
+      |- Every exit's state says what the player can do there, and the game enforces it - the player cannot walk
+      |  through an exit that is not open:
+      |  • open = passable now; its obstacle is null
+      |  • closed = shut, but the player can simply open it and go through (a plain door, a gate on a latch); its
+      |    obstacle is null. Give a closed exit an obstacle only if it must stay shut until the obstacle is overcome
+      |  • locked or sealed = impassable until its obstacle is overcome; it MUST give the obstacle: what is in the way
+      |    and what overcomes it (a key among the items, a tool, a puzzle's solution)
+      |  • hidden = not shown and not usable until the player discovers it; its obstacle says how it is found
+      |
+      |CHARACTERS AND CONSISTENCY:
+      |- Give every character the player can meet the id of the location where they are first met (location); a
+      |  character known only through what they left behind (letters, records) has location null
+      |- A character is present in their location from the player's first visit, unless the location's description
+      |  says what brings them out
+      |- Settle the timeline before you write: when each person arrived, left or died, and how long ago. Every date,
+      |  age, name and count you then mention - in descriptions, puzzles, secrets, items and the arc - must agree
+      |  with it and with each other. A code or answer a puzzle needs must be the same wherever it is given
+      |
       |INTERACTIVITY REQUIREMENTS (Classic Text Adventure Style):
       |- At least 2-3 locked/blocked passages requiring keys or tools to open
       |- At least 3-4 containers (chests, drawers, cabinets, safes) that can be opened
@@ -187,21 +222,60 @@ object AdventureGenerator {
       .builder(AgentId, client)
       .withSystemPrompt(DesignerPrompt)
       .withMaxSteps(MaxModelCalls)
+      .withCompletionOptions(CompletionOptions().withMaxTokens(MaxOutputTokens))
       .withOutput(AdventureOutlineSchema.schema)
     val outline = for {
       agent <- tracing.fold(builder)(builder.withTracing).build()
       result <- agent.run(designBrief(theme))
       _ = agent.forget(result.threadId)
       outline <- result.decodeOutput[AdventureOutline]
-    } yield outline
+    } yield withSoundMap(outline)
     outline match {
       case Right(o) =>
         logger.info(s"Generated adventure outline: ${o.title} (${o.keyLocations.size} locations)")
         Right(o)
       case Left(error) =>
         logger.error(s"Failed to generate adventure outline: ${error.message}")
-        Left(LLMError(s"Failed to generate adventure outline: ${error.message}", retryable = true))
+        Left(AdventureGenerationError(s"Failed to generate adventure outline: ${error.message}", failureReason(error)))
     }
+  }
+
+  /** What to tell the player about a generation that failed with `error`. The agent reports a provider's refusal as a
+    * failed node whose message carries the provider's, so beyond the error types the message is read for the cause.
+    */
+  def failureReason(error: org.llm4s.error.LLMError): String = {
+    val text = error.message.toLowerCase
+    def says(words: String*) = words.exists(text.contains)
+    error match {
+      case _: org.llm4s.agent.graph.GraphError.OutputInvalid =>
+        "The AI's adventure design came back incomplete or malformed. Please try again."
+      case _: org.llm4s.error.AuthenticationError => FailureReasons.Key
+      case _: org.llm4s.error.RateLimitError => FailureReasons.RateLimit
+      case _: org.llm4s.error.TimeoutError | _: org.llm4s.error.NetworkError => FailureReasons.Unreachable
+      case _ if says("401", "403", "authentication", "api key", "api-key", "unauthorized") => FailureReasons.Key
+      case _ if says("429", "rate limit", "overloaded", "529") => FailureReasons.RateLimit
+      case _ if says("invalid request", "400", "not_found_error", "404") =>
+        "The AI service rejected the request; the configured model may not be supported. See the server log."
+      case _ if says("timed out", "timeout", "connection", "unreachable") => FailureReasons.Unreachable
+      case _ => "The adventure could not be generated. See the server log for details."
+    }
+  }
+
+  private object FailureReasons {
+    val Key = "The AI service rejected the server's API key. Check the key in the server's .env file."
+    val RateLimit = "The AI service is busy or rate-limiting requests. Wait a moment and try again."
+    val Unreachable = "The AI service could not be reached. Check the connection and try again."
+  }
+
+  /** `outline` with repeated locations and the exits that lead nowhere dropped ([[OutlineMap.repair]]), and what is
+    * wrong with its map logged: a designer's outline, or one a client sends, is otherwise only known to match the
+    * schema.
+    */
+  def withSoundMap(outline: AdventureOutline): AdventureOutline = {
+    val (repaired, dropped) = OutlineMap.repair(outline)
+    dropped.foreach(what => logger.warn(s"Outline '${outline.title}': dropped - $what"))
+    OutlineMap.problems(repaired).foreach(problem => logger.warn(s"Outline '${outline.title}': $problem"))
+    repaired
   }
 
   def outlineToSystemPrompt(outline: AdventureOutline): String = {
@@ -215,11 +289,13 @@ object AdventureGenerator {
 
     val charactersStr = outline.keyCharacters
       .map { char =>
-        s"- ${char.name} (${char.role}): ${char.description}"
+        val where = char.location.fold("never met in person")(id => s"first met at $id")
+        s"- ${char.name} (${char.role}; $where): ${char.description}"
       }
       .mkString("\n")
 
-    val subQuestsStr = outline.subQuests.map(q => s"- $q").mkString("\n")
+    // the ids the world state gives them (WorldSnapshot.fromOutline), which update_quest_progress takes
+    val subQuestsStr = outline.subQuests.zipWithIndex.map((q, i) => s"- side-${i + 1}: $q").mkString("\n")
 
     s"""
       |ADVENTURE OUTLINE:

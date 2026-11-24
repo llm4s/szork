@@ -15,6 +15,8 @@ import type {
   GameLoadedMessage,
   SessionResumedMessage,
   SessionTakenOverMessage,
+  GameEndedMessage,
+  GameOutcome,
   CommandResponseMessage,
   TextChunkMessage,
   StreamCompleteMessage,
@@ -55,6 +57,8 @@ export function useWebSocketGame() {
   const loadFailed = ref<string | null>(null);
   // Set when another tab or window loaded this game and took its session; cleared by loading it again
   const sessionTakenOver = ref(false);
+  // How the adventure ended, once it has (the player may keep exploring); null while it is still to be won or lost
+  const gameOutcome = ref<GameOutcome | null>(null);
   // Session feature flags, as confirmed by the server
   const ttsEnabled = ref(true);
   const sttEnabled = ref(true);
@@ -155,6 +159,7 @@ export function useWebSocketGame() {
   const setupMessageHandlers = (client: WebSocketClient) => {
     client.on<GameStartedMessage>("gameStarted", ({ data }) => {
       sessionTakenOver.value = false;
+      gameOutcome.value = null;
       sessionId.value = data.sessionId;
       gameId.value = data.gameId;
       lastMessageIndex = data.messageIndex;
@@ -167,6 +172,8 @@ export function useWebSocketGame() {
     client.on<GameLoadedMessage>("gameLoaded", ({ data }) => {
       pendingLoad = null;
       sessionTakenOver.value = false;
+      // The server says so again, after this message, if the loaded game has ended
+      gameOutcome.value = null;
       sessionId.value = data.sessionId;
       gameId.value = data.gameId;
       lastMessageIndex = data.messageIndex;
@@ -192,6 +199,12 @@ export function useWebSocketGame() {
         endStreaming();
         reloadCurrentGame();
       }
+    });
+
+    client.on<GameEndedMessage>("gameEnded", ({ data }) => {
+      log(`The adventure is over: ${data.outcome}`);
+      gameOutcome.value = data.outcome;
+      scroll();
     });
 
     client.on<SessionTakenOverMessage>("sessionTakenOver", ({ data }) => {
@@ -344,6 +357,7 @@ export function useWebSocketGame() {
     gameId.value = null;
     lastMessageIndex = null;
     sessionTakenOver.value = false;
+    gameOutcome.value = null;
   };
 
   /** Add a local message (not from the server), e.g. a microphone error. */
@@ -396,6 +410,7 @@ export function useWebSocketGame() {
     imageEnabled,
     loadFailed,
     sessionTakenOver,
+    gameOutcome,
 
     // Methods
     connect,

@@ -90,7 +90,7 @@ object PromptBuilder {
       |
       |The ${WorldStateMiddleware.Title} section at the end of this prompt shows that state as it is now, on every
       |call: the player's location (its exits with their current states, the facts recorded there, the characters met
-      |there), the inventory and the active quests. It already includes the changes your tool calls made earlier in
+      |there, and any the adventure places there that the player has not met), the inventory and the unfinished quests. It already includes the changes your tool calls made earlier in
       |this turn. Read it instead of calling a read tool: the read tools are only for OTHER locations, for what the
       |section leaves out (characters met elsewhere, finished quests, older events), or when it says something is
       |unknown or cut short.
@@ -105,20 +105,26 @@ object PromptBuilder {
       |- get_location_state: for a location OTHER than the player's (the current one is in the current game state),
       |  e.g. what already happened at a place the player is about to return to.
       |- set_exit_state: when the player unlocks, opens, closes or locks a door, clears or unseals a passage, or
-      |  discovers a hidden way. The way back changes with it.
+      |  discovers a hidden way. The way back changes with it. An exit must be "open" before the player moves through
+      |  it: when the player legitimately can open it, set it to "open" in the same turn, before your fullScene.
       |- set_location_flag: when the player makes another lasting change to a location (a lever pulled, a chest
       |  emptied, a fire lit, a guard bribed).
       |- record_npc_met: when the player first meets a character, and when a conversation reveals or promises
       |  something that matters later (keep the note short).
       |- update_quest_progress: when the player starts, advances, completes or fails a quest (the main quest is
-      |  "main"; side quests are side-1, side-2, ...).
+      |  "main"; side quests are side-1, side-2, ...). The current game state lists the unfinished quests: whenever a
+      |  turn does what one of them asks - including a side quest the player never heard named, such as finding the
+      |  secret it is about - mark it "completed" in that turn. Completing or failing "main" ends the adventure
+      |  (see ENDING THE ADVENTURE).
       |- get_world_summary: when the player asks about their overall progress, or you need to recall characters,
       |  quests or events elsewhere that are not in the current game state or the conversation.
       |
       |TOOL RULES:
       |1. Call a tool for what the player DOES, not for what you describe: an item in a room is not taken until the
       |   player takes it; a door you describe as locked is already locked in the world state.
-      |2. Movement needs no tool: your fullScene answer moves the player and records the visit.
+      |2. Movement needs no tool: your fullScene answer moves the player and records the visit. It moves them only
+      |   through an exit that is open: the game rejects a fullScene that takes the player through an exit in any
+      |   other state and asks you to answer again.
       |3. $talking
       |4. Call the tools you need, then give your answer; the tools never replace the JSON answer.
       |5. Make every tool call a turn needs in ONE step: you can call several tools at once, and they all run before
@@ -130,16 +136,19 @@ object PromptBuilder {
       |- "unlock door with key" → the current game state shows the key in the inventory and the north exit locked, so
       |  set_exit_state {"direction": "north", "state": "closed"} (with update_quest_progress in the same step if it
       |  advances a quest), then a simple answer. Without the key: no tool; a simple answer saying so.
-      |- "north" → the current game state gives the north exit's state: a fullScene answer only if it is open, else a
-      |  simple answer naming the obstacle. No tool either way.
+      |- "north" → the current game state gives the north exit's state. Open: a fullScene answer, no tool. Closed
+      |  with no obstacle (a plain door): set_exit_state {"direction": "north", "state": "open"}, then the fullScene.
+      |  Anything else: no tool; a simple answer naming the obstacle.
       |- "inventory" → no tool; answer from the current game state.
       |- The player enters a room with a lantern on the floor → no tool; describe it.
       |
       |${subagentGuidance(subagents)}
       |COMMAND MAPPING:
       |- Movement commands (north/south/east/west/up/down/in/out):
-      |  • If passable, answer with a fullScene for the destination.
-      |  • If blocked/locked/sealed, answer with a simple response explaining the obstacle; keep locationId as current.
+      |  • If the exit is open, answer with a fullScene for the destination.
+      |  • If it is closed with no obstacle, open it with set_exit_state first, then answer with the fullScene.
+      |  • If blocked/locked/sealed (or closed with an obstacle), answer with a simple response explaining the
+      |    obstacle; keep locationId as current.
       |- Inventory commands (inventory, take, drop, etc.):
       |  • Use the inventory tools, but the answer is still a simple response.
       |- Examination/help/other non-movement interactions: a simple response.
@@ -204,13 +213,24 @@ object PromptBuilder {
       |- Obey the map in the adventure outline exactly - locations and connections are fixed.
       |
       |EXIT STATE ENFORCEMENT:
-      |- "locked" = IMPASSABLE until player possesses correct key/item AND uses UNLOCK command
-      |  • Player must have item in inventory and explicitly unlock
+      |An exit's state says what the player can do there. The player moves ONLY through an exit that is "open": every
+      |other state must first be changed to "open" with set_exit_state, and only when the player legitimately can.
+      |
+      |- "open" = Freely passable - generate destination scene when player moves. It has no obstacle.
+      |
+      |- "closed" = Shut, but the player can simply open it (a plain door, a gate on a latch)
+      |  • With no obstacle: "open door", or just moving that way, opens it. Call set_exit_state with "open" in the
+      |    same turn, then (if the player is moving) give the destination scene
+      |  • With an obstacle (stuck, barred, guarded): it stays shut until the player overcomes the obstacle
+      |    - respond: "The [door] will not open: [obstacle]."
+      |
+      |- "locked" = IMPASSABLE until player possesses correct key/item AND uses it to overcome the obstacle
+      |  • Its obstacle says what is in the way; the player must have what it needs and explicitly use it
       |  • Respond: "The [door/passage] is locked. You cannot pass without unlocking it first."
       |  • After unlock: call set_exit_state with "closed" or "open" depending on action
       |
       |- "sealed" = IMPASSABLE until specific tool/action applied (crowbar, lever, puzzle solution)
-      |  • Requires explicit action with correct tool/method
+      |  • Its obstacle says what is in the way; requires explicit action with correct tool/method
       |  • Respond: "The [passage] is sealed with [obstacle]. You'll need to find a way to unseal it."
       |  • After unsealing: call set_exit_state with "open"
       |
@@ -218,31 +238,52 @@ object PromptBuilder {
       |  • Requires specific action to clear or indicates dead end
       |  • Respond: "The passage is blocked by [obstacle]. You cannot pass."
       |
-      |- "closed" = Can be opened with simple "open [door/passage]" command
-      |  • No key required, just needs opening action
-      |  • Respond: "The [door] is closed." then allow opening
-      |  • After opening: call set_exit_state with "open"
-      |
-      |- "open" = Freely passable - generate destination scene when player moves
-      |
-      |- "hidden" = Not visible or mentioned until discovered through examination
-      |  • Do not mention in room description until player examines trigger object
+      |- "hidden" = Not visible or mentioned until discovered; the player cannot use it before then
+      |  • Its obstacle says how it is found. Do not mention the exit in room descriptions, or let the player go that
+      |    way, until they do that
       |  • After discovery: call set_exit_state with "closed" or "open" depending on nature
       |
       |PLAYER MOVEMENT VALIDATION:
       |- Before allowing ANY movement command (north/south/east/west/up/down/in/out):
       |  1. Check if exit exists in that direction
       |  2. Check exit state (open/closed/locked/sealed/blocked/hidden) - in the current game state
-      |  3. If not "open", DENY movement and explain obstacle
-      |  4. ONLY generate destination scene if exit is "open"
+      |  3. If "closed" with no obstacle, the player opens it on the way: call set_exit_state with "open" first
+      |  4. If not "open", DENY movement and explain obstacle
+      |  5. ONLY generate destination scene if exit is "open"
+      |- The game holds you to this: a fullScene for the far side of an exit that is not open is not accepted
       |- Exit states persist in the world state - locked doors stay locked until unlocked
       |- Record each change with set_exit_state when the player takes the action (unlock, open, unseal, discover)
+      |
+      |PUZZLES - LET THE PLAYER SOLVE THEM:
+      |- Never state or confirm a puzzle's solution, a code, or the next step unless the player has found it in the
+      |  game (read it, been told it by a character, worked it out). What the player already learned they can be
+      |  expected to remember: do not repeat the steps back to them as a to-do list.
+      |- When an attempt fails, say only what happens ("The padlock does not open."). Do not say why the idea was
+      |  wrong, that a clue is a red herring, or where the real answer lies.
+      |- Do not suggest what to try next, point at the object that matters, or list what the player still needs.
+      |  The world's details are the clues; a player who wants more asks for a hint.
+      |- A solution needs its means: an action succeeds only if the player has the item, knowledge or help the
+      |  adventure requires for it. Clever alternatives that would really work in the world are welcome.
+      |
+      |CHARACTERS:
+      |- The current game state lists the characters the adventure places at the player's location whom the player
+      |  has not met. Bring each into the scene on the player's first visit (in a way that fits them), and record the
+      |  meeting with record_npc_met - unless the outline says something must happen first.
+      |
+      |ENDING THE ADVENTURE:
+      |- When the player achieves the main quest, give the story its ending in that answer - the outline's resolution,
+      |  told in full - and call update_quest_progress for "main" with "completed" in the same turn. If the player
+      |  fails beyond recovery (the outline's stakes come true, or the player dies), tell that ending and set "main"
+      |  to "failed". The game then tells the player the adventure is over.
+      |- After the ending the player may keep exploring; answer as usual, with the world as the ending left it.
       |
       |RESPONSE FORMAT:
       |Every final answer is one JSON object matching the response schema you are given. Put narrationText first.
       |- fullScene: for movement to a new location, LOOK, or the opening scene. Give the location's details, its exits
       |  (each with the id of the location it leads to) and the music mood that best fits it.
-      |- simple: for everything else; the fields only a scene uses are null.
+      |- simple: for everything else; the fields only a scene uses are null. If the action changed what is here -
+      |  an item taken, used up, opened, filled or revealed, a character arriving or leaving - give "items" (and
+      |  "npcs") as they are now, each item with its current state; otherwise leave them null.
       |- imageDescription: describe the scene for an image in $artStyleDesc.
       |""".stripMargin
   }

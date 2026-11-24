@@ -117,6 +117,18 @@ case class CacheError(
   override def userMessage: String = "Cache operation failed."
 }
 
+// Category: adventure generation errors
+/** An adventure outline could not be generated; `reason` is what the player is told, which says what went wrong as far
+  * as it is known (a bad key and a malformed design call for different things).
+  */
+case class AdventureGenerationError(
+  message: String,
+  reason: String,
+  override val retryable: Boolean = true
+) extends SzorkError {
+  override def userMessage: String = reason
+}
+
 // Category: LLM errors (alias for AIError for compatibility)
 case class LLMError(
   message: String,

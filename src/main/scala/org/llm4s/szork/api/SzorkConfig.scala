@@ -149,7 +149,7 @@ object SzorkConfig {
     config.llmConfig match {
       case Some(llm) =>
         try
-          org.llm4s.model.ModelRegistryService.default().left.map(_.message).flatMap { registry =>
+          SzorkModelRegistry.load().left.map(_.message).flatMap { registry =>
             given org.llm4s.model.ModelRegistryService = registry
             org.llm4s.llmconnect.LLMConnect.getClient(llm.toProviderConfig).left.map(_.message)
           }

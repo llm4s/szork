@@ -77,15 +77,29 @@ conversation. Restoring a save seeds a new thread with the saved conversation. A
 in character with a `refused` `GameResponse` that changes nothing and is not saved.
 
 **game/DungeonMasterOutput.scala** - The structured output schema every turn answers with (narration first, then the
-scene or simple response). **game/PromptBuilder.scala** builds the system prompt; **game/WorldStateMiddleware.scala**
+scene or simple response). A simple response may give `items`/`npcs` when the action changed what is here; the engine
+keeps the current scene (sent with every response) up to date with them. **game/PromptBuilder.scala** builds the system prompt; **game/WorldStateMiddleware.scala**
 adds the current game state (location, exits, inventory, active quests) to every model call as an llm4s prompt section,
 never stored in the thread; **game/GameTools.scala** builds the
 tools per game: inventory tools over a `PlayerInventory`, and world-state tools (`get_location_state`, `set_exit_state`,
-`set_location_flag`, `record_npc_met`, `update_quest_progress`, `get_world_summary`) over a `WorldState`.
+`set_location_flag`, `record_npc_met`, `update_quest_progress`, `get_world_summary`) over a `WorldState`. The state
+section lists the unfinished quests and the characters the outline places at the player's location and not yet met.
 
 **game/WorldState.scala** - The game's memory beyond the context window: exit states (`ExitState` enum), location
 flags, visits, characters met and quest progress. Seeded from the outline (`WorldSnapshot.fromOutline`); scene answers
-record visits (there is no move tool); saved in `GameState.worldState`.
+record visits (there is no move tool; `ExitGuard` holds them to the exit states); saved in `GameState.worldState`.
+A location the Dungeon Master makes up is recorded with its scene's exits. Completing or failing the `main` quest ends
+the adventure (`GameEngine.ending`; the server then sends `gameEnded`, and the player may play on).
+Exit states: open = passable; closed = the player can simply open it (unless it has an obstacle); locked/sealed =
+impassable until the obstacle is overcome; hidden = unusable until discovered. `OutlineMap.problems` reports an
+outline whose states and obstacles do not go together.
+
+**game/ExitGuard.scala** - The rule that a scene never moves the player through an exit that is not open (a move from A
+to B is refused when A has exits to B and none is `open`; a place no exit leads to, the opening scene and a look around
+are not moves it judges). `ExitGuardMiddleware` (llm4s `wrapModelCall`) checks each answer against the world state as
+the model gives it: a refused answer goes back to the model once with the exit, its state and obstacle (neither is
+stored in the thread); a second refused move is replaced with a simple "the way is shut" answer. `GameEngine.completeTurn`
+checks the rule again before it records a move.
 
 **game/DmSubagents.scala** - The Dungeon Master's llm4s subagents (`TypedAgent`s offered with `withSubagents`, bounded
 by `withDelegation(DmSubagents.Delegation)`): `npc_dialogue` (tool `task_npc_dialogue`, returns `NpcLines`) and `hint`
@@ -96,7 +110,8 @@ Configured by `SubagentConfig` (SZORK_NPC_AGENT, SZORK_HINT_AGENT, SZORK_SUBAGEN
 script them in `DmSubagentsSpec` by matching the subagent's system prompt.
 
 **game/AdventureGenerator.scala** - Designs a new game's `AdventureOutline` (locations with their planned exits,
-interactables, puzzles and secrets; items; characters) with a second llm4s agent, built with
+interactables, puzzles and secrets; items; characters, each with the location where they are first met) with a second
+llm4s agent, built with
 `withOutput(AdventureOutlineSchema.schema)` and no tools; the outline goes into the Dungeon Master's system prompt.
 
 **persistence/** - Step-based saves under `szork-saves/<game-id>/step-NNNN/`; `GameDirs` validates game ids before they

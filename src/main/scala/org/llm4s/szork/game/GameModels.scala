@@ -33,7 +33,9 @@ case class GameScene(
 case class SimpleResponse(
   narrationText: String, // The response text
   locationId: String, // Current location (unchanged)
-  actionTaken: String // What action was performed
+  actionTaken: String, // What action was performed
+  items: Option[List[String]] = None, // The items here now, when the action changed them
+  npcs: Option[List[String]] = None // The characters here now, when the action changed them
 ) extends GameResponseData
 
 object GameResponseData {
@@ -52,7 +54,9 @@ object GameResponseData {
           val response = SimpleResponse(
             narrationText = parsed("narrationText").str,
             locationId = parsed("locationId").str,
-            actionTaken = field("actionTaken").map(_.str).getOrElse("unknown")
+            actionTaken = field("actionTaken").map(_.str).getOrElse("unknown"),
+            items = field("items").map(_.arr.map(_.str).toList),
+            npcs = field("npcs").map(_.arr.map(_.str).toList)
           )
           Right(response)
 

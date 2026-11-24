@@ -48,6 +48,25 @@
 
           <MessageList ref="messageList" :messages="messages" :loading="loading" />
 
+          <!-- The adventure is over; the player may keep exploring -->
+          <v-alert
+            v-if="gameOutcome"
+            class="game-ended mx-4 mb-2"
+            :type="gameOutcome === 'completed' ? 'success' : 'warning'"
+            variant="tonal"
+            density="compact"
+            :title="gameOutcome === 'completed' ? 'The End' : 'Game Over'"
+          >
+            {{
+              gameOutcome === "completed"
+                ? "You have completed the adventure. You can keep exploring, or start another."
+                : "The adventure has ended in failure. You can keep exploring, or start another."
+            }}
+            <template v-slot:append>
+              <v-btn variant="text" size="small" @click="backToSelection">Back to games</v-btn>
+            </template>
+          </v-alert>
+
           <div class="game-input-wrapper">
             <v-text-field
               v-model="userInput"
@@ -167,6 +186,7 @@ export default defineComponent({
       addLocalMessage,
       loadFailed,
       sessionTakenOver,
+      gameOutcome,
       takeBackSession,
       log: wsLog,
       errorSnackbar,
@@ -463,6 +483,7 @@ export default defineComponent({
       errorSnackbar,
       errorMessage,
       sessionTakenOver,
+      gameOutcome,
       takeBackSession,
     };
   },

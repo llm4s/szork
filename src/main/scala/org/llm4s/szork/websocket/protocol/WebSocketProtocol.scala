@@ -31,6 +31,7 @@ object ServerMessage {
     GameLoadedMessage.rw,
     SessionResumedMessage.rw,
     SessionTakenOverMessage.rw,
+    GameEndedMessage.rw,
     CommandResponseMessage.rw,
     TextChunkMessage.rw,
     StreamCompleteMessage.rw,
@@ -177,6 +178,24 @@ case class SessionTakenOverMessage(
 ) extends ServerMessage
 object SessionTakenOverMessage {
   implicit val rw: ReadWriter[SessionTakenOverMessage] = macroRW
+}
+
+/** The adventure is over: the main quest was completed or failed. Sent after the response of the turn that ended it
+  * (`messageIndex` is that response's), and after `gameLoaded` or `sessionResumed` for a game that had already ended.
+  * The player may keep exploring.
+  */
+case class GameEndedMessage(
+  messageIndex: Int,
+  outcome: String
+) extends ServerMessage
+object GameEndedMessage {
+  implicit val rw: ReadWriter[GameEndedMessage] = macroRW
+
+  /** `outcome` when the main quest was completed. */
+  val Completed: String = "completed"
+
+  /** `outcome` when the main quest was failed. */
+  val Failed: String = "failed"
 }
 
 case class CommandResponseMessage(

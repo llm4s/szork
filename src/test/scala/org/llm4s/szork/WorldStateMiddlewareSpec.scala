@@ -38,7 +38,11 @@ class WorldStateMiddlewareSpec extends AnyFunSuite with Matchers {
       )
     ),
     importantItems = List(ItemOutline("Key", "an iron key", "opens the gate")),
-    keyCharacters = List(CharacterOutline("Archivist", "guide", "patient")),
+    keyCharacters = List(
+      CharacterOutline("Archivist", "guide", "patient", Some("hall")),
+      CharacterOutline("Ferryman", "gatekeeper", "silent", Some("cavern_entrance")),
+      CharacterOutline("The Founder", "legend", "long dead", None)
+    ),
     adventureArc = "Descend / Search / Escape"
   )
 
@@ -110,8 +114,15 @@ class WorldStateMiddlewareSpec extends AnyFunSuite with Matchers {
     latest should include("- north -> hall: locked (a rusted padlock)")
     latest should include("- east -> grotto: hidden - not yet discovered")
     latest should include("Inventory: iron key")
-    latest should include("- main: Recover the drowned ledger")
-    latest should not include "Light the lamps" // not started yet
+    // every unfinished quest, the active ones first, so that the model can tell when one is started or finished
+    latest should include("- main [active]: Recover the drowned ledger")
+    latest should include("- side-1 [not_started]: Light the lamps")
+    latest.indexOf("- main [active]") should be < latest.indexOf("- side-1 [not_started]")
+    // a character the adventure places here and the player has not met is to be brought in; others are not listed
+    latest should include("Characters the adventure places here, not yet met")
+    latest should include("- Ferryman (gatekeeper)")
+    latest should not include "Archivist"
+    latest should not include "The Founder"
   }
 
   test("a call later in the turn is sent the state as the turn's tool calls left it") {
@@ -123,12 +134,25 @@ class WorldStateMiddlewareSpec extends AnyFunSuite with Matchers {
     val turn = callsOf(llm)(play(engine, "unlock gate"))
     turn.size shouldBe 2
     section(turn(0).messages) should include("- north -> hall: locked")
-    section(turn(0).messages) should not include "side-1"
+    section(turn(0).messages) should include("- side-1 [not_started]")
     // the second call follows both tool results, and its state shows what they changed
     turn(1).messages.takeRight(2).collect { case t: ToolMessage => t.toolCallId } shouldBe
       Seq("call-unlock", "call-quest")
     section(turn(1).messages) should include("- north -> hall: open")
-    section(turn(1).messages) should include("- side-1: Light the lamps")
+    section(turn(1).messages) should include("- side-1 [active]: Light the lamps")
+  }
+
+  test("a character stops being announced once met, and a finished quest leaves the list") {
+    val world = WorldState.seededFrom(Some(outline))
+    world.enter("cavern_entrance", "Cavern Entrance")
+    world.recordNpcMet("Ferryman", None, Some("took the coin"))
+    world.updateQuest("side-1", QuestStatus.Completed, None)
+
+    val text = WorldStateMiddleware.render(world.snapshot, Nil)
+    text should not include "not yet met"
+    text should include("- Ferryman (took the coin)")
+    text should not include "side-1"
+    text should include("- main [active]")
   }
 
   test("the state is never stored: not in the thread's history, nor in a save") {

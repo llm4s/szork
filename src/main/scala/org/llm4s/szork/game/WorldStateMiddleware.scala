@@ -82,7 +82,14 @@ object WorldStateMiddleware {
         val people =
           if (met.isEmpty) List("Characters met here: none")
           else "Characters met here:" :: met.map(n => s"- ${n.name}${notes(n.notes)}")
-        (s"Location: ${loc.id} (${loc.name})" :: exits) ++ flags ++ people
+        // the adventure puts them here and the player has not met them: the scene should bring them in
+        val waiting = world.npcs.filter(n => !n.met && n.foundAt.contains(loc.id))
+        val unmet =
+          if (waiting.isEmpty) Nil
+          else
+            "Characters the adventure places here, not yet met (bring them into the scene now, unless the outline " +
+              "says what must happen first):" :: waiting.map(n => s"- ${n.name}${n.role.fold("")(r => s" ($r)")}")
+        (s"Location: ${loc.id} (${loc.name})" :: exits) ++ flags ++ people ++ unmet
     }
     val carried =
       if (items.isEmpty) List("Inventory: empty")
@@ -91,14 +98,18 @@ object WorldStateMiddleware {
           "Inventory: " + capped(items, MaxItems, "items", "list_inventory")
             .map(_.fold(identity, identity))
             .mkString(", "))
-    val active = world.quests.filter(_.status == QuestStatus.Active)
+    // quests still to do, the ones under way first: one not yet started is listed so that the Dungeon Master can
+    // tell when the player starts or finishes it
+    val open = world.quests.filter(_.status == QuestStatus.Active) ++
+      world.quests.filter(_.status == QuestStatus.NotStarted)
     val quests =
-      if (active.isEmpty) List("Active quests: none")
+      if (open.isEmpty) List("Unfinished quests: none")
       else
-        "Active quests:" :: capped(active, MaxQuests, "quests", "get_world_summary").map {
-          case Right(q) => s"- ${q.id}: ${q.description}${notes(q.notes)}"
-          case Left(more) => s"- $more"
-        }
+        "Unfinished quests (update_quest_progress when the player starts, advances or finishes one):" ::
+          capped(open, MaxQuests, "quests", "get_world_summary").map {
+            case Right(q) => s"- ${q.id} [${q.status.wire}]: ${q.description}${notes(q.notes)}"
+            case Left(more) => s"- $more"
+          }
     val text = (List(
       Heading,
       "The game's state as of this model call, including every change your tool calls have made this turn. Trust " +

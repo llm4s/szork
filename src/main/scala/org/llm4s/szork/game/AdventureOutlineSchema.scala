@@ -20,14 +20,27 @@ object AdventureOutlineSchema {
     .`object`[ExitOutline]("An exit from the location")
     .withProperty(
       Schema.property("direction", Schema.string("Direction of the exit").withEnum(DungeonMasterOutput.Directions)))
-    .withProperty(Schema.property("targetId", Schema.string("Id of the location the exit leads to")))
+    .withProperty(
+      Schema.property("targetId", Schema.string("Id of another location in keyLocations that the exit leads to")))
     .withProperty(Schema.property(
       "description",
       Schema.string("Natural prose for the exit, e.g. 'An iron door leads north' or 'Stone stairs climb upward'")))
-    .withProperty(Schema.property("state", Schema.string("Whether the way is passable").withEnum(ExitStates)))
+    .withProperty(Schema.property(
+      "state",
+      Schema
+        .string("open: passable now. closed: shut, but the player can simply open it (unless it has an obstacle). " +
+          "locked or sealed: impassable until its obstacle is overcome. hidden: not shown or usable until the " +
+          "player discovers it")
+        .withEnum(ExitStates)
+    ))
     .withProperty(Schema.property(
       "obstacle",
-      nullableString("What blocks passage when not open (e.g. 'locked with a brass padlock', 'rusted shut'), or null")))
+      nullableString(
+        "open: null. locked or sealed: required - what must be overcome and how (e.g. 'a brass padlock; the brass " +
+          "key opens it', 'rusted shut; needs the crowbar'). hidden: how the player finds it (e.g. 'revealed by " +
+          "pulling the red book'). closed: null for a door the player can simply open, or what keeps it shut " +
+          "until overcome (e.g. 'swollen in its frame; needs oiling')")
+    ))
 
   private val location: ObjectSchema[LocationOutline] = Schema
     .`object`[LocationOutline]("A key location")
@@ -78,6 +91,12 @@ object AdventureOutlineSchema {
       Schema.property("role", Schema.string("Their function in the story: mentor, guardian, trickster, ...")))
     .withProperty(
       Schema.property("description", Schema.string("Personality, and how they appear when first encountered")))
+    .withProperty(
+      Schema.property(
+        "location",
+        nullableString(
+          "Id of the location in keyLocations where the player first meets them, or null if they are never met in " +
+            "person")))
 
   val schema: ObjectSchema[AdventureOutline] = Schema
     .`object`[AdventureOutline]("A text adventure design")

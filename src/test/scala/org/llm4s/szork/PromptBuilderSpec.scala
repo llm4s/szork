@@ -22,6 +22,16 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt.toLowerCase should include("oil painting")
   }
 
+  test("the prompt keeps puzzles for the player, brings characters in, and says how the adventure ends") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
+    prompt should include("PUZZLES - LET THE PLAYER SOLVE THEM")
+    prompt should include("that a clue is a red herring")
+    prompt should include("Bring each into the scene on the player's first visit")
+    prompt should include("ENDING THE ADVENTURE")
+    prompt should include("""call update_quest_progress for "main" with "completed"""")
+    prompt should include("""give "items" (and""")
+  }
+
   test("fullSystemPrompt includes outline content when provided") {
     val outline = AdventureOutline(
       title = "Test Adventure",
@@ -91,6 +101,10 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt should include("Check exit state (open/closed/locked/sealed/blocked/hidden)")
     prompt should include("If not \"open\", DENY movement and explain obstacle")
     prompt should include("ONLY generate destination scene if exit is \"open\"")
+    // a plain closed door is opened on the way, and a move needs the exit open first
+    prompt should include("If \"closed\" with no obstacle, the player opens it on the way: call set_exit_state")
+    prompt should include("The player moves ONLY through an exit that is \"open\"")
+    prompt should include("the game rejects a fullScene that takes the player through an exit in any")
   }
 
   test("fullSystemPrompt defines all exit states with enforcement rules") {
@@ -99,7 +113,9 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt should include("\"locked\" = IMPASSABLE until player possesses correct key/item")
     prompt should include("\"sealed\" = IMPASSABLE until specific tool/action applied")
     prompt should include("\"blocked\" = IMPASSABLE until cleared")
-    prompt should include("\"closed\" = Can be opened with simple \"open [door/passage]\" command")
+    prompt should include("\"closed\" = Shut, but the player can simply open it")
+    prompt should include("With no obstacle: \"open door\", or just moving that way, opens it")
+    prompt should include("With an obstacle (stuck, barred, guarded): it stays shut")
     prompt should include("\"open\" = Freely passable")
     prompt should include("\"hidden\" = Not visible or mentioned until discovered")
   }

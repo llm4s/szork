@@ -13,7 +13,9 @@ import org.llm4s.szork.error.ErrorHandling.SzorkResult
 import org.llm4s.szork.error.ImageGenerationError
 import org.llm4s.szork.spi.{ImageClient, STTClient}
 import org.llm4s.szork.game.{GameEngine, PlayerInputGuardrail}
+import org.llm4s.llmconnect.model.Conversation
 import org.llm4s.szork.stubs.{FakeImageClient, ScriptedDm}
+import org.llm4s.testkit.Reply
 import org.llm4s.szork.websocket.TypedWebSocketServer
 import org.llm4s.szork.websocket.protocol._
 
@@ -29,13 +31,18 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
   private val workPool = Executors.newFixedThreadPool(4)
   private val mediaPool = Executors.newFixedThreadPool(2)
 
+  // "light the lamp" completes the main quest, which ends the adventure
+  private val winsTheGame: PartialFunction[Conversation, Reply] = { case ScriptedDm.Command("light the lamp") =>
+    Reply.toolCall("update_quest_progress", """{"quest": "main", "status": "completed", "note": null}""")
+  }
+
   // Games with the theme "no-images" have an image provider that always fails
   private val failingImages: ImageClient = (_, _, _, _) => Left(ImageGenerationError("provider down"))
 
   private val engineFactory: EngineFactory = (sessionId, theme, artStyle, outline, features) =>
     Right(
       GameEngine.create(
-        ScriptedDm(),
+        ScriptedDm(winsTheGame),
         sessionId,
         theme,
         artStyle,
@@ -191,6 +198,30 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     c.sendJson("type" -> "streamCommand", "command" -> "go north")
     c.await("streamComplete")("data")("scene")("locationName").str shouldBe "Small Hall"
     c.close()
+  }
+
+  test("the turn that completes the main quest is followed by gameEnded, once; a resumed session is told again") {
+    val c = connect()
+    val started = startGame(c)("data")
+    c.sendJson("type" -> "streamCommand", "command" -> "examine wall")
+    c.await("streamComplete")
+    c.sendJson("type" -> "streamCommand", "command" -> "light the lamp")
+    val won = c.await("streamComplete")("data")
+    val ended = c.await("gameEnded")("data")
+    ended("outcome").str shouldBe "completed"
+    ended("messageIndex").num shouldBe won("messageIndex").num
+
+    // the player may play on
+    c.sendJson("type" -> "command", "command" -> "examine wall")
+    c.await("commandResponse")
+    c.received.toArray.map(_.asInstanceOf[ujson.Value]("type").str) should not contain "gameEnded"
+    c.close()
+
+    val again = connect()
+    again.sendJson("type" -> "resumeSession", "sessionId" -> started("sessionId").str)
+    again.await("sessionResumed")
+    again.await("gameEnded")("data")("outcome").str shouldBe "completed"
+    again.close()
   }
 
   test("an announced image that cannot be generated is reported as mediaFailed") {

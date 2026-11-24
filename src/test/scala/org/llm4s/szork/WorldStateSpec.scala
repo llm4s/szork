@@ -7,7 +7,7 @@ import org.llm4s.llmconnect.model._
 import org.llm4s.testkit.{Reply, ScriptedLLMClient}
 import org.llm4s.szork.game._
 import org.llm4s.szork.persistence.GameStateCodec
-import org.llm4s.szork.stubs.ScriptedDm
+import org.llm4s.szork.stubs.{DmAnswers, ScriptedDm}
 
 /** Covers the Dungeon Master's world state: seeded from the outline, changed by its llm4s tools and by scenes, kept in
   * saves, and still answering after the turns that changed it are pruned from what the model is sent.
@@ -160,6 +160,95 @@ class WorldStateSpec extends AnyFunSuite with Matchers {
     engine.getWorldState.locations.map(l => (l.id, l.name, l.visited)) shouldBe
       List(("cavern_entrance", "Cavern Entrance", true))
     engine.getWorldState.quests shouldBe Nil
+  }
+
+  test("a made-up location is recorded with the exits its scene gives, so there is a way out of it") {
+    val world = WorldState.seededFrom(Some(outline))
+    world.enter("cavern_entrance", "Cavern Entrance")
+    world.enter(
+      "smugglers_gap",
+      "Smuggler's Gap",
+      List("E" -> "cavern_entrance", "east" -> "hall", "in" -> "smugglers_gap"))
+
+    world.snapshot.location(Some("smugglers_gap")).get.exits shouldBe
+      List(ExitRecord("east", "cavern_entrance", ExitState.Open, None))
+    // a planned location keeps the exits it was planned with, whatever a scene lists
+    world.enter("cavern_entrance", "Cavern Entrance", List("up" -> "sky"))
+    world.snapshot.location(Some("cavern_entrance")).get.exits.map(_.direction) shouldBe List("north")
+  }
+
+  test("a note the Dungeon Master repeats is recorded once") {
+    val world = WorldState.seededFrom(Some(outline))
+    world.recordNpcMet("Mara", None, Some("Ghost keeper by the hearth."))
+    world.recordNpcMet("Mara", None, Some("ghost keeper  by the hearth"))
+    world.recordNpcMet("Mara", None, Some("Wants her locket back"))
+    world.recordNpcMet("Mara", None, Some("  "))
+    world.snapshot.npc("Mara").get.notes shouldBe List("Ghost keeper by the hearth.", "Wants her locket back")
+
+    world.updateQuest("main", QuestStatus.Active, Some("Sheltering in the archive"))
+    world.updateQuest("main", QuestStatus.Active, Some("Sheltering in the archive"))
+    world.snapshot.quest("main").get.notes shouldBe List("Sheltering in the archive")
+  }
+
+  test("characters are placed where the outline first puts them, if that is one of its locations") {
+    val placed = outline.copy(keyCharacters = List(
+      CharacterOutline("Archivist", "guide", "patient", Some("hall")),
+      CharacterOutline("Diver", "rival", "brash", Some("the_open_sea")),
+      CharacterOutline("The Founder", "legend", "long dead")
+    ))
+    WorldSnapshot.fromOutline(Some(placed)).npcs.map(n => n.name -> n.foundAt) shouldBe
+      List("Archivist" -> Some("hall"), "Diver" -> None, "The Founder" -> None)
+  }
+
+  test("the adventure ends when the main quest is completed or failed, and not before") {
+    val ends: PartialFunction[Conversation, Reply] = {
+      case ScriptedDm.Command("light the lamp") =>
+        Reply.toolCall("update_quest_progress", """{"quest": "main", "status": "completed", "note": null}""")
+      case ScriptedDm.Command("start side quest") =>
+        Reply.toolCall("update_quest_progress", """{"quest": "side-1", "status": "completed", "note": null}""")
+    }
+    val engine = newEngine(ScriptedDm(ends))
+    engine.initialize().isRight shouldBe true
+    engine.ending shouldBe None
+    run(engine, "start side quest")
+    engine.ending shouldBe None
+    run(engine, "light the lamp")
+    engine.ending shouldBe Some("completed")
+
+    // a game with no outline has no quests until the Dungeon Master records its main one
+    val bare = GameEngine.create(llmClient = ScriptedDm(ends), sessionId = "no-outline-ending")
+    bare.initialize().isRight shouldBe true
+    bare.ending shouldBe None
+    run(bare, "light the lamp")
+    bare.ending shouldBe Some("completed")
+  }
+
+  test("an action that changes what is here updates the scene the player is shown") {
+    val takes: PartialFunction[Conversation, Reply] = {
+      case ScriptedDm.Command("take lantern") =>
+        Reply.text(
+          ujson.write(
+            ujson.read(DmAnswers.simple("Taken.", "cavern_entrance", "take")).obj ++ Map[String, ujson.Value](
+              "items" -> ujson.Arr("iron gate (locked)"),
+              "npcs" -> ujson.Arr("Archivist"))))
+      case ScriptedDm.Command("elsewhere") =>
+        Reply.text(
+          ujson.write(ujson.read(DmAnswers.simple("Far away.", "hall", "think")).obj ++ Map[String, ujson.Value](
+            "items" -> ujson.Arr("a wrong list"))))
+    }
+    val engine = newEngine(ScriptedDm(takes))
+    engine.initialize().isRight shouldBe true
+    engine.getCurrentScene.get.items shouldBe Nil
+
+    val taken = engine.processCommand("take lantern", generateAudio = false).toOption.get
+    engine.getCurrentScene.get.items shouldBe List("iron gate (locked)")
+    engine.getCurrentScene.get.npcs shouldBe List("Archivist")
+    engine.getCurrentScene.get.locationId shouldBe "cavern_entrance"
+    taken.scene.map(_.items) should (be(None) or be(Some(List("iron gate (locked)"))))
+
+    // an action that changes nothing leaves the scene alone, as does one that names another location
+    run(engine, "examine wall", "elsewhere")
+    engine.getCurrentScene.get.items shouldBe List("iron gate (locked)")
   }
 
   test("the world state survives a save and load") {

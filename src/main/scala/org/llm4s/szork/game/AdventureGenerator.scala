@@ -38,7 +38,9 @@ case class LocationOutline(
   exits: List[ExitOutline] = Nil,
   interactables: List[String] = Nil,
   puzzles: Option[String] = None,
-  secrets: Option[String] = None
+  secrets: Option[String] = None,
+  // What a picture of the location shows, written by the [[ArtDirector]] (None: drawn from the description)
+  image: Option[String] = None
 ) derives ReadWriter
 
 /** An exit from a location: its direction (one of [[DungeonMasterOutput.Directions]]), where it leads, and whether it
@@ -147,6 +149,11 @@ object AdventureGenerator {
       |- Every exit's targetId is the id of ANOTHER location in keyLocations. Never give an exit to a place that is
       |  not in keyLocations: if the story needs somewhere beyond the map (the city above, the open sea, a storeroom),
       |  either make it one of the key locations or describe it in the prose without an exit
+      |- The way back is the opposite direction: if north leads from A to B, B's exit to A is south (east/west,
+      |  up/down, in/out likewise). Use the compass directions, up, down, in and out; never "back", "forward", "left"
+      |  or "right"
+      |- A location's description gives each exit the direction its exit has, and no other: stairs that go down are
+      |  "down", not "down on the south side"; two exits are never described with the same direction
       |- An exit never leads back to its own location. A wall, a sealed hatch to nowhere or another corner of the same
       |  room is scenery or an interactable, not an exit
       |- Every location can be reached from the first one by following exits, and the player can get back: an exit
@@ -295,7 +302,7 @@ object AdventureGenerator {
     */
   def withSoundMap(outline: AdventureOutline): AdventureOutline = {
     val (repaired, dropped) = OutlineMap.repair(outline)
-    dropped.foreach(what => logger.warn(s"Outline '${outline.title}': dropped - $what"))
+    dropped.foreach(what => logger.warn(s"Outline '${outline.title}': repaired - $what"))
     OutlineMap.problems(repaired).foreach(problem => logger.warn(s"Outline '${outline.title}': $problem"))
     repaired
   }
@@ -370,5 +377,11 @@ object AdventureGenerator {
   def outlineFromJson(json: ujson.Value): AdventureOutline = upickle.default.read[AdventureOutline](json)
 
   /** The outline's JSON, every field written (an absent optional one as null). */
-  def outlineToJson(outline: AdventureOutline): ujson.Value = upickle.default.writeJs(outline)
+  def outlineToJson(outline: AdventureOutline): ujson.Value = {
+    val json = upickle.default.writeJs(outline)
+    // A picture brief is the art director's, not the designer's: a location without one is written as the designer
+    // answers, with no such property (the designer's schema does not have it)
+    json("keyLocations").arr.foreach(location => if (location("image").isNull) location.obj.remove("image"))
+    json
+  }
 }

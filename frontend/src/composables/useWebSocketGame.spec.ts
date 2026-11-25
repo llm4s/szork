@@ -297,10 +297,10 @@ describe("useWebSocketGame", () => {
       hasImage: true,
       hasMusic: true,
     });
-    latest().receive("imageReady", { messageIndex: 2, url: "/api/library/adventures/a/images/hall.pixel.png?v=1" });
+    latest().receive("imageReady", { messageIndex: 2, url: "/api/library/adventures/a/images/hall.pixel.jpg?v=1" });
     latest().receive("musicReady", { messageIndex: 2, mood: "mystery", url: "/api/library/music/mystery.mp3?v=1" });
 
-    expect(game.messages.value.at(-1)?.image).toBe("/api/library/adventures/a/images/hall.pixel.png?v=1");
+    expect(game.messages.value.at(-1)?.image).toBe("/api/library/adventures/a/images/hall.pixel.jpg?v=1");
     expect(music).toHaveBeenCalledWith("/api/library/music/mystery.mp3?v=1", "mystery");
   });
 

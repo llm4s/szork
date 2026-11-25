@@ -254,7 +254,9 @@ export function useWebSocketGame() {
     client.on<ImageReadyMessage>("imageReady", ({ data }) => {
       const message = messages.value.find((m) => m.messageIndex === data.messageIndex);
       if (message?.hasImage) {
-        message.image = data.url ?? `data:image/png;base64,${data.image}`;
+        // Pictures are JPEGs (which start "/9j/" in Base64) unless the provider's PNG could not be shrunk
+        const type = data.image?.startsWith("/9j/") ? "jpeg" : "png";
+        message.image = data.url ?? `data:image/${type};base64,${data.image}`;
         message.imageLoading = false;
       }
     });

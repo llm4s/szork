@@ -87,6 +87,12 @@ class SceneImagesSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
       .providerConfig(ImageProvider.OpenAIGptImage, FakeReader(Map("OPENAI_API_KEY" -> "sk")), Some("gpt-image-2"))
       .map(_.model) shouldBe Right("gpt-image-2")
     ImageProvider.fromString("openai") shouldBe ImageProvider.OpenAIGptImage
+    // GPT Image draws at the configured quality; other providers are not sent one
+    SceneImages.options(SzorkConfig(imageProvider = ImageProvider.OpenAIGptImage)).quality shouldBe Some("low")
+    SceneImages
+      .options(SzorkConfig(imageProvider = ImageProvider.OpenAIGptImage, imageQuality = "medium"))
+      .quality shouldBe Some("medium")
+    SceneImages.options(SzorkConfig(imageProvider = ImageProvider.OpenAIDalle3)).quality shouldBe None
     providerConfig(ImageProvider.OpenAIDalle2, "OPENAI_API_KEY" -> " ").isLeft shouldBe true
   }
 

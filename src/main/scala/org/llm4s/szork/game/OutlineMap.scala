@@ -10,10 +10,18 @@ object OutlineMap {
 
   /** `outline` without what cannot be played, and one line for each thing dropped: a location whose id an earlier
     * location has (a designer sometimes writes one twice), an exit to a location that is not in the outline, an exit
-    * back to its own location, and a second exit in a direction the location already has. Nothing else is changed; in
-    * particular a location that cannot be reached is kept (see [[problems]]).
+    * back to its own location, and a second exit in a direction the location already has. One thing is put right rather
+    * than dropped: a way back given as "back" (or another direction relative to the player) becomes the opposite of the
+    * way there ([[alignReturns]]). Nothing else is changed; in particular a location that cannot be reached is kept
+    * (see [[problems]]).
     */
   def repair(outline: AdventureOutline): (AdventureOutline, List[String]) = {
+    val (repaired, dropped, turned) = repaired3(outline)
+    (repaired, dropped ++ turned)
+  }
+
+  // The repaired outline, what was dropped from it, and the ways back that were turned round
+  private def repaired3(outline: AdventureOutline): (AdventureOutline, List[String], List[String]) = {
     val locations = outline.keyLocations.distinctBy(_.id)
     val repeated = outline.keyLocations.diff(locations).map(l => s"${l.id}: a second location with this id")
     val ids = locations.map(_.id).toSet
@@ -25,7 +33,49 @@ object OutlineMap {
       }
       (location.copy(exits = kept.toList), dropped)
     }
-    (outline.copy(keyLocations = repaired.map(_._1)), repeated ++ repaired.flatMap(_._2))
+    val (aligned, turned) = alignReturns(repaired.map(_._1))
+    (outline.copy(keyLocations = aligned), repeated ++ repaired.flatMap(_._2), turned)
+  }
+
+  private val Opposite: Map[String, String] =
+    Seq("north" -> "south", "east" -> "west", "up" -> "down", "in" -> "out").flatMap { case (a, b) =>
+      Seq(a -> b, b -> a)
+    }.toMap
+
+  // Directions that mean the same wherever the player came from
+  private val Fixed: Set[String] = Set("north", "south", "east", "west", "up", "down")
+
+  /** Gives each way back the opposite direction of the way there, where the designer gave it relative to the player.
+    *
+    * A designer sometimes writes "north" from A to B and "back" from B to A. The player, who went north, then reads of
+    * a door "back" (or, as the Dungeon Master guesses, south) that the map does not have. Such an exit - any whose
+    * direction is not a compass point, up or down - takes the opposite of the fixed direction that leads to its
+    * location from its target, if its location has no exit that way already. Exits in fixed directions are never
+    * changed, even when a pair of them does not line up: a passage may bend.
+    */
+  private def alignReturns(locations: List[LocationOutline]): (List[LocationOutline], List[String]) = {
+    // The fixed direction that leads from one location to another
+    val ways = (for {
+      from <- locations
+      exit <- from.exits if Fixed(exit.direction)
+    } yield (from.id, exit.targetId) -> exit.direction).toMap
+    val aligned = locations.map { location =>
+      location.exits.foldLeft((Vector.empty[ExitOutline], Vector.empty[String])) { case ((done, notes), exit) =>
+        val wanted = Option
+          .unless(Fixed(exit.direction))(ways.get((exit.targetId, location.id)).flatMap(Opposite.get))
+          .flatten
+          .filterNot(direction =>
+            location.exits.exists(_.direction == direction) || done.exists(_.direction == direction))
+        wanted match {
+          case Some(direction) =>
+            val note = s"${location.id}: the ${exit.direction} exit to ${exit.targetId} is now $direction, the " +
+              s"opposite of the way from ${exit.targetId}"
+            (done :+ exit.copy(direction = direction), notes :+ note)
+          case None => (done :+ exit, notes)
+        }
+      } match { case (exits, notes) => (location.copy(exits = exits.toList), notes) }
+    }
+    (aligned.map(_._1), aligned.flatMap(_._2))
   }
 
   /** What is wrong with `outline`'s map, one line each: what [[repair]] drops; then, of the exits it keeps, each whose
@@ -34,7 +84,8 @@ object OutlineMap {
     * location (the game then places them nowhere, see [[WorldSnapshot.fromOutline]]).
     */
   def problems(outline: AdventureOutline): List[String] = {
-    val (repaired, dropped) = repair(outline)
+    // A way back that was turned round is put right, not a problem
+    val (repaired, dropped, _) = repaired3(outline)
     val obstacles = for {
       location <- repaired.keyLocations
       exit <- location.exits

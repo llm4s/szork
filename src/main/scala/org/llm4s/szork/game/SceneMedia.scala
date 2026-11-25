@@ -148,8 +148,10 @@ private[game] final class SceneMedia(
 
 object SceneMedia {
 
-  /** What a picture of an outline's location is drawn from: the first-visit description the designer wrote. The art
+  /** What a picture of an outline's location is drawn from: the [[ArtDirector]]'s brief, or for a location that has
+    * none the description the designer wrote for the player (which draws worse: it is not written to be drawn). The art
     * style is added by [[MediaPlanner.styledImagePrompt]].
     */
-  def outlineImage(place: LocationOutline): String = s"${place.name}. ${place.description}"
+  def outlineImage(place: LocationOutline): String =
+    place.image.map(_.trim).filter(_.nonEmpty).getOrElse(s"${place.name}. ${place.description}")
 }

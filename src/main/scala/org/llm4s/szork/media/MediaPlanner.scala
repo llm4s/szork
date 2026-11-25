@@ -5,7 +5,9 @@ object MediaPlanner {
   def styledImagePrompt(artStyle: Option[String], baseDescription: String, artStyleDescription: String): String =
     artStyle match {
       case Some("pixel") =>
-        s"Classic retro pixel art game scene: $baseDescription. Create in detailed 16-bit pixel art style like SNES-era adventure games, with blocky pixels, dithering patterns, limited color palette, tile-based environments, and nostalgic retro gaming aesthetic. Show clear pixelated details and structured grid-based composition."
+        // The style comes first and is said again last: given a long, atmospheric description, an image model
+        // otherwise paints it realistically and ignores the style
+        s"Pixel art. A 16-bit SNES-era adventure game background drawn in large, clearly visible square pixels, with a limited palette of flat colours, hard pixel edges and dithering for shading. No photorealism, no painterly brushwork, no smooth gradients, no soft glow or blur. The scene: $baseDescription Draw the whole scene strictly as chunky retro pixel art on a visible pixel grid, like a screenshot from a 1990s point-and-click adventure."
       case Some("illustration") =>
         s"Professional pencil sketch: $baseDescription. Create as a detailed graphite pencil drawing with realistic shading, cross-hatching techniques, varied line weights, textured surfaces, and fine detail work. Like an artist's sketchbook illustration with visible pencil strokes, subtle gradients, and hand-drawn quality."
       case Some("painting") =>

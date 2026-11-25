@@ -47,7 +47,7 @@
             </v-row>
           </v-card-title>
 
-          <MessageList ref="messageList" :messages="messages" :loading="loading" />
+          <MessageList ref="messageList" :messages="messages" :loading="loading" :opening="openingText" />
 
           <!-- The adventure is over; the player may keep exploring -->
           <v-alert
@@ -214,6 +214,8 @@ export default defineComponent({
     const adventureTheme = ref<ThemeChoice | null>(null);
     const artStyle = ref<StyleChoice | null>(null);
     const adventureOutline = ref<AdventureOutline | null>(null);
+    // Shown while a game is opening and its first scene has not arrived
+    const openingText = ref("Starting your adventure...");
     // The library adventure being started, if the game is of one
     const adventureId = ref<string | undefined>(undefined);
     const adventureTitle = ref<string>("Generative Adventuring");
@@ -309,6 +311,7 @@ export default defineComponent({
 
     const loadGame = async (gameId: string) => {
       log(`Loading game: ${gameId}`);
+      openingText.value = "Loading your adventure...";
       requestedGameId = gameId;
       stopBackgroundMusic();
       // The server answers with gameLoaded, or an error that sets loadFailed
@@ -361,6 +364,7 @@ export default defineComponent({
 
         // Clean up any existing audio when starting a new game
         stopBackgroundMusic();
+        openingText.value = "Starting your adventure...";
 
         // Start game via WebSocket
         await wsStartNewGame(
@@ -489,6 +493,7 @@ export default defineComponent({
       startNewGame,
       loadSelectedGame,
       playAdventure,
+      openingText,
       backToSelection,
       goBackToSelection,
       onAdventureReady,

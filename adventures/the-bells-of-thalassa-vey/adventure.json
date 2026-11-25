@@ -43,7 +43,7 @@
         ],
         "puzzles": null,
         "secrets": "Examining the bracket shows a tiny engraved 'A.V.' under the tally marks. The initials are Ansel Voss's, and the first clue that Odile is not a stranger to this city. The radio plays a faint tune when the lamp is removed. It is the plaza bells' melody, a hint for the Dome.",
-        "image": "Interior of a cramped brass-and-rivet submersible cabin, viewer standing near the hatch. A round porthole in the far wall glows green, showing a stopped clock tower beyond. A radio sits on the bulkhead at right beside a damp open logbook. A dive lamp rests in a bracket by the hatch, scratched with tally marks. Dim green light, warm lamp glints, snug and uneasy mood."
+        "image": "Interior of a small brass-and-rivet diving bell cabin aboard a salvage submersible, viewer standing inside. A round porthole in the curved wall glows green, showing a stopped clock tower beyond. A radio sits on the riveted bulkhead beside a damp open logbook. A dive lamp rests in a bracket by a round hatch, tally marks scratched beside it. Cramped, dim green light, oily and melancholy."
       },
       {
         "id": "plaza_of_bells",
@@ -88,7 +88,7 @@
         ],
         "puzzles": "The stopped clock reads 4:17, the combination for the Arcade safe and the Vault dial (4-1-7). Examining the hands shows they were stopped on purpose: a wedge is jammed in the gears.",
         "secrets": "Searching the fountain basin yields the Pearl Comb. The statue holds an identical comb, and the matching pair is a hint that the one in the basin belongs to someone beloved. Tapping the lamps in descending note order opens a niche in the statue's base containing a message in a bottle: 'If you read this, I got them out. - A.V.' (Easter egg and early hint at the twist.)",
-        "image": "Exterior of a sunken plaza on the seabed, viewer standing on silt-white paving facing the center. A tall stopped clock tower rises behind a dry-boned fountain with a pearly glint in its basin. A bronze statue of a woman holding a comb, covered in anemones, stands at left. Bell-shaped streetlamps ring the square. Murky blue-green water, shafts of pale light, silent and eerie."
+        "image": "Exterior of a sunken city plaza on the seabed, viewer standing on silt-white paving. A stopped clock tower rises at the center behind a dry stone fountain with a glint of pearl in its basin. A bronze statue of a woman holding a comb, covered in anemones, stands left. Bell-shaped streetlamps ring the square. A grand door and striped awning sit at the edges. Murky green light, eerie and still."
       },
       {
         "id": "lamplighters_arcade",
@@ -112,7 +112,7 @@
         ],
         "puzzles": "The Tide-Key can be obtained in two ways. Offer the Pearl Comb to Gideon, who has been hoarding the key. His 'pearly' pile has an empty space the exact shape of a comb. Or open the safe with 4-1-7, which holds a spare Tide-Key. The drawer holds the Winding Crank, which fits the Archive's Sexton Bell.",
         "secrets": "Gideon wears a tiny lamplighter's cap, a quirk revealed when you examine him closely. A page in the ledger records that 'the Mayor paid all debts in advance, every one', a clue that the city was evacuated deliberately.",
-        "image": "Interior of a crooked row of leaning shopfronts under a rotting awning, viewer standing at the entrance. A shop counter at center holds a large pale octopus among a nest of spoons, buttons and bottle caps sorted by color. A heavy iron safe with an algae-furred dial stands behind it, a drawer ajar beside it. Windows show drifting paper. Dim greenish light, quirky, quiet mood."
+        "image": "Interior of a crooked drowned shop arcade on the seabed, viewer standing inside before a wooden counter. A heavy iron safe with an algae-furred dial stands behind it, a drawer ajar beside it. A large pale octopus sits on the counter among a nest of spoons, buttons and bottle caps sorted by color. A rotting awning and windows of drifting paper frame the scene. Dim, greenish, quietly odd."
       },
       {
         "id": "drowned_archive",
@@ -143,7 +143,7 @@
         ],
         "puzzles": "Winding Sexton Bell with the Winding Crank wakes him. He lends you the Drain Wheel, overdue to the Pumphouse by forty years, if you promise to return it. The card catalog's locked drawer holds the 'Pumphouse Maintenance Card' (the lever order: SEAL, then SIPHON, then SLUICE), opened with the Tide-Key.",
         "secrets": "Sexton's overdue notice lists 'Borrower: A. Voss, Mayor' and says the book was returned in person with a small girl on his shoulders. The card catalog's last card is stamped '4:17' and reads 'Evacuation Roll: 3,112 names, see the Dome.'",
-        "image": "Interior of a vaulted, air-filled library hall, viewer standing inside the entrance. A rusted clockwork figure in a librarian's smock sits slumped at a lending desk at center. A card catalog stands against the left wall. Tall shelves of salt-crusted books rise to the dome, one book on a shelf strangely bright. A brass ladder-stair hangs high on the wall. Dim amber light, hushed, dusty mood."
+        "image": "Interior of an air-filled sunken library hall under a vaulted dome, viewer standing inside the bronze door. Salt-crusted bookshelves rise to the ceiling, one book glowing bright on the third shelf. A rusted clockwork figure in a librarian's smock sits slumped at a lending desk. A card catalog stands against the wall, and a brass ladder-stair hangs high above reach. Dim amber light, hushed and dusty."
       },
       {
         "id": "pumphouse",
@@ -174,7 +174,7 @@
         ],
         "puzzles": "Fetch quest: return the Drain Wheel to the spindle (due forty years ago). The levers must be pulled in order SEAL, SIPHON, SLUICE. The plaque and the Archive's maintenance card agree, and Odile can read the order off the plaque if you describe it. A wrong order just gurgles and resets, so it is safe to try.",
         "secrets": "Behind the pipe sits a battered brass lantern engraved 'GUE: Great Underground Explorers, Est. 1977'. It is an Easter egg: when lit, it gives off a faint grue-hating glow. Examining the gauge shows it has been stuck at 4:17 PM pressure.",
-        "image": "Interior of a flooded engine room, viewer standing on the slick floor. Huge pipes as thick as whales coil across rust-and-algae-covered walls. Three brass levers stand in a row beside a bare spindle at center right, with a worn plaque and a pressure gauge, needle in red, above them. A dark shaft yawns in the floor. A battered brass lantern is wedged behind a pipe. Murky orange-green gloom, oppressive mood."
+        "image": "Interior of a flooded industrial pumphouse engine room beneath a drowned city, viewer standing on a rusted iron floor. Whale-thick pipes coil across algae-slick walls. Three brass levers stand in a row beside a bare spindle with no handle, a worn plaque and a pressure gauge with its needle in the red above them. A dark shaft yawns in the floor; a battered brass lantern is wedged behind a pipe. Murky, rust-orange gloom."
       },
       {
         "id": "mayors_vault",
@@ -198,7 +198,7 @@
         ],
         "puzzles": "The strongbox's dial opens with 4-1-7 (the clock, the ledger and the Arcade safe all agree). Sexton Bell also knows the code if asked after being wound, and the letter on the desk contains the phrase 'the hour I did it'.",
         "secrets": "The comb the girl wears in the portrait matches the Pearl Comb. If you have it, examining the portrait causes a pearl-inlaid panel to click; behind it is Voss's last letter to his daughter. The letter reveals the twist.",
-        "image": "Interior of a round copper-lined vault, viewer standing just inside. A broad desk stands at center with a locked strongbox on top, its dial set into the lid. A portrait of a stern man with his hand on a small girl's shoulder hangs on the far wall. Old seabed maps cover the curved walls. A dark shaft opens in the ceiling. Warm copper glow, still, secretive mood."
+        "image": "Interior of a round underground vault in a drowned city, viewer standing inside near the wall. Walls are lined with copper plates and old seabed maps, one with a dotted line. A broad wooden desk at the center holds a locked strongbox with a dial lid. On the far wall hangs a portrait of a stern man with his hand on a small girl wearing a pearl comb. Warm copper glow, still and secretive."
       },
       {
         "id": "observatory_dome",
@@ -222,7 +222,7 @@
         ],
         "puzzles": "Optional: turning off the dive lamp and pulling the bell lever makes the dome's bioluminescence answer. Tapping the bell notes from the plaza lamps in the right order (the tune from the radio) triggers the wow moment.",
         "secrets": "The plaque's blank last line is the name of the final evacuee, Ansel Voss, who stayed behind and is not on the roll. The orrery's innermost ring is stamped '4:17'. This is the third repetition of the clock code.",
-        "image": "Interior of an observatory beneath a great glass dome, viewer standing at the floor's edge. A brass orrery of tides stands at center with a bell-shaped control lever beside it. A wall plaque densely filled with rows of names hangs at left, its last line blank. A narrow stair descends at right. Black sea beyond the glass, flecked with drifting stars of light. Cool dark blue, solemn, awe-struck mood."
+        "image": "Interior of an observatory beneath a great glass dome on the seabed, viewer standing on the floor looking up. Beyond the dome the sea is black, flecked with drifting lights. A brass orrery of tides stands at the center with a bell-shaped control lever beside it. A wall plaque of many engraved names hangs to one side, a narrow stair descending nearby. Cold blue starlit dark, solemn and awed."
       }
     ],
     "importantItems": [

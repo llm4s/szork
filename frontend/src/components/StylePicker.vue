@@ -1,11 +1,16 @@
 <template>
-  <div class="style-grid">
+  <div class="style-grid" role="radiogroup" aria-label="Art style">
     <div
       v-for="style in styles"
       :key="style.id"
       class="style-card"
       :class="{ selected: selected === style.id }"
+      role="radio"
+      :aria-checked="selected === style.id"
+      tabindex="0"
       @click="emit('select', style.id)"
+      @keydown.enter.prevent="emit('select', style.id)"
+      @keydown.space.prevent="emit('select', style.id)"
     >
       <div class="style-preview">
         <img
@@ -58,6 +63,11 @@ const emit = defineEmits<{ select: [styleId: string] }>();
   border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-4px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.style-card:focus-visible {
+  outline: 2px solid #90caf9;
+  outline-offset: 2px;
 }
 
 .style-card.selected {

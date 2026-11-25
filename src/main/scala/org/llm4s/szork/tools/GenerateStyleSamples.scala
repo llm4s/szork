@@ -1,121 +1,89 @@
 package org.llm4s.szork.tools
 
 import org.llm4s.szork.api.SzorkConfig
-import org.llm4s.szork.media.SceneImages
+import org.llm4s.szork.game.PromptBuilder
+import org.llm4s.szork.media.{MediaPlanner, SceneImages}
 import java.nio.file.{Files, Paths}
 
-/** Generates the sample image for each art style shown on the style selection page.
+/** Generates the sample picture of each art style shown on the style selection page.
   *
-  * Run from the repository root: `sbt "runMain org.llm4s.szork.tools.GenerateStyleSamples"`
+  * The prompt is the one the game builds for a scene in that style ([[MediaPlanner.styledImagePrompt]]), so a sample
+  * shows what the game draws. Run from the repository root:
+  *
+  * {{{
+  * sbt "runMain org.llm4s.szork.tools.GenerateStyleSamples"            # every style
+  * sbt "runMain org.llm4s.szork.tools.GenerateStyleSamples painting"   # one style
+  * }}}
+  *
+  * Pictures are written to `frontend/public/style-samples/<style>-sample.png`; the style picker reads those paths from
+  * `frontend/src/data/adventureThemes.ts`. The exit code is non-zero when no picture could be made.
   */
 object GenerateStyleSamples {
 
-  case class StyleSample(
-    id: String,
-    name: String,
-    stylePrompt: String,
-    sceneDescription: String
-  )
+  /** The art styles that have a sample (the ids of the setup screen's styles). */
+  val styleIds: List[String] = MediaPlanner.StyleIds
 
-  val styles = List(
-    StyleSample(
-      "pixel",
-      "Pixel Art",
-      "pixel art style, 16-bit retro game aesthetic, low resolution pixelated graphics, limited color palette, nostalgic video game art",
-      "A brave adventurer standing at the entrance of a mysterious dungeon, torches on stone walls, treasure chest visible in the shadows"
-    ),
-    StyleSample(
-      "illustration",
-      "Pencil Art",
-      "professional pencil drawing, detailed graphite art, realistic shading and texture, artist sketchbook quality, fine pencil strokes, subtle gradients, architectural precision",
-      "A brave adventurer standing at the entrance of a mysterious dungeon, torches on stone walls, treasure chest visible in the shadows"
-    ),
-    StyleSample(
-      "painting",
-      "Painting",
-      "fully rendered oil painting style, realistic lighting and textures, atmospheric depth, rich colors, fantasy art masterpiece, concept art quality",
-      "A brave adventurer standing at the entrance of a mysterious dungeon, torches on stone walls, treasure chest visible in the shadows"
-    ),
-    StyleSample(
-      "comic",
-      "Comic/Graphic Novel",
-      "comic book art style, bold black outlines, cel-shaded coloring, dynamic composition, graphic novel aesthetic, dramatic perspectives",
-      "A brave adventurer standing at the entrance of a mysterious dungeon, torches on stone walls, treasure chest visible in the shadows"
-    )
-  )
+  /** The scene every sample shows. */
+  val SampleScene =
+    "A brave adventurer standing at the entrance of a mysterious dungeon, torches on stone walls, treasure chest visible in the shadows."
+
+  /** The prompt for the sample of `styleId`: what the game would send for [[SampleScene]] in that style. */
+  def promptFor(styleId: String): String =
+    MediaPlanner.styledImagePrompt(Some(styleId), SampleScene, PromptBuilder.artStyleDescription(Some(styleId)))
+
+  /** The styles to make: all of them with no argument, otherwise the one named. */
+  def select(args: List[String]): Either[String, List[String]] = args match {
+    case Nil => Right(styleIds)
+    case style :: Nil if styleIds.contains(style) => Right(List(style))
+    case other => Left(s"Unknown art style '${other.mkString(" ")}'; the styles are ${styleIds.mkString(", ")}")
+  }
+
+  /** 1 when pictures were wanted and none could be made, otherwise 0. */
+  def exitCode(wanted: Int, made: Int): Int = if (wanted > 0 && made == 0) 1 else 0
 
   def main(args: Array[String]): Unit = {
-    println("Starting style sample generation...")
-
-    val outputDir = Paths.get("frontend/public/style-samples")
-    if (!Files.exists(outputDir)) {
-      Files.createDirectories(outputDir)
-      println(s"Created directory: $outputDir")
+    val styles = select(args.toList) match {
+      case Right(selected) => selected
+      case Left(problem) =>
+        println(s"ERROR: $problem")
+        sys.exit(2)
     }
 
+    val config = SzorkConfig.instance
     // The llm4s image client for the configured provider (SZORK_IMAGE_PROVIDER and its credentials)
-    val imageClient =
-      SceneImages.config(SzorkConfig.instance).flatMap(SceneImages.llm4sClient(_, tracing = None)) match {
-        case Right(client) => client
-        case Left(reason) =>
-          println(s"ERROR: scene images unavailable: $reason")
-          sys.exit(1)
-      }
+    val imageClient = SceneImages.config(config).flatMap(SceneImages.llm4sClient(_, tracing = None)) match {
+      case Right(client) => client
+      case Left(reason) =>
+        println(s"ERROR: scene images unavailable: $reason")
+        sys.exit(1)
+    }
+    val options = SceneImages.options(config)
+
+    val outputDir = Paths.get("frontend/public/style-samples")
+    Files.createDirectories(outputDir)
 
     // One request at a time, with a pause between them, to stay within provider rate limits
-    val results = styles.zipWithIndex.flatMap { case (style, index) =>
+    val made = styles.zipWithIndex.flatMap { case (style, index) =>
       if (index > 0) {
-        println("  Waiting 3 seconds before next request (rate limit)...")
+        println("  Waiting 3 seconds before the next request (rate limit)...")
         Thread.sleep(3000)
       }
-      println(s"\nGenerating ${style.name} sample...")
-      val fullPrompt = s"${style.sceneDescription}, rendered in ${style.stylePrompt}"
-      println(s"  Prompt: ${fullPrompt.take(100)}...")
-
-      imageClient.generateImage(fullPrompt, SceneImages.Options) match {
+      println(s"Generating the $style sample...")
+      imageClient.generateImage(promptFor(style), options) match {
         case Right(image) =>
-          val imageData = image.asBytes
-          val outputPath = outputDir.resolve(s"${style.id}-sample.png")
-          Files.write(outputPath, imageData)
-          println(s"  ✓ Saved ${style.name} sample to: $outputPath (${imageData.length / 1024} KB)")
-          Some((style.id, outputPath.toString))
+          val bytes = image.asBytes
+          val path = outputDir.resolve(s"$style-sample.png")
+          Files.write(path, bytes)
+          println(s"  saved $path (${bytes.length / 1024} KB)")
+          Some(style)
         case Left(error) =>
-          println(s"  ✗ Failed to generate ${style.name} sample: ${error.message}")
+          println(s"  FAILED $style: ${error.message}")
           None
       }
     }
 
-    println("\n" + "=" * 60)
-    println("GENERATION COMPLETE!")
-    println("=" * 60)
-
-    if (results.nonEmpty) {
-      println(s"\nSuccessfully generated ${results.length} style samples:")
-      results.foreach { case (id, path) =>
-        println(s"  - $id: $path")
-      }
-
-      println("\nTo use these images in the frontend:")
-      println(s"1. The images have been saved to: $outputDir")
-      println("2. Update AdventureSetup.vue to reference these images")
-      println("3. Images can be accessed as: /style-samples/[style-id]-sample.png")
-
-      // Generate a JSON manifest for the frontend
-      val manifest = ujson.Obj(
-        "generated" -> java.time.Instant.now().toString,
-        "styles" -> results.map { case (id, _) =>
-          ujson.Obj(
-            "id" -> id,
-            "image" -> s"/style-samples/$id-sample.png"
-          )
-        }
-      )
-
-      val manifestPath = outputDir.resolve("manifest.json")
-      Files.write(manifestPath, ujson.write(manifest, indent = 2).getBytes)
-      println(s"\nGenerated manifest at: $manifestPath")
-    } else {
-      println("\nNo images were generated. Please check the errors above.")
-    }
+    println(
+      s"\n${made.size} of ${styles.size} samples made in $outputDir (the style picker's paths are in frontend/src/data/adventureThemes.ts)")
+    sys.exit(exitCode(styles.size, made.size))
   }
 }

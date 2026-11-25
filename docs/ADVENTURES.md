@@ -51,7 +51,14 @@ money is set by `SZORK_IMAGE_QUALITY` (default `low`), not by its size.
 ## Music: once per mood
 
 There are sixteen moods, and a track is a short loop, so music is one track per mood, kept in `_music/` and shared by
-every location of every game. A track is made the first time any game needs its mood.
+every location of every game. A track is made the first time any game needs its mood; games that need a track while it is
+being made wait for that one result, rather than each paying for their own. (An engine built with no library, as tests
+and tools do, makes a mood's track each time and sends it inline.)
+
+A track is made by Replicate's MusicGen: a prediction is created, polled until it succeeds (`SZORK_MUSIC_POLL_MAX_ATTEMPTS`
+polls `SZORK_MUSIC_POLL_INTERVAL_MS` apart, as a deadline), and its audio downloaded. A prediction that is given up on
+(the wait ran out, polling kept failing, the thread was interrupted) is cancelled, so it does not keep running and be
+billed.
 
 ## Baking
 
@@ -64,12 +71,27 @@ sbt "runMain org.llm4s.szork.adventures.BakeAdventure --list"
 sbt "runMain org.llm4s.szork.adventures.BakeAdventure the-drowned-archive"     # its pictures, and the mood tracks
 sbt "runMain org.llm4s.szork.adventures.BakeAdventure --all --style pixel"     # every adventure, in another style
 sbt "runMain org.llm4s.szork.adventures.BakeAdventure --music"                 # only the mood tracks
-sbt 'runMain org.llm4s.szork.adventures.BakeAdventure --new --theme "a haunted lighthouse" --style painting'
+sbt 'runMain org.llm4s.szork.adventures.BakeAdventure --new --theme "a haunted lighthouse" --theme-name "Haunted Lighthouse" --style painting'
 ```
 
-`--new` designs an adventure with the configured model, keeps it and bakes it. `--art` has the art director write an
-adventure's picture briefs again (delete its pictures to have them redrawn from the new briefs). Pictures need `SZORK_IMAGE_PROVIDER` and
-its key; music needs `REPLICATE_API_KEY`. What already exists is kept: delete a file to have it made again.
+Name what to bake: one or more adventure ids, `--all`, `--new` or `--music`. With none of these, and no `--list`, the
+command prints its usage and bakes nothing.
+
+| Option | Effect |
+| --- | --- |
+| `<adventure-id>...` | bake these adventures' pictures, then the mood tracks |
+| `--all` | bake every adventure in the library |
+| `--new` | design an adventure with the configured model, keep it and bake it; `--theme <theme>` says what it is about, `--theme-name <name>` names the theme (both only go with `--new`) |
+| `--music` | bake only the mood tracks |
+| `--list` | list the library, and exit |
+| `--style <id>` | the art style of the pictures: `pixel`, `illustration`, `painting`, `comic` or `fantasy`; anything else is refused. Without it, each adventure's own style |
+| `--art` | have the art director write an adventure's picture briefs again (delete its pictures to have them redrawn from the new briefs) |
+| `--no-images` | bake no pictures |
+| `--no-music` | bake no mood tracks |
+
+Pictures need `SZORK_IMAGE_PROVIDER` and its key; music needs `REPLICATE_API_KEY`. What already exists is kept: delete a
+file to have it made again. The command exits non-zero if anything it was asked for could not be made: a design that
+failed, an id that is not in the library, a picture or track that failed.
 
 ## How the browser gets it
 

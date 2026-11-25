@@ -48,3 +48,10 @@ around them:
 - An outline cut off at `max_tokens` (all of it spent on thinking) is retried and reported as `OutputInvalid` ("the
   answer is not JSON", then "expected object, got array"), not as `Truncated`, and nothing says the output limit was the
   cause ([llm4s#2933](https://github.com/llm4s/llm4s/issues/2933), open).
+- OpenAI's current models (`gpt-5.6-*`, `gpt-6-*`, `gpt-6.1-*`) call function tools on Chat Completions only with
+  `reasoning_effort: "none"`; reasoning with tools needs the Responses API, which llm4s-openai does not use. llm4s
+  0.7.0 handles this for `gpt-6-luna` (it sets the effort to none and logs the adjustment), but refuses tools on
+  `gpt-6.1-terra` ("calls tools only through OpenAI's Responses API", though it calls them on Chat Completions with
+  the effort at none), and sends the `gpt-5.6` models the configured effort, which OpenAI rejects - while its own
+  error message recommends `gpt-5.6-terra` ([llm4s#2940](https://github.com/llm4s/llm4s/issues/2940), open;
+  the Responses API client is [llm4s#2900](https://github.com/llm4s/llm4s/issues/2900)).

@@ -11,8 +11,7 @@ case class ImageEntry(
   description: String,
   path: String,
   generatedAt: Long)
-case class MusicEntry(key: String, mood: String, provider: String, description: String, path: String, generatedAt: Long)
-case class LocationEntries(images: List[ImageEntry], music: List[MusicEntry])
+case class LocationEntries(images: List[ImageEntry])
 case class MediaIndex(locations: Map[String, LocationEntries])
 
 object MediaCacheCodec {
@@ -29,26 +28,10 @@ object MediaCacheCodec {
               "path" -> e.path,
               "generatedAt" -> e.generatedAt.toDouble
             )
-          },
-          "music" -> entries.music.map { e =>
-            Obj(
-              "key" -> e.key,
-              "mood" -> e.mood,
-              "provider" -> e.provider,
-              "description" -> e.description,
-              "path" -> e.path,
-              "generatedAt" -> e.generatedAt.toDouble
-            )
           }
         )
       })
     )
-
-  private def readTs(v: Value): Long = v match {
-    case Str(s) => s.toLongOption.getOrElse(0L)
-    case Num(n) => n.toLong
-    case _ => 0L
-  }
 
   private def fromJson(json: Value): MediaIndex = {
     val locs = json.obj.get("locations").map(_.obj).getOrElse(Map.empty[String, Value])
@@ -60,20 +43,10 @@ object MediaCacheCodec {
           provider = j("provider").str,
           description = j("description").str,
           path = j("path").str,
-          generatedAt = readTs(j("generatedAt"))
+          generatedAt = j("generatedAt").num.toLong
         )
       }
-      val mus = v.obj.get("music").map(_.arr.toList).getOrElse(Nil).map { j =>
-        MusicEntry(
-          key = j("key").str,
-          mood = j("mood").str,
-          provider = j("provider").str,
-          description = j("description").str,
-          path = j("path").str,
-          generatedAt = readTs(j("generatedAt"))
-        )
-      }
-      loc -> LocationEntries(imgs, mus)
+      loc -> LocationEntries(imgs)
     }.toMap
     MediaIndex(parsed)
   }

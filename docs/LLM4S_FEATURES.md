@@ -43,8 +43,8 @@ around them:
 | `OutlineMap.repair` fixes a generated outline after the fact | 0.7.0 has `withOutputCheck`, which would send the problems back to the model ([llm4s#2920](https://github.com/llm4s/llm4s/issues/2920)). Szork keeps the repair: it is free and certain, where a retry is another minute-long model call that may fail the generation | by choice |
 | `ExitGuardMiddleware` re-asks the model itself | `withOutputCheck` ends the turn with an error when the second answer is also wrong; the guard instead replaces it with "the way is shut", so the player always gets a turn | by choice |
 
-## Found on 0.7.0, not yet raised
+## Found on 0.7.0
 
-- An outline cut off at `max_tokens` (all of it spent on thinking) is reported as `OutputInvalid` with "the answer is
-  not JSON", then, after the correction, "expected object, got array" (a fragment of the cut-off answer). The run does
-  not end `Truncated`, and nothing says the output limit was the cause.
+- An outline cut off at `max_tokens` (all of it spent on thinking) is retried and reported as `OutputInvalid` ("the
+  answer is not JSON", then "expected object, got array"), not as `Truncated`, and nothing says the output limit was the
+  cause ([llm4s#2933](https://github.com/llm4s/llm4s/issues/2933), open).

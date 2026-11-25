@@ -281,16 +281,22 @@ object AdventureGenerator {
     }
   }
 
-  /** The reason read from an error's text, for the errors llm4s gives no type of their own. */
+  /** The reason read from an error's text, for the errors llm4s gives no type of their own. A word or status code
+    * counts only as a whole word: "14030 tokens" is not a 403.
+    */
   private def fromText(message: String): String = {
     val text = message.toLowerCase
-    def says(words: String*) = words.exists(text.contains)
+    def says(words: String*) = words.exists(word => wholeWord(word).findFirstIn(text).isDefined)
     if (says("401", "403", "authentication", "api key", "api-key", "unauthorized")) FailureReasons.Key
     else if (says("429", "rate limit", "overloaded", "529")) FailureReasons.RateLimit
     else if (says("invalid request", "400", "not_found_error", "404")) FailureReasons.Rejected
     else if (says("timed out", "timeout", "connection", "unreachable")) FailureReasons.Unreachable
     else "The adventure could not be generated. See the server log for details."
   }
+
+  // `word` where it is a whole word, not part of a longer one (or number)
+  private def wholeWord(word: String) =
+    s"(?<![\\p{Alnum}_])${java.util.regex.Pattern.quote(word)}(?![\\p{Alnum}_])".r
 
   private object FailureReasons {
     val Key = "The AI service rejected the server's API key. Check the key in the server's .env file."

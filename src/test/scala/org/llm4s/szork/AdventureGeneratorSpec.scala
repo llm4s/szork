@@ -94,6 +94,11 @@ class AdventureGeneratorSpec extends AnyFunSuite with Matchers {
       "API key")
     AdventureGenerator.failureReason(SimpleError("429 rate limit exceeded")) should include("rate-limiting")
     AdventureGenerator.failureReason(SimpleError("something odd")) should include("See the server log")
+    // a status code counts only as a whole word
+    AdventureGenerator.failureReason(SimpleError("Node 'd/model' failed: the prompt is 14030 tokens")) should include(
+      "See the server log")
+    AdventureGenerator.failureReason(SimpleError("answer 4290 was odd; code 4001")) should include("See the server log")
+    AdventureGenerator.failureReason(SimpleError("HTTP 403: forbidden")) should include("API key")
 
     val llm = ScriptedLLMClient.always(Reply.text("not json"))
     val failed = generate(llm).left.toOption.get

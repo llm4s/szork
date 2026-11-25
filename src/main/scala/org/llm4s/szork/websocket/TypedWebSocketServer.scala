@@ -312,7 +312,8 @@ class TypedWebSocketServer(
               if (features.autoSave) saveInitialStep(session, text, outline)
 
             case Left(error) =>
-              sendTo(session, ErrorMessage("Failed to start game", Some(error.message)))
+              logger.warn(s"[${session.id}] Failed to start game: ${error.message}")
+              sendTo(session, ErrorMessage("Failed to start game", Some(error.userMessage)))
               sessionConnections.remove(session.id).foreach(connectionSessions.remove)
               sessionManager.removeSession(session.id)
           }
@@ -338,7 +339,8 @@ class TypedWebSocketServer(
   private def loadSavedGame(conn: WebSocket, request: LoadGameRequest): Unit =
     GamePersistence.loadGame(request.gameId) match {
       case Left(error) =>
-        send(conn, ErrorMessage("Failed to load game", Some(error.message)))
+        logger.warn(s"Failed to load game ${request.gameId}: ${error.message}")
+        send(conn, ErrorMessage("Failed to load game", Some(error.userMessage)))
 
       case Right(gameState) =>
         val sessionId = IdGenerator.sessionId()
@@ -458,7 +460,8 @@ class TypedWebSocketServer(
         sendEndingReached(session, endedBefore, turn.messageIndex)
         afterTurn(session, turn, command, response, System.currentTimeMillis() - start)
       case Left(error) =>
-        sendTo(session, ErrorMessage("Command failed", Some(error.message)))
+        logger.warn(s"[${session.id}] Command failed: ${error.message}")
+        sendTo(session, ErrorMessage("Command failed", Some(error.userMessage)))
     }
   }
 
@@ -493,7 +496,8 @@ class TypedWebSocketServer(
         sendEndingReached(session, endedBefore, turn.messageIndex)
         afterTurn(session, turn, request.command, response, duration)
       case Left(error) =>
-        sendTo(session, ErrorMessage("Streaming failed", Some(error.message)))
+        logger.warn(s"[${session.id}] Streaming command failed: ${error.message}")
+        sendTo(session, ErrorMessage("Streaming failed", Some(error.userMessage)))
     }
   }
 
@@ -503,8 +507,12 @@ class TypedWebSocketServer(
         sendTo(session, ErrorMessage("Speech-to-Text is not available"))
       case Some(stt) =>
         Try(java.util.Base64.getDecoder.decode(request.audio)).toEither.left
-          .map(_ => "audio is not valid base64")
-          .flatMap(bytes => stt.transcribeBytes(bytes).left.map(_.message)) match {
+          .map(_ => "The recording is not valid Base64.")
+          .flatMap(bytes =>
+            stt.transcribeBytes(bytes).left.map { error =>
+              logger.warn(s"[${session.id}] Transcription failed: ${error.message}")
+              error.userMessage
+            }) match {
           case Right(transcription) =>
             sendTo(session, TranscriptionMessage(transcription))
             playCommand(session, transcription, imageWanted = request.imageGeneration.getOrElse(true))

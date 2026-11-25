@@ -244,6 +244,20 @@ class GameSessionsSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll 
     } finally musicGate.countDown()
   }
 
+  test("a saved game that cannot be read is reported without the file's path") {
+    val c = connect()
+    val (_, gameId) = startGame(c)
+    Await.result(server.endGame(gameId)(()), 10.seconds)
+    Files.writeString(saveRoot.resolve(gameId).resolve("step-0001").resolve("state.json"), "{ not json")
+
+    loadGame(c, gameId)
+    val error = c.await("error")("data")
+    error("error").str shouldBe "Failed to load game"
+    error("details").str shouldBe "The saved game could not be read; the server log has the details."
+    ujson.write(error) should not include saveRoot.toString
+    c.close()
+  }
+
   test("a failed request reports a generic error without the exception's details") {
     val c = connect()
     c.sendJson("type" -> "newGame", "theme" -> "explode")

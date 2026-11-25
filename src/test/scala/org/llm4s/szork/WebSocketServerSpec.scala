@@ -46,6 +46,15 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
         DmAnswers.simple("Flames leap up.", "cavern_entrance", "use", imageUpdate = Some("The cave mouth, firelit")))
   }
 
+  // "anger the provider" fails as a provider does when it rejects the key, with its own text in the error
+  private val rejectsTheKey: PartialFunction[Conversation, Reply] = {
+    case ScriptedDm.Command("anger the provider") =>
+      Reply.failure(
+        org.llm4s.error.AuthenticationError(
+          org.llm4s.types.ProviderModelTypes.ProviderId("anthropic"),
+          "invalid x-api-key sk-ant-SECRET in /Users/someone/szork/.env"))
+  }
+
   // The adventure library, holding the cavern as a ready-made adventure
   private val library = new AdventureLibrary(Files.createTempDirectory("szork-ws-adventures"))
   private val cavernAdventure = library
@@ -89,7 +98,7 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
   private val engineFactory: EngineFactory = (sessionId, theme, artStyle, outline, features) =>
     Right(
       GameEngine.create(
-        ScriptedDm(winsTheGame.orElse(relightsTheBrazier)),
+        ScriptedDm(winsTheGame.orElse(relightsTheBrazier).orElse(rejectsTheKey)),
         sessionId,
         theme,
         artStyle,
@@ -362,6 +371,21 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     val failed = c.await("mediaFailed")("data")
     failed("messageIndex").num shouldBe started("messageIndex").num
     failed("kind").str shouldBe "image"
+    c.close()
+  }
+
+  test("a failed turn tells the player what to do, never the provider's own text") {
+    val c = connect()
+    startGame(c)
+    c.sendJson("type" -> "streamCommand", "command" -> "anger the provider")
+    val error = c.await("error")("data")
+    error("error").str shouldBe "Streaming failed"
+    error("details").str should startWith("The AI service rejected the server's API key")
+    ujson.write(error) should not include "SECRET"
+    ujson.write(error) should not include "/Users/"
+
+    c.sendJson("type" -> "command", "command" -> "anger the provider")
+    c.await("error")("data")("details").str should startWith("The AI service rejected the server's API key")
     c.close()
   }
 

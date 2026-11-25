@@ -58,6 +58,10 @@ object ArtDirector {
       |artist who will paint the single picture the player sees on arriving there.
       |
       |A brief describes one picture, from one place, of what is in front of the viewer:
+      |- The artist sees one brief at a time and nothing else of the adventure, so every brief names its world in its
+      |  opening words - "Interior of a hydroponics deck aboard a derelict space station", not "Interior of a garden
+      |  corridor" - and gives what things are made of where that says which world it is: steel deck plates, riveted
+      |  bulkheads, moulded panels. A brief that could be drawn as a castle, a ship or a space station is not finished.
       |- Say first whether it is an interior or an exterior, and where the viewer stands. Decide from the whole
       |  description: a room with a table, a ledger and a mirror is an interior even if the description opens with
       |  the rain on its roof. Weather outside an interior is seen through a window or a doorway, or left out.

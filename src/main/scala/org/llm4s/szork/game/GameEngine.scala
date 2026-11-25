@@ -84,7 +84,6 @@ class GameEngine(
   private implicit val logger: org.slf4j.Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   private val themeDescription = PromptBuilder.themeDescription(theme)
-  private val artStyleDescription = PromptBuilder.artStyleDescription(artStyle)
   // The adventure outline and the system prompt built from it. A restored game takes its outline from the save.
   // (volatile: a subagent's brief reads it on the runtime's thread)
   @volatile private var outline: Option[AdventureOutline] = adventureOutline
@@ -95,7 +94,6 @@ class GameEngine(
   private val media = new SceneMedia(
     sessionId,
     artStyle,
-    artStyleDescription,
     ttsClient,
     narrationVoice,
     imageClient,
@@ -378,7 +376,7 @@ class GameEngine(
   /** Background music for `scene` (the track for its mood) and its mood. It can run while the next turn is in progress.
     */
   def generateBackgroundMusic(scene: GameScene, gameId: Option[String]): Option[(MediaRef, String)] =
-    media.music(scene, gameId)
+    media.music(scene)
 
   /** Whether [[generateBackgroundMusic]] can be expected to produce a track. */
   def canPlayMusic(scene: GameScene): Boolean = media.canPlay(scene)

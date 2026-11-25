@@ -1,239 +1,262 @@
 package org.llm4s.szork.media
+
+import org.llm4s.config.{ConfigReader, EnvLoader}
+import org.llm4s.security.Secret
+import org.llm4s.szork.api.{MediaNetworkConfig, MusicPollConfig}
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
-
-import org.slf4j.{Logger, LoggerFactory}
-import requests._
-import org.llm4s.config.{ConfigReader, EnvLoader}
-import org.llm4s.szork.api.MediaNetworkConfig
-import org.llm4s.szork.api.MusicPollConfig
 import org.llm4s.szork.game.DungeonMasterOutput
-import java.util.Base64
-import ujson._
-import java.net.URI
-import scala.util.{Failure, Success, Try, Using}
+import org.slf4j.{Logger, LoggerFactory}
 
-/** Background music from Replicate's MusicGen, cached per game and location.
+import java.util.Base64
+import scala.annotation.tailrec
+import scala.util.control.NonFatal
+import scala.util.{Failure, Success, Try}
+
+/** Background music from Replicate's MusicGen: one short loop per mood.
+  *
+  * A track is made by creating a prediction, polling it until it succeeds, and downloading the audio. Whenever the
+  * prediction does not succeed (the wait times out, polling keeps failing, the thread is interrupted) it is cancelled,
+  * so it does not keep running and being billed.
   *
   * @param replicateApiKey
   *   the Replicate key (None: music is unavailable)
   * @param net
   *   timeouts for the Replicate calls
   * @param poll
-  *   how long to wait for a prediction
+  *   how long to wait for a prediction: `maxAttempts` intervals of `pollIntervalMs`, as a deadline (a poll that is
+  *   itself slow does not stretch it)
+  * @param baseUrl
+  *   Replicate's API (a local server in tests)
   */
-class MusicGeneration(replicateApiKey: Option[String], net: MediaNetworkConfig, poll: MusicPollConfig) {
-  import MusicGeneration.MusicMood
+class MusicGeneration(
+  replicateApiKey: Option[Secret],
+  net: MediaNetworkConfig,
+  poll: MusicPollConfig,
+  baseUrl: String = MusicGeneration.ReplicateApi) {
+  import MusicGeneration._
 
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   def isAvailable: Boolean = replicateApiKey.isDefined
 
-  def generateMusicWithCache(
-    mood: MusicMood,
-    context: String = "",
-    gameId: Option[String] = None,
-    locationId: Option[String] = None): SzorkResult[String] = {
-    if (!isAvailable) {
-      logger.warn("Music generation disabled - REPLICATE_API_KEY not configured")
-      return Left(ConfigurationError("Music generation not available - REPLICATE_API_KEY not configured"))
-    }
-
-    val prompt = mood.generatePrompt(context)
-
-    // Check cache first if gameId and locationId are provided
-    (gameId, locationId) match {
-      case (Some(gId), Some(lId)) =>
-        MediaCache.getCachedMusic(gId, lId, prompt, mood.name) match {
-          case Some(cachedMusic) =>
-            logger.info(s"Using cached music for game=$gId, location=$lId, mood=${mood.name} (0ms - from cache)")
-            return Right(cachedMusic)
-          case None =>
-            logger.info(s"No cached music found for game=$gId, location=$lId, mood=${mood.name} - generating new music")
-        }
-      case _ =>
-        logger.info(s"No cache info provided - generating music directly")
-    }
-
-    val musicStartTime = System.currentTimeMillis()
-    logger.info(s"Starting music generation for mood: ${mood.name}, prompt: ${prompt.take(100)}...")
-
-    try {
-      // Create prediction
-      val createResponse = post(
-        "https://api.replicate.com/v1/predictions",
-        headers = Map(
-          "Authorization" -> s"Bearer ${replicateApiKey.get}",
-          "Content-Type" -> "application/json"
-        ),
-        data = Obj(
-          "version" -> "671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb",
-          "input" -> Obj(
-            "prompt" -> prompt,
-            "duration" -> mood.duration,
-            // The default is WAV, ten times the size; tracks are kept and served as MP3
-            "output_format" -> "mp3",
-            "temperature" -> mood.temperature,
-            "top_k" -> mood.topK,
-            "top_p" -> mood.topP,
-            "classifier_free_guidance" -> mood.cfGuidance
-          )
-        ).toString,
-        readTimeout = net.readTimeoutMs,
-        connectTimeout = net.connectTimeoutMs
-      )
-
-      if (createResponse.statusCode != 201) {
-        val errorMsg = s"Failed to create prediction: ${createResponse.statusCode} - ${createResponse.text()}"
-        logger.error(errorMsg)
-        return Left(NetworkError(errorMsg, "replicate", retryable = createResponse.statusCode >= 500))
-      }
-
-      val predictionId = read(createResponse.text())("id").str
-      logger.info(s"Created prediction: $predictionId")
-
-      // Poll for completion
-      val result = pollPrediction(predictionId)
-      result match {
-        case Right(audioUrl) =>
-          downloadAndEncodeAudio(audioUrl) match {
-            case Right(base64Audio) =>
-              val musicGenerationTime = System.currentTimeMillis() - musicStartTime
-              logger.info(
-                s"Music generation completed in ${musicGenerationTime}ms (${base64Audio.length} bytes base64)")
-
-              // Cache the generated music if gameId and locationId are provided
-              (gameId, locationId) match {
-                case (Some(gId), Some(lId)) =>
-                  MediaCache.cacheMusic(gId, lId, prompt, mood.name, base64Audio)
-                  logger.info(s"Cached generated music for game=$gId, location=$lId, mood=${mood.name}")
-                case _ =>
-                  logger.debug("No cache info provided - skipping music caching")
-              }
-              Right(base64Audio)
-            case Left(error) =>
-              val musicGenerationTime = System.currentTimeMillis() - musicStartTime
-              logger.error(s"Music download/encoding failed after ${musicGenerationTime}ms: $error")
-              Left(MusicGenerationError(s"Audio download failed: $error", retryable = true))
+  /** The track for `mood` as Base64 MP3, made now (nothing is cached here: the adventure library keeps the tracks). */
+  def generate(mood: MusicMood): SzorkResult[String] =
+    replicateApiKey match {
+      case None =>
+        logger.warn("Music generation disabled - REPLICATE_API_KEY not configured")
+        Left(ConfigurationError("Music generation not available - REPLICATE_API_KEY not configured"))
+      case Some(key) =>
+        val start = System.currentTimeMillis()
+        logger.info(s"Starting music generation for mood: ${mood.name}")
+        val result = create(key, mood).flatMap { predictionId =>
+          await(key, predictionId) match {
+            case Outcome.Done(audioUrl) => download(audioUrl)
+            case Outcome.Failed(error) => Left(error)
+            case Outcome.GaveUp(error) =>
+              cancel(key, predictionId)
+              Left(error)
+            case Outcome.Interrupted =>
+              cancel(key, predictionId)
+              Thread.currentThread().interrupt()
+              Left(MusicGenerationError("Interrupted while waiting for music generation", retryable = false))
           }
-        case Left(error) =>
-          val musicGenerationTime = System.currentTimeMillis() - musicStartTime
-          logger.error(s"Music generation failed after ${musicGenerationTime}ms: $error")
-          Left(error)
-      }
-
-    } catch {
-      case e: Exception =>
-        val musicGenerationTime = System.currentTimeMillis() - musicStartTime
-        logger.error(s"Error during music generation after ${musicGenerationTime}ms", e)
-        Left(MusicGenerationError(s"Music generation error: ${e.getMessage}", Some(e), retryable = true))
-    }
-  }
-
-  private def pollPrediction(predictionId: String, maxAttempts: Int = poll.maxAttempts): SzorkResult[String] = {
-    if (!isAvailable) {
-      return Left(ConfigurationError("Music generation not available - REPLICATE_API_KEY not configured"))
-    }
-
-    var attempts = 0
-
-    while (attempts < maxAttempts) {
-      val response = get(
-        s"https://api.replicate.com/v1/predictions/$predictionId",
-        headers = Map("Authorization" -> s"Bearer ${replicateApiKey.get}"),
-        readTimeout = net.readTimeoutMs,
-        connectTimeout = net.connectTimeoutMs
-      )
-
-      if (response.statusCode == 200) {
-        val json = read(response.text())
-        val status = json("status").str
-
-        logger.debug(s"Prediction status: $status")
-
-        status match {
-          case "succeeded" =>
-            val audioUrl = json("output").str
-            logger.info(s"Music generation succeeded: $audioUrl")
-            return Right(audioUrl)
-
-          case "failed" =>
-            val error = json.obj.get("error").map(_.str).getOrElse("Unknown error")
-            logger.error(s"Music generation failed: $error")
-            return Left(MusicGenerationError(s"Generation failed: $error", retryable = false))
-
-          case "processing" | "starting" =>
-            Thread.sleep(poll.pollIntervalMs) // Wait before polling again
-            attempts += 1
-
-          case _ =>
-            return Left(MusicGenerationError(s"Unknown prediction status: $status", retryable = false))
         }
-      } else {
-        return Left(
-          NetworkError(
-            s"Failed to get prediction status: ${response.statusCode}",
-            "replicate",
-            retryable = response.statusCode >= 500))
-      }
+        val elapsed = System.currentTimeMillis() - start
+        result.fold(
+          error => logger.error(s"Music generation for ${mood.name} failed after ${elapsed}ms: ${error.message}"),
+          _ => logger.info(s"Music generation for ${mood.name} completed in ${elapsed}ms")
+        )
+        result
     }
 
-    // Stop the prediction rather than let it run on (and be billed) after we have given up on it
-    cancelPrediction(predictionId)
-    Left(MusicGenerationError("Timeout waiting for music generation", retryable = true))
+  private def authorization(key: Secret): Map[String, String] = Map("Authorization" -> s"Bearer ${key.reveal}")
+
+  /** Starts a prediction; the failure says whether making the same request again could work. */
+  private def create(key: Secret, mood: MusicMood): SzorkResult[String] =
+    Try(
+      requests.post(
+        s"$baseUrl/predictions",
+        headers = authorization(key) + ("Content-Type" -> "application/json"),
+        data = ujson
+          .Obj(
+            "version" -> ModelVersion,
+            "input" -> ujson.Obj(
+              "prompt" -> mood.basePrompt,
+              "duration" -> mood.duration,
+              // The default is WAV, ten times the size; tracks are kept and served as MP3
+              "output_format" -> "mp3",
+              "temperature" -> mood.temperature,
+              "top_k" -> mood.topK,
+              "top_p" -> mood.topP,
+              "classifier_free_guidance" -> mood.cfGuidance
+            )
+          )
+          .toString,
+        readTimeout = net.readTimeoutMs,
+        connectTimeout = net.connectTimeoutMs,
+        check = false
+      )) match {
+      case Failure(e) =>
+        Left(NetworkError(s"Could not reach Replicate: ${e.getMessage}", "replicate", Some(e), retryable = true))
+      case Success(response) if response.is2xx =>
+        Try(ujson.read(response.text())("id").str).toEither.left.map(e =>
+          MusicGenerationError(s"Replicate's answer has no prediction id: ${e.getMessage}", Some(e), retryable = false))
+      case Success(response) =>
+        Left(
+          NetworkError(
+            s"Failed to create prediction: ${response.statusCode} - ${response.text().take(300)}",
+            "replicate",
+            retryable = isRetryableStatus(response.statusCode)))
+    }
+
+  /** Polls `predictionId` until it ends, or the poll budget (`maxAttempts` intervals) is spent. */
+  private def await(key: Secret, predictionId: String): Outcome = {
+    val deadline = System.nanoTime() + poll.maxAttempts.toLong * poll.pollIntervalMs * 1000000L
+
+    // Waits one interval, then polls again, unless the budget is spent
+    def pause(failures: Int): Outcome =
+      if (System.nanoTime() >= deadline)
+        Outcome.GaveUp(MusicGenerationError("Timeout waiting for music generation", retryable = true))
+      else
+        try {
+          Thread.sleep(poll.pollIntervalMs)
+          next(failures)
+        } catch { case _: InterruptedException => Outcome.Interrupted }
+
+    def next(failures: Int): Outcome =
+      pollOnce(key, predictionId) match {
+        case Right(Some(ended)) => ended
+        case Right(None) => pause(0)
+        case Left((error, true)) if failures + 1 < TolerableConsecutivePollFailures =>
+          logger.warn(s"Polling prediction $predictionId failed (${error.message}); trying again")
+          pause(failures + 1)
+        case Left((error, _)) => Outcome.GaveUp(error)
+      }
+
+    next(0)
   }
+
+  /** One poll: the outcome if the prediction has ended (None: still running), or the error and whether it is transient.
+    */
+  private def pollOnce(key: Secret, predictionId: String): Either[(SzorkError, Boolean), Option[Outcome]] =
+    Try(
+      requests.get(
+        s"$baseUrl/predictions/$predictionId",
+        headers = authorization(key),
+        readTimeout = net.readTimeoutMs,
+        connectTimeout = net.connectTimeoutMs,
+        check = false)) match {
+      case Failure(e) =>
+        Left((NetworkError(s"Failed to get prediction status: ${e.getMessage}", "replicate", Some(e)), true))
+      case Success(response) if response.is2xx =>
+        Try(ujson.read(response.text())).toOption match {
+          case Some(json) => Right(statusOf(json))
+          case None => Left((MusicGenerationError("Replicate's status is not JSON", retryable = true), true))
+        }
+      case Success(response) =>
+        val transient = isRetryableStatus(response.statusCode)
+        Left((
+          NetworkError(s"Failed to get prediction status: ${response.statusCode}", "replicate", retryable = transient),
+          transient))
+    }
+
+  /** The outcome a prediction's JSON says it has reached; None while it is still running. */
+  private def statusOf(json: ujson.Value): Option[Outcome] =
+    json.obj.get("status").collect { case ujson.Str(status) => status } match {
+      case Some("succeeded") =>
+        val url = json.obj.get("output").flatMap {
+          case ujson.Str(url) => Some(url)
+          case ujson.Arr(urls) => urls.headOption.collect { case ujson.Str(url) => url }
+          case _ => None
+        }
+        Some(
+          url.fold[Outcome](Outcome.Failed(MusicGenerationError("Replicate answered with no audio", retryable = true)))(
+            Outcome.Done(_)))
+      case Some("failed" | "canceled") =>
+        val error = json.obj.get("error").collect { case ujson.Str(e) => e }.getOrElse("Unknown error")
+        Some(Outcome.Failed(MusicGenerationError(s"Generation failed: $error", retryable = false)))
+      case Some("starting" | "processing") => None
+      case other =>
+        val status = other.getOrElse("none")
+        Some(Outcome.GaveUp(MusicGenerationError(s"Unknown prediction status: $status", retryable = false)))
+    }
 
   /** Asks Replicate to cancel `predictionId`; a failure is only logged. */
-  private def cancelPrediction(predictionId: String): Unit =
-    replicateApiKey.foreach { key =>
-      Try(
-        post(
-          s"https://api.replicate.com/v1/predictions/$predictionId/cancel",
-          headers = Map("Authorization" -> s"Bearer $key"),
-          readTimeout = net.readTimeoutMs,
-          connectTimeout = net.connectTimeoutMs,
-          check = false
-        )) match {
-        case Success(response) if response.statusCode == 200 => logger.info(s"Cancelled prediction $predictionId")
-        case Success(response) => logger.warn(s"Could not cancel prediction $predictionId: ${response.statusCode}")
-        case Failure(e) => logger.warn(s"Could not cancel prediction $predictionId: ${e.getMessage}")
-      }
+  private def cancel(key: Secret, predictionId: String): Unit =
+    Try(
+      requests.post(
+        s"$baseUrl/predictions/$predictionId/cancel",
+        headers = authorization(key),
+        readTimeout = net.readTimeoutMs,
+        connectTimeout = net.connectTimeoutMs,
+        check = false
+      )) match {
+      case Success(response) if response.is2xx => logger.info(s"Cancelled prediction $predictionId")
+      case Success(response) => logger.warn(s"Could not cancel prediction $predictionId: ${response.statusCode}")
+      case Failure(e) => logger.warn(s"Could not cancel prediction $predictionId: ${e.getMessage}")
     }
 
-  private def downloadAndEncodeAudio(audioUrl: String): SzorkResult[String] =
-    try {
-      logger.info(s"Downloading audio from: $audioUrl")
-
-      val uri = new URI(audioUrl)
-      val url = uri.toURL()
-      val connection = url.openConnection()
-      try {
-        connection.setConnectTimeout(net.connectTimeoutMs)
-        connection.setReadTimeout(net.readTimeoutMs)
-      } catch { case _: Throwable => () }
-      // Closed even when the read fails part way
-      val audioBytes = Using.resource(connection.getInputStream)(_.readAllBytes())
-
-      val base64Audio = Base64.getEncoder.encodeToString(audioBytes)
-      logger.info(s"Downloaded and encoded audio, size: ${audioBytes.length} bytes")
-
-      Right(base64Audio)
-
-    } catch {
-      case e: Exception =>
-        logger.error("Error downloading audio", e)
-        Left(NetworkError(s"Failed to download audio: ${e.getMessage}", "audio-download", retryable = true))
+  private def download(audioUrl: String): SzorkResult[String] = {
+    logger.info(s"Downloading audio from: $audioUrl")
+    Try(
+      requests.get(audioUrl, readTimeout = net.readTimeoutMs, connectTimeout = net.connectTimeoutMs, check = false)
+    ) match {
+      case Success(response) if response.is2xx =>
+        logger.info(s"Downloaded audio, size: ${response.bytes.length} bytes")
+        Right(Base64.getEncoder.encodeToString(response.bytes))
+      case Success(response) =>
+        Left(
+          NetworkError(
+            s"Failed to download audio: ${response.statusCode}",
+            "audio-download",
+            retryable = isRetryableStatus(response.statusCode)))
+      case Failure(e) =>
+        Left(NetworkError(s"Failed to download audio: ${e.getMessage}", "audio-download", Some(e), retryable = true))
     }
+  }
 }
 
 object MusicGeneration {
 
+  /** Where Replicate's API is. */
+  val ReplicateApi = "https://api.replicate.com/v1"
+
+  /** The MusicGen model version predictions are made with. */
+  private val ModelVersion = "671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb"
+
+  /** How many polls in a row may fail (a timeout, a 5xx) before the wait is given up. */
+  private val TolerableConsecutivePollFailures = 3
+
   /** Music with REPLICATE_API_KEY from `reader` (unavailable without it) and the given timeouts and polling. */
   def apply(net: MediaNetworkConfig, poll: MusicPollConfig, reader: ConfigReader = EnvLoader): MusicGeneration =
     new MusicGeneration(
-      reader.get("REPLICATE_API_KEY").filter(key => key.nonEmpty && !key.contains("YOUR_REPLICATE_API_KEY")),
+      reader
+        .get("REPLICATE_API_KEY")
+        .filter(key => key.nonEmpty && !key.contains("YOUR_REPLICATE_API_KEY"))
+        .map(Secret(_)),
       net,
       poll)
+
+  /** Whether a request that got `status` is worth making again: the service was busy or failing, the request not wrong.
+    */
+  private[media] def isRetryableStatus(status: Int): Boolean = status == 408 || status == 429 || status >= 500
+
+  /** How a wait for a prediction ended. */
+  private enum Outcome {
+
+    /** The prediction succeeded; its output is at this URL. */
+    case Done(audioUrl: String)
+
+    /** Replicate says the prediction failed or was cancelled: nothing is running, so there is nothing to cancel. */
+    case Failed(error: SzorkError)
+
+    /** The wait was given up while the prediction may still be running: it must be cancelled. */
+    case GaveUp(error: SzorkError)
+
+    /** The thread was interrupted while waiting. */
+    case Interrupted
+  }
 
   case class MusicMood(
     name: String,
@@ -243,34 +266,7 @@ object MusicGeneration {
     topK: Int = 250,
     topP: Double = 0.0,
     cfGuidance: Int = 3
-  ) {
-    def generatePrompt(context: String = ""): String = {
-      // Add context-aware variations to the base prompt
-      val contextualAdditions = extractContextualElements(context)
-      s"$basePrompt${if (contextualAdditions.nonEmpty) s", $contextualAdditions" else ""}"
-    }
-
-    private def extractContextualElements(text: String): String = {
-      val lowerText = text.toLowerCase
-      val elements = scala.collection.mutable.ListBuffer[String]()
-
-      // Add atmospheric elements based on context
-      if (lowerText.contains("rain") || lowerText.contains("storm")) elements += "rain sounds"
-      if (lowerText.contains("wind")) elements += "wind effects"
-      if (lowerText.contains("fire") || lowerText.contains("torch")) elements += "crackling fire"
-      if (lowerText.contains("water") || lowerText.contains("stream")) elements += "flowing water"
-      if (lowerText.contains("echo")) elements += "reverb effects"
-
-      // Add emotional modifiers
-      if (lowerText.contains("tense")) elements += "building tension"
-      if (lowerText.contains("peaceful")) elements += "serene atmosphere"
-      if (lowerText.contains("danger")) elements += "threatening undertones"
-      if (lowerText.contains("ancient")) elements += "ancient mystical"
-      if (lowerText.contains("magic")) elements += "magical sparkles"
-
-      elements.mkString(", ")
-    }
-  }
+  )
 
   /** Music settings for each of the Dungeon Master's moods ([[DungeonMasterOutput.MusicMoods]]). */
   object MusicMoods {

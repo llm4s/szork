@@ -39,11 +39,7 @@ class GameSessionsSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll 
   @volatile private var musicGate = new CountDownLatch(0)
   private final class GatedMusicClient extends MusicClient {
     override def isAvailable: Boolean = true
-    override def generate(
-      mood: String,
-      context: String,
-      gameId: Option[String],
-      locationId: Option[String]): SzorkResult[String] = {
+    override def generate(mood: String): SzorkResult[String] = {
       musicGate.await(30, TimeUnit.SECONDS)
       Right("FAKE_MUSIC_BASE64")
     }

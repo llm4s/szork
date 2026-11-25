@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory
   *
   * @param library
   *   the adventure library, which keeps the pictures of a library adventure's locations and the mood tracks (None:
-  *   every picture and track is made for this game alone)
+  *   pictures are made for this game alone, and a mood's track is made each time it is asked for)
   * @param adventure
   *   the id of the library adventure this game plays, if it plays one
   * @param outlineLocation
@@ -25,7 +25,6 @@ import org.slf4j.LoggerFactory
 private[game] final class SceneMedia(
   sessionId: String,
   artStyle: Option[String],
-  artStyleDescription: String,
   ttsClient: Option[TTSClient],
   narrationVoice: String,
   imageClient: Option[ImageClient],
@@ -62,7 +61,7 @@ private[game] final class SceneMedia(
     imageClient match {
       case None => Left(ConfigurationError("No image provider is configured"))
       case Some(client) =>
-        val prompt = MediaPlanner.styledImagePrompt(artStyle, description, artStyleDescription)
+        val prompt = SceneMedia.imagePrompt(artStyle, description)
         logger.info(s"[$sessionId] Generating image for ${locationId.getOrElse("a location")}: ${prompt.take(100)}...")
         client.generateScene(prompt, style, gameId, locationId)
     }
@@ -116,36 +115,32 @@ private[game] final class SceneMedia(
       .find(_.equalsIgnoreCase(scene.musicMood.trim))
       .getOrElse(DungeonMasterOutput.DefaultMusicMood)
 
-  /** Background music for `scene` and its mood.
+  /** Background music for `scene` and its mood: one track per mood, shared by every game.
     *
-    * With a library, music is one track per mood: made the first time any game needs the mood, then the library's.
-    * Without one, a track is made for this location from the scene's description.
+    * With a library, a mood's track is made the first time any game needs it, then the library's. Without one (a server
+    * always has one; this is an engine built in a test or a tool) it is made, and sent inline, each time.
     */
-  def music(scene: GameScene, gameId: Option[String]): Option[(MediaRef, String)] = {
+  def music(scene: GameScene): Option[(MediaRef, String)] = {
     val client = musicClient.filter(_.isAvailable)
-    val track: Option[SzorkResult[(MediaRef, String)]] = library match {
+    val mood = moodOf(scene)
+    val track: Option[SzorkResult[MediaRef]] = library match {
       case Some(lib) =>
-        val mood = moodOf(scene)
         client match {
           case Some(c) =>
-            Some(
-              lib
-                .musicOr(mood) {
-                  logger.info(s"[$sessionId] Generating the $mood track")
-                  c.generate(mood, "", None, None)
-                }
-                .map(_ -> mood))
-          case None => lib.music(mood).map(stored => Right(stored -> mood))
+            Some(lib.musicOr(mood) {
+              logger.info(s"[$sessionId] Generating the $mood track")
+              c.generate(mood)
+            })
+          case None => lib.music(mood).map(Right(_))
         }
       case None =>
         client.map { c =>
-          logger.info(s"[$sessionId] Generating music for ${scene.locationId}: mood=${scene.musicMood}")
-          c.generate(scene.musicMood, scene.musicDescription, gameId, Some(scene.locationId))
-            .map(MediaRef.Inline(_) -> scene.musicMood)
+          logger.info(s"[$sessionId] Generating the $mood track")
+          c.generate(mood).map(MediaRef.Inline(_))
         }
     }
     track.flatMap {
-      case Right(music) => Some(music)
+      case Right(music) => Some(music -> mood)
       case Left(error) =>
         logger.warn(s"[$sessionId] Music generation failed: ${error.message}")
         None
@@ -158,6 +153,16 @@ private[game] final class SceneMedia(
 }
 
 object SceneMedia {
+
+  /** The prompt a picture is drawn from: `description` in `artStyle`. Playing and baking both draw through it, so a
+    * picture looks the same whichever made it.
+    */
+  def imagePrompt(artStyle: Option[String], description: String): String =
+    MediaPlanner.styledImagePrompt(artStyle, description, PromptBuilder.artStyleDescription(artStyle))
+
+  /** The prompt for the picture of an outline's location in `artStyle`. */
+  def outlinePrompt(place: LocationOutline, artStyle: Option[String]): String =
+    imagePrompt(artStyle, outlineImage(place))
 
   /** What a picture of an outline's location is drawn from: the [[ArtDirector]]'s brief, or for a location that has
     * none the description the designer wrote for the player (which draws worse: it is not written to be drawn). The art

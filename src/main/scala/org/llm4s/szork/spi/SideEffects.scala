@@ -25,5 +25,7 @@ trait ImageClient {
 
 trait MusicClient {
   def isAvailable: Boolean
-  def generate(mood: String, context: String, gameId: Option[String], locationId: Option[String]): SzorkResult[String]
+
+  /** The track for `mood` (one of the Dungeon Master's music moods), as Base64 MP3. */
+  def generate(mood: String): SzorkResult[String]
 }

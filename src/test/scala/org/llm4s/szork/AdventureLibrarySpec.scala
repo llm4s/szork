@@ -78,11 +78,7 @@ class AdventureLibrarySpec extends AnyFunSuite with Matchers {
   private final class CountingMusic extends MusicClient {
     val made = new AtomicInteger()
     override def isAvailable: Boolean = true
-    override def generate(
-      mood: String,
-      context: String,
-      gameId: Option[String],
-      locationId: Option[String]): SzorkResult[String] = {
+    override def generate(mood: String): SzorkResult[String] = {
       made.incrementAndGet()
       Right(base64(s"track for $mood"))
     }
@@ -191,8 +187,8 @@ class AdventureLibrarySpec extends AnyFunSuite with Matchers {
     val library = newLibrary()
     val client = new CountingMusic
     library.hasMusic shouldBe false
-    val first = library.musicOr("mystery")(client.generate("mystery", "", None, None)).toOption.get
-    library.musicOr("mystery")(client.generate("mystery", "", None, None)).toOption.get shouldBe first
+    val first = library.musicOr("mystery")(client.generate("mystery")).toOption.get
+    library.musicOr("mystery")(client.generate("mystery")).toOption.get shouldBe first
     client.made.get shouldBe 1
     first.url should startWith(s"${AdventureLibrary.UrlPrefix}/music/mystery.mp3?v=")
     bytesAt(library, first) shouldBe "track for mystery"
@@ -438,5 +434,121 @@ class AdventureLibrarySpec extends AnyFunSuite with Matchers {
     val second = gameOf(library, None, Some(music))
     second.generateBackgroundMusic(second.getCurrentScene.get, None) shouldBe Some((track, mood))
     music.made.get shouldBe 1
+  }
+
+  test("in a game with no library, a mood's track is made inline") {
+    val music = new CountingMusic
+    val engine = GameEngine.create(
+      ScriptedDm(),
+      sessionId = "no-library",
+      adventureOutline = Some(cavern),
+      musicClient = Some(music)
+    )
+    engine.initialize().isRight shouldBe true
+    val (track, mood) = engine.generateBackgroundMusic(engine.getCurrentScene.get, None).get
+    mood shouldBe "exploration"
+    track shouldBe MediaRef.Inline(base64("track for exploration"))
+  }
+
+  // ============= Robustness =============
+
+  test("a picture for an adventure that is not in the library is not kept, and leaves no directory behind") {
+    val library = newLibrary()
+    library.imageOr("ghost", "hall", "pixel")(Right(base64("x"))).isLeft shouldBe true
+    Files.exists(library.root.resolve("ghost")) shouldBe false
+
+    // The adventure is deleted while its picture is being drawn
+    val id = library.keep(cavern, theme, pixel).toOption.get.id
+    val late = library.imageOr(id, "hall", "pixel") {
+      library.delete(id) shouldBe true
+      Right(base64("too late"))
+    }
+    late.isLeft shouldBe true
+    Files.exists(library.root.resolve(id)) shouldBe false
+    // so the next adventure of that title takes the id again, not "-2"
+    library.keep(cavern, theme, pixel).toOption.get.id shouldBe id
+  }
+
+  test("games needing the same missing file share one generation") {
+    val library = newLibrary()
+    val id = library.keep(cavern, theme, pixel).toOption.get.id
+    val made = new AtomicInteger()
+    val start = new java.util.concurrent.CountDownLatch(1)
+    val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
+    try {
+      val results = (1 to 4).map { _ =>
+        pool.submit(new java.util.concurrent.Callable[Seq[SzorkResult[MediaRef.Stored]]] {
+          def call(): Seq[SzorkResult[MediaRef.Stored]] = {
+            start.await()
+            Seq(
+              library.imageOr(id, "hall", "pixel") {
+                made.incrementAndGet()
+                Thread.sleep(300)
+                Right(base64("hall"))
+              },
+              library.musicOr("mystery") {
+                made.incrementAndGet()
+                Thread.sleep(300)
+                Right(base64("track"))
+              }
+            )
+          }
+        })
+      }
+      start.countDown()
+      val all = results.flatMap(_.get(30, java.util.concurrent.TimeUnit.SECONDS))
+      all.forall(_.isRight) shouldBe true
+      all.map(_.toOption.get.url.takeWhile(_ != '?')).distinct should have size 2
+      made.get shouldBe 2 // one picture and one track, whoever asked
+    } finally pool.shutdown()
+  }
+
+  test("a failed generation is tried again by the next game") {
+    val library = newLibrary()
+    val id = library.keep(cavern, theme, pixel).toOption.get.id
+    library.imageOr(id, "hall", "pixel")(Left(ImageGenerationError("provider down"))).isLeft shouldBe true
+    library.imageOr(id, "hall", "pixel")(Right(base64("hall"))).isRight shouldBe true
+  }
+
+  test("ids that differ by a hyphen and an underscore are two files") {
+    val library = newLibrary()
+    val id = library.keep(cavern, theme, pixel).toOption.get.id
+    val hyphen = library.imageOr(id, "old-mill", "pixel")(Right(base64("hyphen"))).toOption.get
+    val underscore = library.imageOr(id, "old_mill", "pixel")(Right(base64("underscore"))).toOption.get
+    hyphen should not be underscore
+    bytesAt(library, hyphen) shouldBe "hyphen"
+    bytesAt(library, underscore) shouldBe "underscore"
+    hyphen.url should include("/old-mill.pixel.jpg")
+    library.resolve(Seq("adventures", id, "images", "old-mill.pixel.jpg")) shouldBe defined
+    library.resolve(Seq("adventures", id, "images", "..", "adventure.json")) shouldBe None
+  }
+
+  test("the committed adventures still find every picture they have") {
+    val committed = new AdventureLibrary(java.nio.file.Paths.get("adventures"))
+    val adventures = committed.list
+    adventures should have size 3
+    adventures.foreach { a =>
+      val files = Files.list(committed.root.resolve(a.id).resolve("images"))
+      val count =
+        try files.count()
+        finally files.close()
+      withClue(a.id)(a.images.toLong shouldBe count)
+    }
+    DungeonMasterOutput.MusicMoods.foreach(mood => withClue(mood)(committed.music(mood) shouldBe defined))
+  }
+
+  test("baking draws a picture from the same prompt as playing") {
+    val baked = newLibrary()
+    val bakedAdventure = baked.keep(cavern, theme, pixel).toOption.get
+    val bakeImages = new RecordingImages
+    BakeAdventure.images(baked, bakedAdventure, None, bakeImages)
+
+    val played = newLibrary()
+    played.keep(cavern, theme, pixel)
+    val playImages = new RecordingImages
+    val engine = gameOf(played, Some(playImages))
+    engine.generateSceneImage(engine.getCurrentScene.get, None)
+    playImages.prompts should have size 1
+    bakeImages.prompts.toArray.toList should contain(playImages.prompts.get(0))
   }
 }

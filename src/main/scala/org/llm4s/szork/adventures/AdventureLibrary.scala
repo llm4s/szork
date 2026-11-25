@@ -11,7 +11,7 @@ import ujson.{Null, Obj, Value}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.util.Base64
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.{CompletableFuture, ConcurrentHashMap}
 import scala.jdk.CollectionConverters._
 import scala.util.{Try, Using}
 
@@ -51,8 +51,8 @@ final class AdventureLibrary(val root: Path) {
   import AdventureLibrary._
 
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
-  // One lock per media file, so two games needing the same missing file generate it once
-  private val locks = new ConcurrentHashMap[String, Object]()
+  // The media being made, by file: games that need a file already being made wait for that one result
+  private val inFlight = new ConcurrentHashMap[String, CompletableFuture[SzorkResult[MediaRef.Stored]]]()
 
   private def adventureDir(id: String): Option[Path] =
     Option.when(isValidId(id))(root.resolve(id))
@@ -137,12 +137,16 @@ final class AdventureLibrary(val root: Path) {
       }
     }
 
-  /** Removes the adventure `id` and its images; false if there was none. */
+  /** Removes the adventure `id` and its images; false if there was none. It takes the lock [[keep]], [[update]] and the
+    * keeping of a picture take, so none of them writes into a directory being deleted.
+    */
   def delete(id: String): Boolean =
-    adventureDir(id).filter(Files.isDirectory(_)).exists { dir =>
-      deleteRecursively(dir)
-      logger.info(s"Deleted adventure $id")
-      true
+    synchronized {
+      adventureDir(id).filter(Files.isDirectory(_)).exists { dir =>
+        deleteRecursively(dir)
+        logger.info(s"Deleted adventure $id")
+        true
+      }
     }
 
   // ============= Images =============
@@ -157,12 +161,15 @@ final class AdventureLibrary(val root: Path) {
   def image(adventureId: String, locationId: String, style: String): Option[MediaRef.Stored] =
     imageFile(adventureId, locationId, style).map(file => stored(s"adventures/$adventureId/$ImagesDir", file))
 
-  /** The picture of `locationId` in `style`; a missing one is made with `generate` (Base64 PNG) and kept. */
+  /** The picture of `locationId` in `style`; a missing one is made with `generate` (a Base64 image) and kept. The
+    * adventure must exist: a picture is never kept for one that is not in the library (or was deleted meanwhile).
+    */
   def imageOr(adventureId: String, locationId: String, style: String)(
     generate: => SzorkResult[String]): SzorkResult[MediaRef.Stored] =
-    imagePath(adventureId, locationId, style) match {
-      case None => Left(NotFoundError(s"No adventure '${adventureId.take(40)}'"))
-      case Some(path) => storedOr(path, s"adventures/$adventureId/$ImagesDir")(generate)
+    (adventureDir(adventureId), imagePath(adventureId, locationId, style)) match {
+      case (Some(dir), Some(path)) if Files.isRegularFile(dir.resolve(AdventureFile)) =>
+        storedOr(path, s"adventures/$adventureId/$ImagesDir", Some(dir.resolve(AdventureFile)))(generate)
+      case _ => Left(NotFoundError(s"No adventure '${adventureId.take(40)}'"))
     }
 
   // ============= Music =============
@@ -175,7 +182,7 @@ final class AdventureLibrary(val root: Path) {
 
   /** The track for `mood`; a missing one is made with `generate` (Base64 MP3) and kept. */
   def musicOr(mood: String)(generate: => SzorkResult[String]): SzorkResult[MediaRef.Stored] =
-    storedOr(musicPath(mood), "music")(generate)
+    storedOr(musicPath(mood), "music", None)(generate)
 
   /** Whether any adventure has a picture: such a server shows images even with no image provider. */
   def hasImages: Boolean = adventureIds.exists { id =>
@@ -211,18 +218,52 @@ final class AdventureLibrary(val root: Path) {
     // The file's time in the URL lets the browser cache it for good and still see a re-baked one
     MediaRef.Stored(s"$UrlPrefix/$urlDir/${file.getFileName}?v=${Files.getLastModifiedTime(file).toMillis}")
 
-  private def storedOr(path: Path, urlDir: String)(generate: => SzorkResult[String]): SzorkResult[MediaRef.Stored] =
-    locks.computeIfAbsent(path.toString, _ => new Object).synchronized {
-      if (Files.isRegularFile(path)) Right(stored(urlDir, path))
+  /** The file at `path` as a [[MediaRef.Stored]], made with `generate` if it is missing. Games needing the same missing
+    * file share one `generate` (and its result, a failure too): the first to ask makes it, the rest wait. The file is
+    * only kept while `owner` (the adventure's file, if the file belongs to an adventure) still exists.
+    */
+  private def storedOr(path: Path, urlDir: String, owner: Option[Path])(
+    generate: => SzorkResult[String]): SzorkResult[MediaRef.Stored] = {
+    val key = path.toString
+    if (Files.isRegularFile(path)) Right(stored(urlDir, path))
+    else {
+      val mine = new CompletableFuture[SzorkResult[MediaRef.Stored]]()
+      inFlight.putIfAbsent(key, mine) match {
+        case null =>
+          var result: SzorkResult[MediaRef.Stored] = Left(CacheError(s"Could not keep ${path.getFileName}", None))
+          try {
+            result =
+              if (Files.isRegularFile(path)) Right(stored(urlDir, path))
+              else generate.flatMap(writeMedia(path, urlDir, owner, _))
+            result
+          } catch {
+            case e: Exception =>
+              result = Left(CacheError(s"Could not keep ${path.getFileName}: ${e.getMessage}", Some(e)))
+              throw e
+          } finally {
+            // Taken out before the result is given, so a game that asks after sees the file, or makes it again
+            inFlight.remove(key)
+            mine.complete(result)
+          }
+        case making => making.get()
+      }
+    }
+  }
+
+  private def writeMedia(
+    path: Path,
+    urlDir: String,
+    owner: Option[Path],
+    base64: String): SzorkResult[MediaRef.Stored] =
+    synchronized {
+      if (!owner.forall(Files.isRegularFile(_))) Left(NotFoundError(s"${path.getFileName}: the adventure is gone"))
       else
-        generate.flatMap { base64 =>
-          Try {
-            Files.createDirectories(path.getParent)
-            AtomicFiles.write(path, Base64.getDecoder.decode(base64))
-            logger.info(s"Added ${root.relativize(path)} to the adventure library")
-            stored(urlDir, path)
-          }.toEither.left.map(e => CacheError(s"Could not keep ${path.getFileName}: ${e.getMessage}", Some(e)))
-        }
+        Try {
+          Files.createDirectories(path.getParent)
+          AtomicFiles.write(path, Base64.getDecoder.decode(base64))
+          logger.info(s"Added ${root.relativize(path)} to the adventure library")
+          stored(urlDir, path)
+        }.toEither.left.map(e => CacheError(s"Could not keep ${path.getFileName}: ${e.getMessage}", Some(e)))
     }
 
   private def firstBytes(file: Path): Array[Byte] =
@@ -254,7 +295,7 @@ object AdventureLibrary {
   private val MusicDir = "_music"
   private val MaxIdLength = 60
   private val Id = "[a-z0-9][a-z0-9-]*".r
-  private val MediaName = """[a-z0-9_]+(\.[a-z0-9_]+)?\.(jpg|mp3)""".r
+  private val MediaName = """[a-z0-9_-]+(\.[a-z0-9_-]+)?\.(jpg|mp3)""".r
 
   def isValidId(id: String): Boolean = id.length <= MaxIdLength && Id.matches(id)
 
@@ -270,9 +311,11 @@ object AdventureLibrary {
     if (cut.isEmpty) "adventure" else cut
   }
 
-  /** `name` as part of a file name: lower-case letters, digits and underscores. */
+  /** `name` as part of a file name: lower-case letters, digits, underscores and hyphens (so `old-mill` and `old_mill`
+    * stay two files).
+    */
   private def fileSafe(name: String): String = {
-    val safe = name.trim.toLowerCase.replaceAll("[^a-z0-9]+", "_").take(80)
+    val safe = name.trim.toLowerCase.replaceAll("[^a-z0-9_-]+", "_").take(80)
     if (safe.isEmpty) "_" else safe
   }
 

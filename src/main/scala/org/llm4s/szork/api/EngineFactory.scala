@@ -41,6 +41,9 @@ object EngineFactory {
   ): EngineFactory = {
     val guardrails: Seq[InputGuardrail] = if (config.inputGuardrailEnabled) PlayerInputGuardrail.default else Nil
     val subagents = subagentSettings(config, llmClientFor = SzorkConfig.getLLMClient(_))
+    // The speech and music clients keep no game state: every engine shares one
+    val tts = new DefaultTTSClient(config.speech)
+    val music = new DefaultMusicClient(config.mediaNetwork, config.musicPoll)
     (sessionId, theme, artStyle, outline, features) =>
       Right(
         new GameEngine(
@@ -49,10 +52,10 @@ object EngineFactory {
           artStyle = artStyle,
           adventureOutline = outline,
           clock = SystemClock,
-          ttsClient = Option.when(features.tts)(new DefaultTTSClient(config.speech)),
+          ttsClient = Option.when(features.tts)(tts),
           narrationVoice = config.speech.ttsVoice,
           imageClient = imageClient.filter(_ => features.image),
-          musicClient = Option.when(features.music)(new DefaultMusicClient(config.mediaNetwork, config.musicPoll)),
+          musicClient = Option.when(features.music)(music),
           tracing = tracing,
           contextWindow = config.dmContextWindow,
           inputGuardrails = guardrails,

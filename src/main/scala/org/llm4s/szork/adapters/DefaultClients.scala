@@ -5,6 +5,7 @@ import org.llm4s.szork.media.{MusicGeneration, TextToSpeech, SpeechToText}
 import org.llm4s.szork.spi._
 import org.llm4s.szork.error.ErrorHandling._
 
+/** Narration through llm4s-speech. One client serves every game: build it once. */
 class DefaultTTSClient(speech: SpeechConfig) extends TTSClient {
   // A missing key is reported on use, as an error, rather than thrown here
   private val impl = TextToSpeech.create(speech)
@@ -18,14 +19,10 @@ class DefaultSTTClient(speech: SpeechConfig) extends STTClient {
     impl.flatMap(_.transcribeBytes(audioBytes, filename))
 }
 
+/** Mood tracks from Replicate. One client serves every game: build it once. */
 class DefaultMusicClient(net: MediaNetworkConfig, poll: MusicPollConfig) extends MusicClient {
   private val impl = MusicGeneration(net, poll)
   override def isAvailable: Boolean = impl.isAvailable
-  override def generate(
-    mood: String,
-    context: String,
-    gameId: Option[String],
-    locationId: Option[String]): SzorkResult[String] =
-    // Scenes name one of the Dungeon Master's moods; anything else plays the default mood
-    impl.generateMusicWithCache(MusicGeneration.MusicMoods.orDefault(mood), context, gameId, locationId)
+  // Scenes name one of the Dungeon Master's moods; anything else plays the default mood
+  override def generate(mood: String): SzorkResult[String] = impl.generate(MusicGeneration.MusicMoods.orDefault(mood))
 }

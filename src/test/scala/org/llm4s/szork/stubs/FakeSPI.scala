@@ -21,9 +21,5 @@ class FakeImageClient extends ImageClient {
 
 class FakeMusicClient extends MusicClient {
   override def isAvailable: Boolean = true
-  override def generate(
-    mood: String,
-    context: String,
-    gameId: Option[String],
-    locationId: Option[String]): SzorkResult[String] = Right("FAKE_MUSIC_BASE64")
+  override def generate(mood: String): SzorkResult[String] = Right("FAKE_MUSIC_BASE64")
 }

@@ -21,6 +21,7 @@ object ImageProvider {
   case object HuggingFaceSDXL extends ImageProvider
   case object OpenAIDalle2 extends ImageProvider
   case object OpenAIDalle3 extends ImageProvider
+  case object OpenAIGptImage extends ImageProvider
   case object LocalStableDiffusion extends ImageProvider
 
   def fromString(s: String): ImageProvider = s.toLowerCase match {
@@ -29,6 +30,7 @@ object ImageProvider {
     case "huggingface-sdxl" | "hf-sdxl" | "sdxl" => HuggingFaceSDXL
     case "dalle2" | "dall-e-2" | "openai-dalle2" => OpenAIDalle2
     case "dalle3" | "dall-e-3" | "openai-dalle3" => OpenAIDalle3
+    case "openai" | "gpt-image" | "gptimage" | "openai-gpt-image" => OpenAIGptImage
     case "local" | "localsd" | "local-sd" | "stable-diffusion" | "sd" => LocalStableDiffusion
     case _ => None
   }
@@ -39,6 +41,7 @@ object ImageProvider {
     case HuggingFaceSDXL => "HuggingFace SDXL"
     case OpenAIDalle2 => "OpenAI DALL-E 2"
     case OpenAIDalle3 => "OpenAI DALL-E 3"
+    case OpenAIGptImage => "OpenAI GPT Image"
     case LocalStableDiffusion => "Local Stable Diffusion"
   }
 }
@@ -57,6 +60,8 @@ case class SzorkConfig(
   // Image generation configuration
   imageGenerationEnabled: Boolean = true,
   imageProvider: ImageProvider = ImageProvider.None,
+  // The provider's model, when not its default (SZORK_IMAGE_MODEL)
+  imageModel: Option[String] = None,
 
   // Audio/speech/media feature flags and settings
   ttsEnabled: Boolean = true,
@@ -200,6 +205,7 @@ object SzorkConfig {
       allowedOrigins = allowedOrigins,
       imageGenerationEnabled = flag("SZORK_IMAGE_GENERATION_ENABLED"),
       imageProvider = setting("SZORK_IMAGE_PROVIDER").map(ImageProvider.fromString).getOrElse(ImageProvider.None),
+      imageModel = setting("SZORK_IMAGE_MODEL"),
       ttsEnabled = flag("SZORK_TTS_ENABLED"),
       sttEnabled = flag("SZORK_STT_ENABLED"),
       musicEnabled = flag("SZORK_MUSIC_ENABLED"),

@@ -39,23 +39,32 @@ object SceneImages {
     */
   def config(szork: SzorkConfig, env: ConfigReader = EnvLoader): Either[String, ImageGenerationConfig] =
     if (!szork.imageGenerationEnabled) Left("disabled by SZORK_IMAGE_GENERATION_ENABLED")
-    else providerConfig(szork.imageProvider, env)
+    else providerConfig(szork.imageProvider, env, szork.imageModel)
 
-  /** The llm4s configuration for `provider`, with its credentials and settings from `env`. */
-  def providerConfig(provider: ImageProvider, env: ConfigReader = EnvLoader): Either[String, ImageGenerationConfig] = {
+  /** The OpenAI GPT Image model used unless SZORK_IMAGE_MODEL names another: the least expensive. */
+  val DefaultGptImageModel = "gpt-image-1-mini"
+
+  /** The llm4s configuration for `provider`, with its credentials and settings from `env`, using `model` in place of
+    * the provider's default model when one is given.
+    */
+  def providerConfig(
+    provider: ImageProvider,
+    env: ConfigReader = EnvLoader,
+    model: Option[String] = None): Either[String, ImageGenerationConfig] = {
     def first(keys: String*): Option[String] =
       keys.iterator.flatMap(key => env.get(key).map(_.trim).filter(_.nonEmpty)).nextOption()
-    def openAI(model: String) =
+    def openAI(default: String) =
       first("OPENAI_API_KEY")
-        .map(key => OpenAIConfig(apiKey = Secret(key), model = model))
+        .map(key => OpenAIConfig(apiKey = Secret(key), model = model.getOrElse(default)))
         .toRight(s"${ImageProvider.toString(provider)} needs OPENAI_API_KEY")
-    def huggingFace(model: String) =
+    def huggingFace(default: String) =
       first("HUGGINGFACE_API_KEY", "HF_API_KEY", "HUGGINGFACE_TOKEN")
-        .map(key => HuggingFaceConfig(apiKey = Secret(key), model = model))
+        .map(key => HuggingFaceConfig(apiKey = Secret(key), model = model.getOrElse(default)))
         .toRight(s"${ImageProvider.toString(provider)} needs HUGGINGFACE_API_KEY (or HF_API_KEY or HUGGINGFACE_TOKEN)")
 
     provider match {
       case ImageProvider.None => Left("no provider set (SZORK_IMAGE_PROVIDER)")
+      case ImageProvider.OpenAIGptImage => openAI(DefaultGptImageModel)
       case ImageProvider.OpenAIDalle3 => openAI("dall-e-3")
       case ImageProvider.OpenAIDalle2 => openAI("dall-e-2")
       case ImageProvider.HuggingFace => huggingFace("runwayml/stable-diffusion-v1-5")

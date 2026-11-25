@@ -80,6 +80,13 @@ class SceneImagesSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
 
   test("DALL-E without an OpenAI key (absent or empty) is unavailable, with the reason") {
     providerConfig(ImageProvider.OpenAIDalle3).left.map(_.contains("OPENAI_API_KEY")) shouldBe Left(true)
+    // GPT Image, OpenAI's current image models, and a model chosen with SZORK_IMAGE_MODEL
+    providerConfig(ImageProvider.OpenAIGptImage, "OPENAI_API_KEY" -> "sk").map(_.model) shouldBe Right(
+      SceneImages.DefaultGptImageModel)
+    SceneImages
+      .providerConfig(ImageProvider.OpenAIGptImage, FakeReader(Map("OPENAI_API_KEY" -> "sk")), Some("gpt-image-2"))
+      .map(_.model) shouldBe Right("gpt-image-2")
+    ImageProvider.fromString("openai") shouldBe ImageProvider.OpenAIGptImage
     providerConfig(ImageProvider.OpenAIDalle2, "OPENAI_API_KEY" -> " ").isLeft shouldBe true
   }
 

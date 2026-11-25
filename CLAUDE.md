@@ -8,7 +8,7 @@ Szork is an AI-powered text adventure game built with Scala 3 and the LLM4S libr
 
 - AI Dungeon Master (an llm4s agent on OpenAI or Anthropic models) for dynamic narratives
 - Voice control (Speech-to-Text) and narrated responses (Text-to-Speech) via llm4s-speech
-- AI-generated scene artwork (DALL-E, HuggingFace or Stable Diffusion via llm4s-image) and background music (Replicate)
+- AI-generated scene artwork (OpenAI GPT Image or DALL-E, HuggingFace or Stable Diffusion via llm4s-image) and background music (Replicate)
 - WebSocket-based real-time communication
 - Vue.js frontend with Vuetify UI components
 - Persistent game state with save/load functionality
@@ -45,7 +45,7 @@ npm run format    # Format code
 
 ### Environment Setup
 Copy `.env.example` to `.env` and fill in keys (the README has the full variable table):
-- `OPENAI_API_KEY` - OpenAI models, DALL-E, TTS and Whisper
+- `OPENAI_API_KEY` - OpenAI models, images (`SZORK_IMAGE_PROVIDER=openai`), TTS and Whisper
 - `ANTHROPIC_API_KEY` - Claude models
 - `SZORK_LLM_PROVIDER` / `SZORK_LLM_MODEL` - choose the Dungeon Master's provider and model (Anthropic default:
   `claude-sonnet-5-5`); `SZORK_REASONING_EFFORT` (default `low`) - how hard a reasoning model thinks; the Claude 5 models

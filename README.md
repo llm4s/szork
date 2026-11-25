@@ -36,7 +36,7 @@
 - sbt 1.12+ (Scala 3.8 is fetched by sbt)
 - Node.js 22+ (for the frontend)
 - API keys for:
-  - OpenAI (Dungeon Master, DALL-E images, TTS narration and Whisper voice input)
+  - OpenAI (Dungeon Master, GPT Image pictures, TTS narration and Whisper voice input)
   - and/or Anthropic (Claude as the Dungeon Master)
   - optionally Replicate (music) or HuggingFace (images)
 
@@ -155,7 +155,7 @@ Set in `.env` (see `.env.example`) or the environment:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `LLAMA_BASE_URL` | – | LLM provider credentials (OpenAI also powers DALL-E, TTS and Whisper) |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `LLAMA_BASE_URL` | – | LLM provider credentials (OpenAI also powers images, TTS and Whisper) |
 | `SZORK_LLM_PROVIDER`, `SZORK_LLM_MODEL` | from the keys present; `gpt-4o` / `claude-sonnet-5-5` | Dungeon Master provider and model (see [Models](#models)) |
 | `SZORK_REASONING_EFFORT` | `low` | How hard the adventure designer, the Dungeon Master and its subagents reason before answering, on models that reason: `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `default` to leave it to the model. Not sent to a model that does not reason. The Claude 5 models always reason, at `high` unless told otherwise, which is slow and can use up the whole answer |
 | `SZORK_DM_CONTEXT_MAX_TOKENS` | `24000` | Conversation tokens sent with each Dungeon Master call, besides the system prompt (oldest turns are dropped first; capped at half the model's context window; `0` or `off` sends the whole game) |
@@ -166,8 +166,8 @@ Set in `.env` (see `.env.example`) or the environment:
 | `SZORK_HOST`, `SZORK_PORT`, `SZORK_WS_PORT` | `127.0.0.1`, `8090`, `9002` | Where the HTTP and WebSocket servers listen |
 | `SZORK_SESSION_TTL_MINUTES` | `30` | How long a game's session lives with no connection: a client that reconnects within it carries on, after it the game is loaded from its save |
 | `SZORK_ALLOWED_ORIGINS` | the dev frontend and this server | Browser origins allowed to open the WebSocket (comma-separated) |
-| `SZORK_IMAGE_GENERATION_ENABLED`, `SZORK_IMAGE_PROVIDER` | `true`, `none` | Scene images through the llm4s image client (`dalle3`, `dalle2`, `huggingface`, `huggingface-sdxl`, `local`); traced with the Dungeon Master when `TRACING_MODE` is set |
-| `HUGGINGFACE_API_KEY` (or `HF_API_KEY`, `HUGGINGFACE_TOKEN`) | – | Key for the `huggingface` image providers (the DALL-E ones use `OPENAI_API_KEY`) |
+| `SZORK_IMAGE_GENERATION_ENABLED`, `SZORK_IMAGE_PROVIDER`, `SZORK_IMAGE_MODEL` | `true`, `none`, the provider's default | Scene images through the llm4s image client (`openai` for GPT Image, default model `gpt-image-1-mini`; `dalle3`, `dalle2`, `huggingface`, `huggingface-sdxl`, `local`); `SZORK_IMAGE_MODEL` picks another of the provider's models; traced with the Dungeon Master when `TRACING_MODE` is set |
+| `HUGGINGFACE_API_KEY` (or `HF_API_KEY`, `HUGGINGFACE_TOKEN`) | – | Key for the `huggingface` image providers (the OpenAI ones use `OPENAI_API_KEY`) |
 | `STABLE_DIFFUSION_URL` (or `SD_URL`), `STABLE_DIFFUSION_API_KEY` (or `SD_API_KEY`) | `http://localhost:7860`, – | The `local` Stable Diffusion server |
 | `SZORK_TTS_ENABLED`, `SZORK_TTS_VOICE`, `SZORK_TTS_MODEL` | `true`, `nova`, `tts-1` | Narration |
 | `SZORK_STT_ENABLED`, `SZORK_STT_MODEL` | `true`, `whisper-1` | Voice input |
@@ -200,6 +200,7 @@ To check a model, run a playtest on it: `SZORK_LLM_MODEL=<model> sbt "runMain or
 - **"The AI's adventure design came back incomplete or malformed"**: the model did not finish the outline. Try again; if it repeats, the model may be spending its answer on reasoning: check that `SZORK_REASONING_EFFORT` is not `default`, `high` or above. The server log has the outline's problem.
 - **A turn fails with "the turn ended StepLimitReached"**: the Dungeon Master called tools twelve times without answering. The game is unchanged; send the command again. (A call repeated with the same arguments within a turn is not run again, which stops the commonest loop.)
 - **The game restarts while you play**: the server is in watch mode (`sbt "~szorkStart"`) and a source file changed. Use `sbt szorkStart` to play.
+- **"The model 'dall-e-3' does not exist"**: OpenAI no longer offers DALL-E on the account; set `SZORK_IMAGE_PROVIDER=openai` (GPT Image).
 - **No images, music or voice**: `GET /api/feature-flags` shows what the server can provide; each needs its provider's key (see the table above).
 
 ## 📚 Documentation

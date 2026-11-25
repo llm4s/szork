@@ -1,6 +1,6 @@
 # llm4s features in Szork
 
-Szork is a demonstrator for [llm4s](https://github.com/llm4s/llm4s) 0.7. This is where each feature is used, and the
+Szork is a demonstrator for [llm4s](https://github.com/llm4s/llm4s) 1.0. This is where each feature is used, and the
 test that shows it working.
 
 | llm4s feature | Used for | Code | Test |
@@ -43,14 +43,18 @@ around them:
 | `OutlineMap.repair` fixes a generated outline after the fact | 0.7.0 has `withOutputCheck`, which would send the problems back to the model ([llm4s#2920](https://github.com/llm4s/llm4s/issues/2920)). Szork keeps the repair: it is free and certain, where a retry is another minute-long model call that may fail the generation | by choice |
 | `ExitGuardMiddleware` re-asks the model itself | `withOutputCheck` ends the turn with an error when the second answer is also wrong; the guard instead replaces it with "the way is shut", so the player always gets a turn | by choice |
 
-## Found on 0.7.0
+## Fixed in llm4s 1.0.0
 
-- An outline cut off at `max_tokens` (all of it spent on thinking) is retried and reported as `OutputInvalid` ("the
-  answer is not JSON", then "expected object, got array"), not as `Truncated`, and nothing says the output limit was the
-  cause ([llm4s#2933](https://github.com/llm4s/llm4s/issues/2933), open).
+- An outline cut off at `max_tokens` was retried and reported as `OutputInvalid`, with nothing to say the output limit
+  was the cause. 1.0.0 ends the run `Truncated` without asking again and does not decode the partial answer
+  ([llm4s#2933](https://github.com/llm4s/llm4s/issues/2933)); `AdventureGenerator` reads that status and tells the
+  player the design ran past the output limit.
+
+## Open on 1.0.0
+
 - OpenAI's current models (`gpt-5.6-*`, `gpt-6-*`, `gpt-6.1-*`) call function tools on Chat Completions only with
   `reasoning_effort: "none"`; reasoning with tools needs the Responses API, which llm4s-openai does not use. llm4s
-  0.7.0 handles this for `gpt-6-luna` (it sets the effort to none and logs the adjustment), but refuses tools on
+  1.0.0 (as 0.7.0 did) handles this for `gpt-6-luna` (it sets the effort to none and logs the adjustment), but refuses tools on
   `gpt-6.1-terra` ("calls tools only through OpenAI's Responses API", though it calls them on Chat Completions with
   the effort at none), and sends the `gpt-5.6` models the configured effort, which OpenAI rejects - while its own
   error message recommends `gpt-5.6-terra` ([llm4s#2940](https://github.com/llm4s/llm4s/issues/2940), open;

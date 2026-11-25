@@ -1,6 +1,6 @@
 package org.llm4s.szork.game
 
-import org.llm4s.agent.Agent
+import org.llm4s.agent.{Agent, AgentStatus}
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{CompletionOptions, ReasoningEffort}
 import org.llm4s.szork.error._
@@ -240,12 +240,22 @@ object AdventureGenerator {
       result <- agent.run(designBrief(theme))
       _ = logger.info(s"Outline designer finished ${result.status.productPrefix}: ${result.runUsage}")
       _ = agent.forget(result.threadId)
-      outline <- result.decodeOutput[AdventureOutline]
-    } yield withSoundMap(outline)
+      outline <- result.status match {
+        // llm4s does not decode an answer the model's output limit cut short
+        case AgentStatus.Truncated(_) => Right(None)
+        case _ => result.decodeOutput[AdventureOutline].map(Some(_))
+      }
+    } yield outline.map(withSoundMap)
     outline match {
-      case Right(o) =>
+      case Right(Some(o)) =>
         logger.info(s"Generated adventure outline: ${o.title} (${o.keyLocations.size} locations)")
         Right(o)
+      case Right(None) =>
+        logger.error(s"Failed to generate adventure outline: cut off at the output limit of $MaxOutputTokens tokens")
+        Left(
+          AdventureGenerationError(
+            "The adventure outline was cut off at the model's output limit",
+            FailureReasons.CutOff))
       case Left(error) =>
         logger.error(s"Failed to generate adventure outline: ${error.message}")
         error match {
@@ -293,6 +303,8 @@ object AdventureGenerator {
     val Key = "The AI service rejected the server's API key. Check the key in the server's .env file."
     val RateLimit = "The AI service is busy or rate-limiting requests. Wait a moment and try again."
     val Unreachable = "The AI service could not be reached. Check the connection and try again."
+    val CutOff =
+      "The AI's adventure design came back incomplete: it ran past the model's output limit. Please try again."
     val Rejected = "The AI service rejected the request; the configured model may not be supported. See the server log."
   }
 

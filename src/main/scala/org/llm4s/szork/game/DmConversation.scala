@@ -139,6 +139,11 @@ private[game] final class DmConversation(sessionId: String, initialAgents: Resul
           }
         case Left(error) =>
           logger.warn(s"[$sessionId] Turn failed on thread ${turnThread.value}: ${error.message}")
+          error match {
+            case invalid: org.llm4s.agent.graph.GraphError.OutputInvalid =>
+              invalid.errors.foreach(problem => logger.warn(s"[$sessionId]   the answer's problem: $problem"))
+            case _ => ()
+          }
           threadId = Some(turnThread)
           forgetThread()
           Left(error)

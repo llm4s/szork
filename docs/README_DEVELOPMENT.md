@@ -2,7 +2,7 @@
 
 ## Build Configuration
 
-Szork is a standalone Scala 3 project built on the LLM4S library (0.7) for its AI features.
+Szork is a standalone Scala 3 project built on the LLM4S library (1.0) for its AI features.
 
 ## Building and Running
 
@@ -75,7 +75,7 @@ See the main [README](../README.md#architecture) for the package layout and how 
 
 ## Dependencies
 
-- **LLM4S 0.7**: `llm4s-agent`, `llm4s-openai`, `llm4s-anthropic`, `llm4s-image`, `llm4s-speech`, `llm4s-observability`
+- **LLM4S 1.0**: `llm4s-agent`, `llm4s-openai`, `llm4s-anthropic`, `llm4s-image`, `llm4s-speech`, `llm4s-observability`
 - **Cask**: HTTP server
 - **Java-WebSocket**: WebSocket server
 - **Vue 3 / Vuetify 3**: frontend

@@ -54,8 +54,8 @@ class WireFormatSpec extends AnyFunSuite with Matchers {
   test("an outline the model did not finish fails the generation with a reason the player can act on") {
     FakeAnthropic.using(_ => outlineAnswer.take(outlineAnswer.length / 2), stopReason = "max_tokens") { api =>
       val failed = AdventureGenerator.generateAdventureOutline("a wire")(using api.client()).left.toOption.get
-      failed.userMessage should include("incomplete or malformed")
-      api.requests should have size 2 // the answer, and llm4s's one correction
+      failed.userMessage should include("output limit")
+      api.requests should have size 1 // llm4s does not ask again for an answer that was cut off
     }
   }
 

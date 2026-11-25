@@ -2,7 +2,7 @@ ThisBuild / scalaVersion := "3.8.4"
 ThisBuild / organization := "org.llm4s"
 ThisBuild / organizationName := "llm4s"
 
-val llm4sVersion = "0.7.0"
+val llm4sVersion = "1.0.0"
 
 lazy val root = (project in file("."))
   .enablePlugins(RevolverPlugin)

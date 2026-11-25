@@ -150,7 +150,7 @@ object LLMConfig {
 
   /** Models used when SZORK_LLM_MODEL is not set. */
   // gpt-6-luna plays a whole adventure. OpenAI's Chat Completions API, which llm4s uses, lets its current models
-  // call tools only with reasoning off, and llm4s 0.7.0 arranges that for this model (it refuses gpt-6.1-terra and
+  // call tools only with reasoning off, and llm4s 1.0.0 arranges that for this model (it refuses gpt-6.1-terra and
   // does not arrange it for the gpt-5.6 models)
   val DefaultOpenAIModel = "gpt-6-luna"
 

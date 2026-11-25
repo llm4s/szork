@@ -90,7 +90,7 @@ See `frontend/src/types/WebSocketProtocol.ts` for the client protocol and `src/m
 
 ### Technology Stack
 - **Backend**: Scala 3 with the Cask web framework and Java-WebSocket
-- **AI Integration**: LLM4S 0.7 — `llm4s-agent` (the Dungeon Master agent: tools, threads, streaming, structured output, step limit, tracing), `llm4s-openai` / `llm4s-anthropic` (providers), `llm4s-image` (scene art), `llm4s-speech` (narration and voice input), `llm4s-observability` (Langfuse tracing)
+- **AI Integration**: LLM4S 1.0 — `llm4s-agent` (the Dungeon Master agent: tools, threads, streaming, structured output, step limit, tracing), `llm4s-openai` / `llm4s-anthropic` (providers), `llm4s-image` (scene art), `llm4s-speech` (narration and voice input), `llm4s-observability` (Langfuse tracing)
 - **Frontend**: Vue 3 + Vuetify 3 + TypeScript
 - **Real-time**: WebSockets for streaming responses
 - **Build Tool**: sbt with hot reload support
@@ -182,7 +182,7 @@ Set in `.env` (see `.env.example`) or the environment:
 
 ### Models
 
-Checked with the playtest harness on llm4s 0.7.0, at the default reasoning effort (`low`):
+Checked with the playtest harness (the OpenAI rows again on llm4s 1.0.0), at the default reasoning effort (`low`):
 
 | Model | Status |
 |---|---|
@@ -190,7 +190,7 @@ Checked with the playtest harness on llm4s 0.7.0, at the default reasoning effor
 | `claude-haiku-5-5` | Works: 20 turns with no rule broken, about 2.7 s a turn; its first outline needed llm4s's one correction |
 | `claude-sonnet-4-6` | Works: 12 turns with no finding, but about 11 s a turn, because `low` turns its extended thinking on. Set `SZORK_REASONING_EFFORT=default` to play it without |
 | `gpt-6-luna` (OpenAI default) | Works: designed an adventure and played 16 turns with no finding, about 3.7 s a turn. It plays with reasoning off: OpenAI's Chat Completions API lets its current models call tools only that way, and llm4s switches it off for this model |
-| `gpt-6.1-terra`, `gpt-5.6-terra`, `gpt-5.6-luna` | Do not work on llm4s 0.7.0: it refuses tools on `gpt-6.1-terra`, and sends the `gpt-5.6` models a reasoning effort OpenAI rejects with tools. All three call tools on Chat Completions when asked directly with reasoning off |
+| `gpt-6.1-terra`, `gpt-5.6-terra`, `gpt-5.6-luna` | Do not work on llm4s 1.0.0: it refuses tools on `gpt-6.1-terra`, and sends the `gpt-5.6` models a reasoning effort OpenAI rejects with tools. All three call tools on Chat Completions when asked directly with reasoning off |
 | `gpt-4o` | The previous default; not replayed in the latest live tests |
 
 To check a model, run a playtest on it: `SZORK_LLM_MODEL=<model> sbt "runMain org.llm4s.szork.playtest.Playtest"`

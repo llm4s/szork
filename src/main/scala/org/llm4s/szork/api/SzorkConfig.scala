@@ -97,7 +97,10 @@ case class SzorkConfig(
   sessionTtlMinutes: Int = SzorkConfig.DefaultSessionTtlMinutes,
 
   // Browser origins allowed to open the WebSocket
-  allowedOrigins: Set[String] = Set("http://localhost:3090", "http://127.0.0.1:3090")
+  allowedOrigins: Set[String] = SzorkConfig.defaultOrigins(8090),
+
+  // Settings that were given but cannot be used; `validate` reports them
+  problems: List[String] = Nil
 ) {
   def sessionTtlMillis: Long = sessionTtlMinutes.toLong * 60 * 1000
 }
@@ -109,39 +112,42 @@ case class LLMConfig(
   baseUrl: Option[String] = None
 ) {
 
-  /** Convert to llm4s ProviderConfig for the new API */
-  def toProviderConfig: org.llm4s.llmconnect.config.ProviderConfig = {
+  /** The llm4s provider configuration, or why there is none (a provider Szork does not know). */
+  def toProviderConfig: Either[String, org.llm4s.llmconnect.config.ProviderConfig] = {
     import org.llm4s.types.ProviderModelTypes.{BaseUrl, ModelName}
     provider.toLowerCase match {
       case "openai" =>
-        org.llm4s.llmconnect.config.OpenAIConfig(
-          apiKey = Secret(apiKey),
-          model = ModelName(model.getOrElse(LLMConfig.DefaultOpenAIModel)),
-          organization = None,
-          baseUrl = BaseUrl(baseUrl.getOrElse("https://api.openai.com/v1")),
-          contextWindow = 128000,
-          reserveCompletion = 4096
-        )
+        Right(
+          org.llm4s.llmconnect.config.OpenAIConfig(
+            apiKey = Secret(apiKey),
+            model = ModelName(model.getOrElse(LLMConfig.DefaultOpenAIModel)),
+            organization = None,
+            baseUrl = BaseUrl(baseUrl.getOrElse("https://api.openai.com/v1")),
+            contextWindow = 128000,
+            reserveCompletion = 4096
+          ))
       case "anthropic" =>
-        org.llm4s.llmconnect.config.AnthropicConfig(
-          apiKey = Secret(apiKey),
-          model = ModelName(model.getOrElse(LLMConfig.DefaultAnthropicModel)),
-          baseUrl = BaseUrl(baseUrl.getOrElse("https://api.anthropic.com")),
-          contextWindow = 200000,
-          reserveCompletion = 4096
-        )
+        Right(
+          org.llm4s.llmconnect.config.AnthropicConfig(
+            apiKey = Secret(apiKey),
+            model = ModelName(model.getOrElse(LLMConfig.DefaultAnthropicModel)),
+            baseUrl = BaseUrl(baseUrl.getOrElse("https://api.anthropic.com")),
+            contextWindow = 200000,
+            reserveCompletion = 4096
+          ))
       case "llama" | "local" =>
         // Use OpenAI-compatible config for local LLaMA servers
-        org.llm4s.llmconnect.config.OpenAIConfig(
-          apiKey = Secret(if (apiKey == "not-required") "sk-no-key-required" else apiKey),
-          model = ModelName(model.getOrElse(LLMConfig.DefaultLlamaModel)),
-          organization = None,
-          baseUrl = BaseUrl(baseUrl.getOrElse("http://localhost:11434/v1")),
-          contextWindow = 8192,
-          reserveCompletion = 2048
-        )
+        Right(
+          org.llm4s.llmconnect.config.OpenAIConfig(
+            apiKey = Secret(if (apiKey == "not-required") "sk-no-key-required" else apiKey),
+            model = ModelName(model.getOrElse(LLMConfig.DefaultLlamaModel)),
+            organization = None,
+            baseUrl = BaseUrl(baseUrl.getOrElse("http://localhost:11434/v1")),
+            contextWindow = 8192,
+            reserveCompletion = 2048
+          ))
       case other =>
-        throw new IllegalArgumentException(s"Unknown LLM provider: $other")
+        Left(s"Unknown LLM provider: $other")
     }
   }
 }
@@ -159,6 +165,9 @@ object LLMConfig {
     */
   val DefaultAnthropicModel = "claude-sonnet-5-5"
   val DefaultLlamaModel = "llama3"
+
+  /** The providers SZORK_LLM_PROVIDER may name. */
+  val Providers: List[String] = List("openai", "anthropic", "llama", "local")
 }
 
 object SzorkConfig {
@@ -172,6 +181,17 @@ object SzorkConfig {
     */
   val DefaultReasoningEffort: ReasoningEffort = ReasoningEffort.Low
 
+  /** The browser origins allowed by default: the dev frontend (Vite, port 3090) and this server's own port. */
+  def defaultOrigins(port: Int): Set[String] =
+    Set(3090, port).flatMap(p => Set(s"http://localhost:$p", s"http://127.0.0.1:$p"))
+
+  /** Whether a flag's value turns it off: `false`, `off`, `0` or `no`, in any case. */
+  def isOff(value: String): Boolean = Set("false", "off", "0", "no").contains(value.trim.toLowerCase)
+
+  /** A feature flag in `env`: on unless set to a value [[isOff]] accepts (an empty value leaves it on). */
+  def flag(env: ConfigReader, key: String): Boolean =
+    env.get(key).map(_.trim).filter(_.nonEmpty).forall(v => !isOff(v))
+
   /** The configuration from the environment (.env and the process environment), for the command-line tools. */
   lazy val instance: SzorkConfig = load()
 
@@ -179,38 +199,49 @@ object SzorkConfig {
   def getLLMClient(config: SzorkConfig = instance): Either[String, org.llm4s.llmconnect.LLMClient] =
     config.llmConfig match {
       case Some(llm) =>
-        try
-          org.llm4s.model.ModelRegistryService.default().left.map(_.message).flatMap { registry =>
+        for {
+          provider <- llm.toProviderConfig
+          registry <- org.llm4s.model.ModelRegistryService.default().left.map(_.message)
+          client <- {
             given org.llm4s.model.ModelRegistryService = registry
-            org.llm4s.llmconnect.LLMConnect.getClient(llm.toProviderConfig).left.map(_.message)
+            org.llm4s.llmconnect.LLMConnect.getClient(provider).left.map(_.message)
           }
-        catch {
-          case e: Exception => Left(s"Failed to create LLM client: ${e.getMessage}")
-        }
+        } yield client
       case None =>
         Left("No LLM configuration found")
     }
 
-  /** The configuration in `env`. A feature flag is on unless set to `false`; a number that does not parse, and an empty
-    * value, are ignored.
+  /** The configuration in `env`. A feature flag is on unless set to `false`, `off`, `0` or `no`; a number that does not
+    * parse, and an empty value, are ignored. A provider or reasoning effort that is not one Szork knows is recorded in
+    * `problems`.
     */
   def load(env: ConfigReader = EnvLoader): SzorkConfig = {
     def setting(key: String): Option[String] = env.get(key).map(_.trim).filter(_.nonEmpty)
-    def flag(key: String): Boolean = !setting(key).exists(_.equalsIgnoreCase("false"))
     def int(key: String): Option[Int] = setting(key).flatMap(_.toIntOption)
+    def list(key: String): Option[Set[String]] = setting(key).map(_.split(",").map(_.trim).filter(_.nonEmpty).toSet)
 
     val port = int("SZORK_PORT").getOrElse(8090)
-    // Browser origins allowed to open the WebSocket (comma-separated); defaults to the dev frontend and this server
-    val allowedOrigins = setting("SZORK_ALLOWED_ORIGINS")
-      .map(_.split(",").map(_.trim).filter(_.nonEmpty).toSet)
-      .getOrElse(Set(3090, port).flatMap(p => Set(s"http://localhost:$p", s"http://127.0.0.1:$p")))
+    val (llmConfig, llmProblem) = loadLLMConfig(env).fold(problem => (None, Some(problem)), (_, None))
+    val (reasoningEffort, effortProblem) = setting("SZORK_REASONING_EFFORT").map(_.toLowerCase) match {
+      case None => (Some(DefaultReasoningEffort), None)
+      case Some("default" | "off" | "none") => (None, None)
+      case Some(name) =>
+        ReasoningEffort.fromString(name) match {
+          case Some(effort) => (Some(effort), None)
+          case None =>
+            (
+              Some(DefaultReasoningEffort),
+              Some(s"SZORK_REASONING_EFFORT '$name' is not one of minimal, low, medium, high, xhigh, max or default"))
+        }
+    }
 
     SzorkConfig(
       port = port,
       wsPort = int("SZORK_WS_PORT").getOrElse(9002),
       host = setting("SZORK_HOST").getOrElse("127.0.0.1"),
-      allowedOrigins = allowedOrigins,
-      imageGenerationEnabled = flag("SZORK_IMAGE_GENERATION_ENABLED"),
+      // Browser origins allowed to open the WebSocket; defaults to the dev frontend and this server
+      allowedOrigins = list("SZORK_ALLOWED_ORIGINS").getOrElse(defaultOrigins(port)),
+      imageGenerationEnabled = flag(env, "SZORK_IMAGE_GENERATION_ENABLED"),
       imageProvider = setting("SZORK_IMAGE_PROVIDER").map(ImageProvider.fromString).getOrElse(ImageProvider.None),
       imageModel = setting("SZORK_IMAGE_MODEL"),
       imageQuality = setting("SZORK_IMAGE_QUALITY").map(_.toLowerCase).getOrElse(SceneImages.DefaultQuality),
@@ -218,29 +249,23 @@ object SzorkConfig {
         .flatMap(_.toIntOption)
         .filter(_ >= 64)
         .getOrElse(SceneImages.DefaultPictureSide),
-      ttsEnabled = flag("SZORK_TTS_ENABLED"),
-      sttEnabled = flag("SZORK_STT_ENABLED"),
-      musicEnabled = flag("SZORK_MUSIC_ENABLED"),
+      ttsEnabled = flag(env, "SZORK_TTS_ENABLED"),
+      sttEnabled = flag(env, "SZORK_STT_ENABLED"),
+      musicEnabled = flag(env, "SZORK_MUSIC_ENABLED"),
       speech = SpeechConfig.load(env),
       mediaNetwork = MediaNetworkConfig.load(env),
       musicPoll = MusicPollConfig.load(env),
-      llmConfig = loadLLMConfig(env),
+      llmConfig = llmConfig,
       dmContextWindow = loadDmContextWindow(env),
-      inputGuardrailEnabled =
-        setting("SZORK_INPUT_GUARDRAIL").map(_.toLowerCase).forall(v => v != "false" && v != "off"),
-      reasoningEffort = setting("SZORK_REASONING_EFFORT").map(_.toLowerCase) match {
-        case None => Some(DefaultReasoningEffort)
-        case Some("default" | "off" | "none") => None
-        case Some(name) =>
-          // a value that is not an effort is ignored, like a number that does not parse
-          ReasoningEffort.fromString(name).orElse(Some(DefaultReasoningEffort))
-      },
+      inputGuardrailEnabled = flag(env, "SZORK_INPUT_GUARDRAIL"),
+      reasoningEffort = reasoningEffort,
       subagents = SubagentConfig.load(env),
-      autoSaveEnabled = flag("SZORK_AUTO_SAVE"),
+      autoSaveEnabled = flag(env, "SZORK_AUTO_SAVE"),
       savesDirectory = setting("SZORK_SAVES_DIR").getOrElse("szork-saves"),
       adventuresDirectory = setting("SZORK_ADVENTURES_DIR").getOrElse(DefaultAdventuresDirectory),
       cache = MediaCacheConfig.load(env),
-      sessionTtlMinutes = int("SZORK_SESSION_TTL_MINUTES").filter(_ > 0).getOrElse(DefaultSessionTtlMinutes)
+      sessionTtlMinutes = int("SZORK_SESSION_TTL_MINUTES").filter(_ > 0).getOrElse(DefaultSessionTtlMinutes),
+      problems = llmProblem.toList ++ effortProblem.toList
     )
   }
 
@@ -264,30 +289,34 @@ object SzorkConfig {
     }
   }
 
-  /** The LLM to use, from SZORK_LLM_PROVIDER or else whichever provider's settings are present.
+  /** The LLM to use, from SZORK_LLM_PROVIDER or else whichever provider's settings are present (None: none are); Left
+    * when SZORK_LLM_PROVIDER names a provider Szork does not know. Blank values count as not set.
     *
     * Hand-written rather than llm4s's `Llm4sConfig.defaultProvider()`: that reads `llm4s.providers` from Typesafe
     * config, which sees neither Szork's .env file nor SZORK_LLM_PROVIDER/SZORK_LLM_MODEL, and has no "whichever key is
     * set" fallback.
     */
-  private[szork] def loadLLMConfig(env: ConfigReader = EnvLoader): Option[LLMConfig] = {
-    val openAIKey = env.get("OPENAI_API_KEY")
-    val anthropicKey = env.get("ANTHROPIC_API_KEY")
-    val llamaUrl = env.get("LLAMA_BASE_URL")
-    val model = env.get("SZORK_LLM_MODEL")
+  private[szork] def loadLLMConfig(env: ConfigReader = EnvLoader): Either[String, Option[LLMConfig]] = {
+    def setting(key: String): Option[String] = env.get(key).map(_.trim).filter(_.nonEmpty)
+    val openAIKey = setting("OPENAI_API_KEY")
+    val anthropicKey = setting("ANTHROPIC_API_KEY")
+    val llamaUrl = setting("LLAMA_BASE_URL")
+    val model = setting("SZORK_LLM_MODEL")
 
     def openAI = openAIKey.map(key =>
-      LLMConfig("openai", key, model.orElse(Some(LLMConfig.DefaultOpenAIModel)), env.get("OPENAI_BASE_URL")))
+      LLMConfig("openai", key, model.orElse(Some(LLMConfig.DefaultOpenAIModel)), setting("OPENAI_BASE_URL")))
     def anthropic = anthropicKey.map(key =>
-      LLMConfig("anthropic", key, model.orElse(Some(LLMConfig.DefaultAnthropicModel)), env.get("ANTHROPIC_BASE_URL")))
+      LLMConfig("anthropic", key, model.orElse(Some(LLMConfig.DefaultAnthropicModel)), setting("ANTHROPIC_BASE_URL")))
     // Without LLAMA_BASE_URL, LLMConfig.toProviderConfig's default, which ends in /v1
     def llama = LLMConfig("llama", "not-required", model.orElse(Some(LLMConfig.DefaultLlamaModel)), llamaUrl)
 
-    env.get("SZORK_LLM_PROVIDER").map(_.toLowerCase) match {
-      case Some("openai") => openAI
-      case Some("anthropic") => anthropic
-      case Some("llama") | Some("local") => Some(llama)
-      case _ => openAI.orElse(anthropic).orElse(llamaUrl.map(_ => llama))
+    setting("SZORK_LLM_PROVIDER").map(_.toLowerCase) match {
+      case Some("openai") => Right(openAI)
+      case Some("anthropic") => Right(anthropic)
+      case Some("llama") | Some("local") => Right(Some(llama))
+      case Some(other) =>
+        Left(s"SZORK_LLM_PROVIDER '$other' is not one of ${LLMConfig.Providers.mkString(", ")}")
+      case None => Right(openAI.orElse(anthropic).orElse(llamaUrl.map(_ => llama)))
     }
   }
 
@@ -299,6 +328,8 @@ object SzorkConfig {
       MediaCache.configure(config.cache)
     }
 
+    /** The problems that stop the server from starting: ports it cannot listen on, settings it cannot use, and no LLM.
+      */
     def validate(): SzorkResult[Unit] = {
       val errors = scala.collection.mutable.ListBuffer[String]()
 
@@ -309,13 +340,13 @@ object SzorkConfig {
       if (config.wsPort < 1 || config.wsPort > 65535) {
         errors += s"Invalid WebSocket port: ${config.wsPort}"
       }
+      if (config.wsPort == config.port)
+        errors += s"The WebSocket port (${config.wsPort}) equals the HTTP port: set SZORK_WS_PORT to another port"
 
-      // An image provider that was chosen but cannot be used (its credentials are missing)
-      if (config.imageGenerationEnabled && config.imageProvider != ImageProvider.None)
-        SceneImages.config(config).left.foreach(reason => errors += s"Scene images unavailable: $reason")
+      errors ++= config.problems
 
-      // Validate LLM configuration
-      if (config.llmConfig.isEmpty) {
+      // Validate LLM configuration (an unknown SZORK_LLM_PROVIDER is already among the problems)
+      if (config.llmConfig.isEmpty && !config.problems.exists(_.startsWith("SZORK_LLM_PROVIDER"))) {
         errors += "No LLM provider configured. Set one of: OPENAI_API_KEY, ANTHROPIC_API_KEY, or LLAMA_BASE_URL (or SZORK_LLM_PROVIDER)."
       }
 
@@ -325,6 +356,14 @@ object SzorkConfig {
         Left(ConfigurationError(errors.mkString("\n")))
       }
     }
+
+    /** Problems that leave the server running without a feature: an image provider chosen whose credentials are
+      * missing.
+      */
+    def warnings: List[String] =
+      if (config.imageGenerationEnabled && config.imageProvider != ImageProvider.None)
+        SceneImages.config(config).left.toOption.map(reason => s"Scene images unavailable: $reason").toList
+      else Nil
 
     def logConfiguration(logger: Logger): Unit = {
       logger.info("=== Szork Configuration ===")
@@ -345,6 +384,7 @@ object SzorkConfig {
       logger.info(s"Saves Directory: ${config.savesDirectory}")
       logger.info(s"Adventure Library: ${config.adventuresDirectory}")
       logger.info(s"Session TTL: ${config.sessionTtlMinutes} minutes")
+      logger.info(s"Allowed origins: ${config.allowedOrigins.toList.sorted.mkString(", ")}")
       logger.info("========================")
     }
   }

@@ -85,7 +85,7 @@ defineExpose({ scrollToBottom });
 .game-output-wrapper {
   flex: 1;
   overflow: hidden;
-  background-color: #1e1e1e;
+  background-color: #121212;
   border-radius: 4px;
   margin-bottom: 1rem;
 }
@@ -93,7 +93,9 @@ defineExpose({ scrollToBottom });
 .game-output {
   height: 100%;
   overflow-y: auto;
-  font-family: "Courier New", Courier, monospace;
+  /* Menlo and Consolas have sturdier strokes than Courier New, whose thin ones are hard to read on a dark ground */
+  font-family: "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", "Courier New", monospace;
+  font-size: 1.05rem;
   padding: 1rem;
 }
 
@@ -124,18 +126,18 @@ defineExpose({ scrollToBottom });
 }
 
 .game-message.user {
-  color: #64b5f6;
+  color: #90caf9;
 }
 
 .game-message.game {
-  color: #81c784;
+  color: #c8f5cb;
 }
 
 .exits-info {
   margin-top: 0.5rem;
   padding-top: 0.5rem;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  color: #4caf50;
+  color: #81e086;
   font-size: 0.95em;
 }
 
@@ -161,7 +163,7 @@ defineExpose({ scrollToBottom });
 .loading-indicator {
   display: flex;
   align-items: center;
-  color: #9e9e9e;
+  color: #bdbdbd;
   font-style: italic;
   margin-top: 0.5rem;
   animation: pulse 1.5s ease-in-out infinite;

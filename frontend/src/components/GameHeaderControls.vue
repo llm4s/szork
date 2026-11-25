@@ -10,6 +10,7 @@
           icon
           size="small"
           class="mr-2 back-btn"
+          aria-label="Back to adventure selection"
         >
           <v-icon>mdi-arrow-left</v-icon>
         </v-btn>
@@ -35,6 +36,8 @@
           icon
           size="small"
           class="mr-2 image-toggle"
+          aria-label="Image generation"
+          :aria-pressed="imageGeneration && imageAvailable"
         >
           <v-icon>{{ imageGeneration ? "mdi-image" : "mdi-image-off" }}</v-icon>
         </v-btn>
@@ -60,6 +63,8 @@
           icon
           size="small"
           class="mr-2 music-toggle"
+          aria-label="Background music"
+          :aria-pressed="backgroundMusic && musicAvailable"
         >
           <v-icon>{{ backgroundMusic ? "mdi-music" : "mdi-music-off" }}</v-icon>
         </v-btn>
@@ -81,6 +86,8 @@
           icon
           size="small"
           class="narration-toggle"
+          aria-label="Voice narration"
+          :aria-pressed="narration && ttsAvailable"
         >
           <v-icon>{{ narration ? "mdi-account-voice" : "mdi-account-voice-off" }}</v-icon>
         </v-btn>

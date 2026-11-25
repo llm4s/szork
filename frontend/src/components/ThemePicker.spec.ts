@@ -32,6 +32,18 @@ describe("ThemePicker", () => {
     expect(wrapper.emitted("select")).toEqual([[PREDEFINED_THEMES[1].id], [CUSTOM_THEME_ID]]);
   });
 
+  it("is a radio group that can be chosen from with the keyboard", async () => {
+    const wrapper = mountThemes("space");
+    const cards = wrapper.findAll(".theme-card");
+    expect(wrapper.find(".theme-grid").attributes("role")).toBe("radiogroup");
+    expect(cards.map((c) => c.attributes("aria-checked"))).toContain("true");
+    expect(cards.every((c) => c.attributes("role") === "radio" && c.attributes("tabindex") === "0")).toBe(true);
+
+    await cards[0].trigger("keydown", { key: "Enter" });
+    await cards[2].trigger("keydown", { key: " " });
+    expect(wrapper.emitted("select")).toEqual([[PREDEFINED_THEMES[0].id], [PREDEFINED_THEMES[2].id]]);
+  });
+
   it("asks for a description only for the custom theme", async () => {
     const wrapper = mountThemes("space");
     expect(wrapper.find(".custom-theme-input").exists()).toBe(false);
@@ -58,6 +70,15 @@ describe("StylePicker", () => {
     expect(wrapper.find(".style-sample-image").attributes("src")).toBe(ART_STYLES[0].sampleImage);
     await wrapper.findAll(".style-card")[0].trigger("click");
     expect(wrapper.emitted("select")).toEqual([[ART_STYLES[0].id]]);
+  });
+
+  it("can be chosen from with the keyboard", async () => {
+    const wrapper = mountWithVuetify(StylePicker, { props: { styles: ART_STYLES, selected: null } });
+    const card = wrapper.findAll(".style-card")[1];
+    expect(card.attributes("role")).toBe("radio");
+    expect(card.attributes("aria-checked")).toBe("false");
+    await card.trigger("keydown", { key: "Enter" });
+    expect(wrapper.emitted("select")).toEqual([[ART_STYLES[1].id]]);
   });
 
   it("falls back to the gradient without a sample image", () => {

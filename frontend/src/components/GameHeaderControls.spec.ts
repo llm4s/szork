@@ -44,6 +44,14 @@ describe("GameHeaderControls", () => {
     expect(wrapper.emitted("update:narration")).toBeUndefined();
   });
 
+  it("names each button and says which features are on", () => {
+    const wrapper = mountControls();
+    expect(wrapper.find(".back-btn").attributes("aria-label")).toBe("Back to adventure selection");
+    expect(wrapper.find(".image-toggle").attributes("aria-pressed")).toBe("true");
+    expect(wrapper.find(".narration-toggle").attributes("aria-label")).toBe("Voice narration");
+    expect(wrapper.find(".narration-toggle").attributes("aria-pressed")).toBe("false");
+  });
+
   it("emits back from the back button", async () => {
     const wrapper = mountControls();
     await wrapper.find(".back-btn").trigger("click");

@@ -1,13 +1,18 @@
 <template>
-  <div class="theme-grid">
+  <div class="theme-grid" role="radiogroup" aria-label="Adventure theme">
     <div
       v-for="theme in themes"
       :key="theme.id"
       class="theme-card"
       :class="{ selected: selected === theme.id }"
+      role="radio"
+      :aria-checked="selected === theme.id"
+      tabindex="0"
       @click="emit('select', theme.id)"
+      @keydown.enter.prevent="emit('select', theme.id)"
+      @keydown.space.prevent="emit('select', theme.id)"
     >
-      <div class="theme-icon">{{ theme.icon }}</div>
+      <div class="theme-icon" aria-hidden="true">{{ theme.icon }}</div>
       <h3 class="theme-name">{{ theme.name }}</h3>
       <p class="theme-description">{{ theme.description }}</p>
     </div>
@@ -16,9 +21,14 @@
     <div
       class="theme-card custom-theme"
       :class="{ selected: selected === CUSTOM_THEME_ID }"
+      role="radio"
+      :aria-checked="selected === CUSTOM_THEME_ID"
+      tabindex="0"
       @click="emit('select', CUSTOM_THEME_ID)"
+      @keydown.enter.prevent="emit('select', CUSTOM_THEME_ID)"
+      @keydown.space.prevent="emit('select', CUSTOM_THEME_ID)"
     >
-      <div class="theme-icon">✨</div>
+      <div class="theme-icon" aria-hidden="true">✨</div>
       <h3 class="theme-name">Custom Adventure</h3>
       <p class="theme-description">Create your own unique adventure setting</p>
     </div>
@@ -83,6 +93,11 @@ const emit = defineEmits<{
   border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-4px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.theme-card:focus-visible {
+  outline: 2px solid #90caf9;
+  outline-offset: 2px;
 }
 
 .theme-card.selected {

@@ -21,7 +21,7 @@ object MediaCacheConfig {
   def load(reader: ConfigReader): MediaCacheConfig = {
     val defaults = MediaCacheConfig()
     MediaCacheConfig(
-      enabled = !reader.get("SZORK_CACHE_ENABLED").exists(_.trim.equalsIgnoreCase("false")),
+      enabled = SzorkConfig.flag(reader, "SZORK_CACHE_ENABLED"),
       directory = reader.get("SZORK_CACHE_DIR").map(_.trim).filter(_.nonEmpty).getOrElse(defaults.directory),
       ttlMs = reader.get("SZORK_CACHE_TTL_MS").flatMap(_.trim.toLongOption).getOrElse(defaults.ttlMs),
       maxBytes = reader.get("SZORK_CACHE_MAX_BYTES").flatMap(_.trim.toLongOption).getOrElse(defaults.maxBytes)

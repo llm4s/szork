@@ -151,17 +151,20 @@ The server exposes capabilities and allows per‑session overrides.
 
 ### Configuration Options
 
-Set in `.env` (see `.env.example`) or the environment:
+Set in `.env` (see `.env.example`) or the environment. A blank value counts as not set. A flag (a setting whose
+default is `true`) is on unless set to `false`, `off`, `0` or `no`, in any case. The server does not start with a
+port it cannot use, an unknown `SZORK_LLM_PROVIDER` or `SZORK_REASONING_EFFORT`, or no LLM; the log says which.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `LLAMA_BASE_URL` | – | LLM provider credentials (OpenAI also powers images, TTS and Whisper) |
-| `SZORK_LLM_PROVIDER`, `SZORK_LLM_MODEL` | from the keys present; `gpt-6-luna` / `claude-sonnet-5-5` | Dungeon Master provider and model (see [Models](#models)) |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `LLAMA_BASE_URL` | – | LLM provider credentials (OpenAI also powers images, TTS and Whisper). `LLAMA_BASE_URL` is an OpenAI-compatible API used as given, so it ends in `/v1` (default `http://localhost:11434/v1`) |
+| `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL` | `https://api.openai.com/v1`, `https://api.anthropic.com` | Send the Dungeon Master's OpenAI or Anthropic calls elsewhere (a proxy or a compatible server); images, speech and Whisper still use OpenAI's own |
+| `SZORK_LLM_PROVIDER`, `SZORK_LLM_MODEL` | from the keys present; `gpt-6-luna` / `claude-sonnet-5-5` | Dungeon Master provider (`openai`, `anthropic` or `llama`) and model (see [Models](#models)) |
 | `SZORK_REASONING_EFFORT` | `low` | How hard the adventure designer, the Dungeon Master and its subagents reason before answering, on models that reason: `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `default` to leave it to the model. Not sent to a model that does not reason. The Claude 5 models always reason, at `high` unless told otherwise, which is slow and can use up the whole answer |
 | `SZORK_DM_CONTEXT_MAX_TOKENS` | `24000` | Conversation tokens sent with each Dungeon Master call, besides the system prompt (oldest turns are dropped first; capped at half the model's context window; `0` or `off` sends the whole game) |
 | `SZORK_DM_CONTEXT_MAX_MESSAGES` | – | Limit each call by conversation messages instead of tokens |
-| `SZORK_INPUT_GUARDRAIL` | `true` | Check each command with llm4s's prompt-injection guardrail before the Dungeon Master sees it ("ignore your instructions", "print your system prompt"); a refused command gets "The dungeon does not understand you." and changes nothing (`false` or `off` disables) |
-| `SZORK_NPC_AGENT`, `SZORK_HINT_AGENT` | `true`, `true` | The Dungeon Master delegates conversations with characters to an NPC dialogue subagent (given the character's persona from the outline and what the world state records of them), and requests for help to a hint subagent (given the outline and the player's progress), with llm4s's typed subagents. Each costs one extra small model call, plus one Dungeon Master call to use its report, only on the turns that use it (`false` or `off` disables) |
+| `SZORK_INPUT_GUARDRAIL` | `true` | Check each command with llm4s's prompt-injection guardrail before the Dungeon Master sees it ("ignore your instructions", "print your system prompt"); a refused command gets "The dungeon does not understand you." and changes nothing |
+| `SZORK_NPC_AGENT`, `SZORK_HINT_AGENT` | `true`, `true` | The Dungeon Master delegates conversations with characters to an NPC dialogue subagent (given the character's persona from the outline and what the world state records of them), and requests for help to a hint subagent (given the outline and the player's progress), with llm4s's typed subagents. Each costs one extra small model call, plus one Dungeon Master call to use its report, only on the turns that use it |
 | `SZORK_SUBAGENT_MODEL` | the Dungeon Master's model | A cheaper or faster model, of the Dungeon Master's provider, for the subagents (e.g. `gpt-4o-mini`) |
 | `SZORK_HOST`, `SZORK_PORT`, `SZORK_WS_PORT` | `127.0.0.1`, `8090`, `9002` | Where the HTTP and WebSocket servers listen |
 | `SZORK_SESSION_TTL_MINUTES` | `30` | How long a game's session lives with no connection: a client that reconnects within it carries on, after it the game is loaded from its save |

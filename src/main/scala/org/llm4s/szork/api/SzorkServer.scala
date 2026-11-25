@@ -447,13 +447,12 @@ object SzorkServer {
     import SzorkConfig.ConfigOps
     val config = SzorkConfig.load()
     config.logConfiguration(logger)
+    config.warnings.foreach(warning => logger.warn(warning))
     config.validate().left.foreach { error =>
-      logger.error("Configuration validation failed:")
+      logger.error("The server cannot start with this configuration:")
       error.message.split("\n").foreach(line => logger.error(s"  - $line"))
-      logger.warn("Server will continue but some features may not work")
+      sys.exit(1)
     }
-    if (config.wsPort == config.port)
-      logger.warn(s"The WebSocket port (${config.wsPort}) equals the HTTP port: set SZORK_WS_PORT to another port")
 
     SzorkApp.fromConfig(config) match {
       case Left(error) =>

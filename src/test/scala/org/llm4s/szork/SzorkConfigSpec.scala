@@ -15,10 +15,73 @@ class SzorkConfigSpec extends AnyFunSuite with Matchers {
 
   test("with nothing set, every setting has its default") {
     val config = load()
-    config shouldBe SzorkConfig(
-      allowedOrigins =
-        Set("http://localhost:3090", "http://127.0.0.1:3090", "http://localhost:8090", "http://127.0.0.1:8090"))
+    config shouldBe SzorkConfig()
+    config.allowedOrigins shouldBe
+      Set("http://localhost:3090", "http://127.0.0.1:3090", "http://localhost:8090", "http://127.0.0.1:8090")
     config.sessionTtlMillis shouldBe 30L * 60 * 1000
+  }
+
+  test("every flag is off when set to false, off, 0 or no, in any case, and on otherwise") {
+    val flags = List(
+      "SZORK_IMAGE_GENERATION_ENABLED",
+      "SZORK_TTS_ENABLED",
+      "SZORK_STT_ENABLED",
+      "SZORK_MUSIC_ENABLED",
+      "SZORK_INPUT_GUARDRAIL",
+      "SZORK_AUTO_SAVE",
+      "SZORK_CACHE_ENABLED",
+      "SZORK_NPC_AGENT",
+      "SZORK_HINT_AGENT"
+    )
+    def values(c: SzorkConfig) = List(
+      c.imageGenerationEnabled,
+      c.ttsEnabled,
+      c.sttEnabled,
+      c.musicEnabled,
+      c.inputGuardrailEnabled,
+      c.autoSaveEnabled,
+      c.cache.enabled,
+      c.subagents.npcDialogue,
+      c.subagents.hints)
+    List("false", "OFF", " 0 ", "No").foreach { off =>
+      withClue(off)(values(load(flags.map(_ -> off)*)) shouldBe List.fill(flags.size)(false))
+    }
+    List("true", "on", "1", "yes", "").foreach { on =>
+      withClue(on)(values(load(flags.map(_ -> on)*)) shouldBe List.fill(flags.size)(true))
+    }
+  }
+
+  test("a blank key does not count as set: provider detection falls through to the next provider") {
+    load("OPENAI_API_KEY" -> "  ", "ANTHROPIC_API_KEY" -> "sk-ant").llmConfig shouldBe
+      Some(LLMConfig("anthropic", "sk-ant", Some(LLMConfig.DefaultAnthropicModel)))
+    load("OPENAI_API_KEY" -> " sk-oa ", "SZORK_LLM_MODEL" -> " ", "OPENAI_BASE_URL" -> "").llmConfig shouldBe
+      Some(LLMConfig("openai", "sk-oa", Some(LLMConfig.DefaultOpenAIModel)))
+    load("ANTHROPIC_API_KEY" -> "sk-ant", "ANTHROPIC_BASE_URL" -> " http://127.0.0.1:9999 ").llmConfig shouldBe
+      Some(LLMConfig("anthropic", "sk-ant", Some(LLMConfig.DefaultAnthropicModel), Some("http://127.0.0.1:9999")))
+    load("LLAMA_BASE_URL" -> " ", "OPENAI_API_KEY" -> "").llmConfig shouldBe None
+  }
+
+  test("an unknown provider or reasoning effort is a configuration error, not a silent fallback") {
+    import SzorkConfig.ConfigOps
+    val unknown = load("SZORK_LLM_PROVIDER" -> "gemini", "OPENAI_API_KEY" -> "sk-oa")
+    unknown.llmConfig shouldBe None
+    unknown.problems.head should include("SZORK_LLM_PROVIDER 'gemini'")
+    val providerError = unknown.validate().left.toOption.get.message
+    providerError should include("SZORK_LLM_PROVIDER 'gemini'")
+    providerError should not include "No LLM provider configured"
+
+    val effort = load("SZORK_REASONING_EFFORT" -> "hgih", "OPENAI_API_KEY" -> "sk-oa")
+    effort.validate().left.toOption.get.message should include("SZORK_REASONING_EFFORT 'hgih'")
+    load("SZORK_REASONING_EFFORT" -> "High", "OPENAI_API_KEY" -> "sk-oa").validate() shouldBe Right(())
+  }
+
+  test("ports the server cannot listen on stop it from starting") {
+    import SzorkConfig.ConfigOps
+    val llm = Some(LLMConfig("openai", "sk-oa"))
+    SzorkConfig(llmConfig = llm).validate() shouldBe Right(())
+    SzorkConfig(llmConfig = llm, port = 70000).validate().left.toOption.get.message should include("Invalid port")
+    SzorkConfig(llmConfig = llm, port = 9002).validate().left.toOption.get.message should include("equals the HTTP port")
+    SzorkConfig().validate().left.toOption.get.message should include("No LLM provider configured")
   }
 
   test("every SZORK_ setting is read") {

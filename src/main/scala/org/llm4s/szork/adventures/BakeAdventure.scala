@@ -86,6 +86,9 @@ object BakeAdventure {
     finally pool.shutdown()
   }
 
+  /** How many times a bake asks Replicate whether a track is ready (SZORK_MUSIC_POLL_INTERVAL_MS apart). */
+  private val BakePollAttempts = 180
+
   private final case class Options(
     ids: List[String] = Nil,
     all: Boolean = false,
@@ -161,7 +164,10 @@ object BakeAdventure {
     val tracks =
       if (!options.music) Report.empty
       else {
-        val client = new DefaultMusicClient(config.mediaNetwork, config.musicPoll)
+        val client = // A bake can wait: a game gives up on a track after about half a minute, a bake after three
+          new DefaultMusicClient(
+            config.mediaNetwork,
+            config.musicPoll.copy(maxAttempts = config.musicPoll.maxAttempts.max(BakePollAttempts)))
         if (client.isAvailable) {
           println("Mood tracks:")
           music(library, client)

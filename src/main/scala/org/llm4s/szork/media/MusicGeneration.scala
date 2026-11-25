@@ -71,6 +71,8 @@ class MusicGeneration(replicateApiKey: Option[String], net: MediaNetworkConfig, 
           "input" -> Obj(
             "prompt" -> prompt,
             "duration" -> mood.duration,
+            // The default is WAV, ten times the size; tracks are kept and served as MP3
+            "output_format" -> "mp3",
             "temperature" -> mood.temperature,
             "top_k" -> mood.topK,
             "top_p" -> mood.topP,

@@ -17,6 +17,8 @@ import org.llm4s.szork.api._
 import org.llm4s.szork.game._
 import org.llm4s.szork.persistence._
 import org.llm4s.szork.spi.STTClient
+import org.llm4s.szork.adventures.{Adventure, AdventureLibrary}
+import org.llm4s.szork.media.MediaRef
 
 /** WebSocket server for gameplay.
   *
@@ -50,7 +52,8 @@ class TypedWebSocketServer(
   musicEC: ExecutionContext,
   autoSave: Boolean = true,
   sessionTtlMillis: Long = TypedWebSocketServer.DefaultSessionTtlMillis,
-  allowedOrigins: Option[Set[String]] = None
+  allowedOrigins: Option[Set[String]] = None,
+  library: Option[AdventureLibrary] = None
 ) extends WebSocketServer(address) {
 
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
@@ -236,28 +239,49 @@ class TypedWebSocketServer(
 
   // ============= Games =============
 
-  private def startNewGame(conn: WebSocket, request: NewGameRequest): Unit = {
+  private def startNewGame(conn: WebSocket, request: NewGameRequest): Unit =
+    request.adventureId match {
+      case None => startNewGame(conn, request, None)
+      case Some(id) =>
+        library.flatMap(_.load(id)) match {
+          case Some(adventure) => startNewGame(conn, request, Some(adventure))
+          case None => send(conn, ErrorMessage("Failed to start game", Some(s"No adventure '${id.take(60)}'")))
+        }
+    }
+
+  /** Starts a game: of the library `adventure` if there is one (its outline and theme, and its art style unless the
+    * request names another), otherwise from the request's theme, art style and outline.
+    */
+  private def startNewGame(conn: WebSocket, request: NewGameRequest, adventure: Option[Adventure]): Unit = {
     val sessionId = IdGenerator.sessionId()
     val gameId = IdGenerator.gameId()
-    val outline = request.adventureOutline.flatMap { json =>
-      Try(AdventureGenerator.outlineFromJson(json)) match {
-        case Success(parsed) => Some(AdventureGenerator.withSoundMap(parsed))
-        case Failure(e) =>
-          logger.warn(s"Ignoring unparseable adventure outline: ${e.getMessage}")
-          None
-      }
-    }
+    val themePrompt = adventure.fold(request.theme)(_.theme.map(_.prompt))
+    val artStyleId = request.artStyle.orElse(adventure.flatMap(_.artStyle.map(_.id)))
+    val outline = adventure
+      .map(_.outline)
+      .orElse(request.adventureOutline.flatMap { json =>
+        Try(AdventureGenerator.outlineFromJson(json)) match {
+          case Success(parsed) => Some(AdventureGenerator.withSoundMap(parsed))
+          case Failure(e) =>
+            logger.warn(s"Ignoring unparseable adventure outline: ${e.getMessage}")
+            None
+        }
+      })
     val features = SessionFeatures
       .requested(capabilities, request.tts, request.stt, request.image, request.music)
       .copy(autoSave = autoSave)
 
-    engineFactory.create(sessionId, request.theme, request.artStyle, outline, engineFeatures) match {
+    engineFactory.create(sessionId, themePrompt, artStyleId, outline, engineFeatures) match {
       case Left(error) =>
         send(conn, ErrorMessage("Failed to start game", Some(error)))
 
       case Right(engine) =>
-        val theme = request.theme.map(t => GameTheme(t, t, t))
-        val artStyle = request.artStyle.map(a => ArtStyle(a, a))
+        adventure.foreach(a => engine.playAdventure(a.id))
+        val theme = adventure.fold(request.theme.map(t => GameTheme(t, t, t)))(_.theme)
+        val artStyle = adventure
+          .flatMap(_.artStyle)
+          .filter(a => artStyleId.contains(a.id))
+          .orElse(artStyleId.map(a => ArtStyle(a, a)))
         val session = makeSession(gameId, sessionId, engine, theme, artStyle, features)
         sessionManager.createSession(session)
         attach(conn, session)
@@ -490,15 +514,27 @@ class TypedWebSocketServer(
     }
 
   /** The media a completed turn announces, with the scene it is for, captured when the turn ends. */
-  private final case class TurnMedia(messageIndex: Int, scene: Option[GameScene], hasImage: Boolean, hasMusic: Boolean)
+  private final case class TurnMedia(
+    messageIndex: Int,
+    pictured: Option[GameScene],
+    imageUpdate: Option[String],
+    scored: Option[GameScene]) {
+    def hasImage: Boolean = pictured.isDefined
+    def hasMusic: Boolean = scored.isDefined
+  }
 
   private def turnMedia(session: GameSession, imageWanted: Boolean): TurnMedia = {
-    val scene = session.engine.getCurrentScene.filter(_ => session.engine.locationChangedLastTurn)
+    val engine = session.engine
+    val moved = engine.locationChangedLastTurn
+    // A place is pictured when the player arrives, and again only when the Dungeon Master says it looks different
+    val update = engine.imageUpdateLastTurn
+    val scene = engine.getCurrentScene
     TurnMedia(
-      messageIndex = session.engine.getMessageCount,
-      scene = scene,
-      hasImage = scene.isDefined && session.features.image && imageWanted,
-      hasMusic = scene.isDefined && session.features.music
+      messageIndex = engine.getMessageCount,
+      pictured = scene.filter(s =>
+        (moved || update.isDefined) && session.features.image && imageWanted && engine.canPicture(s, update)),
+      imageUpdate = update,
+      scored = scene.filter(s => moved && session.features.music && engine.canPlayMusic(s))
     )
   }
 
@@ -532,19 +568,24 @@ class TypedWebSocketServer(
 
   // ============= Media =============
 
-  private def startMedia(session: GameSession, turn: TurnMedia): Unit =
-    turn.scene.foreach { scene =>
-      if (turn.hasImage)
-        deliverMedia(session, turn.messageIndex, MediaKind.Image, mediaEC) {
-          session.engine.generateSceneImage(scene, Some(session.gameId)).map(ImageReadyMessage(turn.messageIndex, _))
+  private def startMedia(session: GameSession, turn: TurnMedia): Unit = {
+    turn.pictured.foreach { scene =>
+      deliverMedia(session, turn.messageIndex, MediaKind.Image, mediaEC) {
+        session.engine.generateSceneImage(scene, Some(session.gameId), turn.imageUpdate).map {
+          case MediaRef.Inline(image) => ImageReadyMessage(turn.messageIndex, image = Some(image))
+          case MediaRef.Stored(url) => ImageReadyMessage(turn.messageIndex, url = Some(url))
         }
-      if (turn.hasMusic)
-        deliverMedia(session, turn.messageIndex, MediaKind.Music, musicEC) {
-          session.engine
-            .generateBackgroundMusic(scene, Some(session.gameId))
-            .map { case (music, mood) => MusicReadyMessage(turn.messageIndex, music, mood) }
-        }
+      }
     }
+    turn.scored.foreach { scene =>
+      deliverMedia(session, turn.messageIndex, MediaKind.Music, musicEC) {
+        session.engine.generateBackgroundMusic(scene, Some(session.gameId)).map {
+          case (MediaRef.Inline(music), mood) => MusicReadyMessage(turn.messageIndex, mood, music = Some(music))
+          case (MediaRef.Stored(url), mood) => MusicReadyMessage(turn.messageIndex, mood, url = Some(url))
+        }
+      }
+    }
+  }
 
   /** Generates media on `ec`; the client gets the result, or a failure notice so it stops waiting. */
   private def deliverMedia(session: GameSession, messageIndex: Int, kind: MediaKind, ec: ExecutionContext)(
@@ -615,7 +656,8 @@ object TypedWebSocketServer {
     case m: AudioCommandRequest => s"audioCommand ${m.audio.length} chars"
     case m: GameStartedMessage => s"gameStarted ${m.gameId} hasImage=${m.hasImage} hasMusic=${m.hasMusic}"
     case m: StreamCompleteMessage => s"streamComplete chunks=${m.totalChunks} ${m.duration}ms hasImage=${m.hasImage}"
-    case m: ImageReadyMessage => s"imageReady #${m.messageIndex} ${m.image.length} chars"
+    case m: ImageReadyMessage =>
+      s"imageReady #${m.messageIndex} ${m.url.getOrElse(s"${m.image.fold(0)(_.length)} chars")}"
     case m: MusicReadyMessage => s"musicReady #${m.messageIndex} ${m.mood}"
     case m: GameEndedMessage => s"gameEnded #${m.messageIndex} ${m.outcome}"
     case m: ErrorMessage => s"error ${m.error}${m.details.fold("")(d => s": ${d.take(200)}")}"

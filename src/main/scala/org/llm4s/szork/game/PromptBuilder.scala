@@ -285,6 +285,10 @@ object PromptBuilder {
       |  an item taken, used up, opened, filled or revealed, a character arriving or leaving - give "items" (and
       |  "npcs") as they are now, each item with its current state; otherwise leave them null.
       |- imageDescription: describe the scene for an image in $artStyleDesc.
+      |- imageUpdate: a place is drawn once and keeps that picture, so leave this null on almost every turn. Give it
+      |  (in either response type) only on the turn something visibly and lastingly changes how the place looks - a
+      |  wall collapses, a fire is lit, a door is broken open, a character leaves for good - and describe the place
+      |  as it looks now. Taking a small item, talking, or examining something is not such a change.
       |""".stripMargin
   }
 }

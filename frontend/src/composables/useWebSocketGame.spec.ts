@@ -252,7 +252,7 @@ describe("useWebSocketGame", () => {
     latest().receive("imageReady", { messageIndex: 6, image: "Yg==" });
     latest().receive("mediaFailed", { messageIndex: 4, kind: "image" });
 
-    expect(roomB.image).toBe("Yg==");
+    expect(roomB.image).toBe("data:image/png;base64,Yg==");
     expect(roomB.imageLoading).toBe(false);
     expect(roomA.image).toBeUndefined();
     expect(roomA.imageLoading).toBe(false);
@@ -279,7 +279,39 @@ describe("useWebSocketGame", () => {
     latest().receive("musicReady", { messageIndex: 2, music: "bXVzaWM=", mood: "calm" });
 
     expect(narration).toHaveBeenCalledWith("c3BlZWNo");
-    expect(music).toHaveBeenCalledWith("bXVzaWM=", "calm");
+    expect(music).toHaveBeenCalledWith("data:audio/mpeg;base64,bXVzaWM=", "calm");
+  });
+
+  it("shows and plays the adventure library's media from its URLs", async () => {
+    const game = useWebSocketGame();
+    const music = vi.fn();
+    game.setPlayBackgroundMusicCallback(music);
+    const connecting = game.connect();
+    latest().open();
+    await connecting;
+
+    latest().receive("commandResponse", {
+      text: "A hall",
+      messageIndex: 2,
+      command: "go north",
+      hasImage: true,
+      hasMusic: true,
+    });
+    latest().receive("imageReady", { messageIndex: 2, url: "/api/library/adventures/a/images/hall.pixel.png?v=1" });
+    latest().receive("musicReady", { messageIndex: 2, mood: "mystery", url: "/api/library/music/mystery.mp3?v=1" });
+
+    expect(game.messages.value.at(-1)?.image).toBe("/api/library/adventures/a/images/hall.pixel.png?v=1");
+    expect(music).toHaveBeenCalledWith("/api/library/music/mystery.mp3?v=1", "mystery");
+  });
+
+  it("starts a library adventure by its id, leaving the outline to the server", async () => {
+    const game = useWebSocketGame();
+    const starting = game.startNewGame(undefined, undefined, true, null, { tts: false }, "the-lost-mine");
+    latest().open();
+    await starting;
+    expect(latest().sentMessages()).toEqual([
+      { type: "newGame", adventureId: "the-lost-mine", tts: false, image: true },
+    ]);
   });
 
   it("reports a game that cannot be loaded through loadFailed, not as a message", async () => {

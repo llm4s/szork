@@ -84,8 +84,8 @@ describe("useAudioPlayback", () => {
 
   it("loops music at the music volume and replaces the previous track", () => {
     const audio = useAudioPlayback();
-    audio.playBackgroundMusic("Zmlyc3Q=", "calm");
-    audio.playBackgroundMusic("c2Vjb25k", "tense");
+    audio.playBackgroundMusic("data:audio/mpeg;base64,Zmlyc3Q=", "calm");
+    audio.playBackgroundMusic("data:audio/mpeg;base64,c2Vjb25k", "tense");
     const [first, second] = FakeAudio.instances;
     expect(first.paused).toBe(true);
     expect(first.src).toBe("");
@@ -97,13 +97,13 @@ describe("useAudioPlayback", () => {
   it("does not play music while music is off", () => {
     const audio = useAudioPlayback();
     audio.backgroundMusicEnabled.value = false;
-    audio.playBackgroundMusic("bXVzaWM=", "calm");
+    audio.playBackgroundMusic("data:audio/mpeg;base64,bXVzaWM=", "calm");
     expect(FakeAudio.instances).toHaveLength(0);
   });
 
   it("pauses music when switched off and resumes it when switched back on", async () => {
     const audio = useAudioPlayback();
-    audio.playBackgroundMusic("bXVzaWM=", "calm");
+    audio.playBackgroundMusic("data:audio/mpeg;base64,bXVzaWM=", "calm");
     const [music] = FakeAudio.instances;
     audio.backgroundMusicEnabled.value = false;
     await nextTick();
@@ -116,7 +116,7 @@ describe("useAudioPlayback", () => {
   it("forgets a track the browser refused to play", async () => {
     FakeAudio.failPlay = true;
     const audio = useAudioPlayback();
-    audio.playBackgroundMusic("bXVzaWM=", "calm");
+    audio.playBackgroundMusic("data:audio/mpeg;base64,bXVzaWM=", "calm");
     await Promise.resolve();
     await Promise.resolve();
     const [music] = FakeAudio.instances;
@@ -128,7 +128,7 @@ describe("useAudioPlayback", () => {
   it("stopAll stops and releases narration and music", () => {
     const audio = useAudioPlayback();
     audio.playNarration("bmFycmF0aW9u");
-    audio.playBackgroundMusic("bXVzaWM=", "calm");
+    audio.playBackgroundMusic("data:audio/mpeg;base64,bXVzaWM=", "calm");
     audio.stopAll();
     for (const element of FakeAudio.instances) {
       expect(element.paused).toBe(true);

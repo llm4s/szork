@@ -93,6 +93,7 @@ object ExitGuard {
         "locationId" -> move.from,
         "locationName" -> ujson.Null,
         "imageDescription" -> ujson.Null,
+        "imageUpdate" -> ujson.Null,
         "musicDescription" -> ujson.Null,
         "musicMood" -> ujson.Null,
         "exits" -> ujson.Null,

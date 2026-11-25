@@ -9,12 +9,14 @@ object DmAnswers {
       "locationId",
       "locationName",
       "imageDescription",
+      "imageUpdate",
       "musicDescription",
       "musicMood",
       "exits",
       "items",
       "npcs",
-      "actionTaken")
+      "actionTaken"
+    )
     val supplied = fields.toMap
     ujson.write(ujson.Obj.from(all.map(k => k -> supplied.getOrElse(k, ujson.Null))))
   }
@@ -24,8 +26,10 @@ object DmAnswers {
     locationId: String,
     locationName: String,
     exits: Seq[(String, String)],
-    mood: String = "exploration"): String =
+    mood: String = "exploration",
+    imageUpdate: Option[String] = None): String =
     withNulls(
+      "imageUpdate" -> imageUpdate.fold[ujson.Value](ujson.Null)(ujson.Str(_)),
       "narrationText" -> narration,
       "responseType" -> "fullScene",
       "locationId" -> locationId,
@@ -40,10 +44,12 @@ object DmAnswers {
       "npcs" -> ujson.Arr()
     )
 
-  def simple(narration: String, locationId: String, action: String): String =
+  def simple(narration: String, locationId: String, action: String, imageUpdate: Option[String] = None): String =
     withNulls(
+      "imageUpdate" -> imageUpdate.fold[ujson.Value](ujson.Null)(ujson.Str(_)),
       "narrationText" -> narration,
       "responseType" -> "simple",
       "locationId" -> locationId,
-      "actionTaken" -> action)
+      "actionTaken" -> action
+    )
 }

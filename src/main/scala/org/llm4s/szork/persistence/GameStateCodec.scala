@@ -38,6 +38,7 @@ object GameStateCodec {
       "lastPlayed" -> ts(state.lastPlayed),
       "totalPlayTime" -> ts(state.totalPlayTime),
       "adventureTitle" -> state.adventureTitle.map(Str(_)).getOrElse(Null),
+      "adventureId" -> state.adventureId.map(Str(_)).getOrElse(Null),
       "adventureOutline" -> state.adventureOutline.map(AdventureGenerator.outlineToJson).getOrElse(Null),
       "agentMessages" -> state.agentMessages.map(MessageCodec.toJson),
       "worldState" -> upickle.default.writeJs(state.worldState)
@@ -94,6 +95,7 @@ object GameStateCodec {
       totalPlayTime = readTs(json("totalPlayTime")),
       adventureTitle =
         json.obj.get("adventureTitle").flatMap { case Null => None; case s => Some(s.str) }.filter(_.nonEmpty),
+      adventureId = json.obj.get("adventureId").flatMap(_.strOpt),
       adventureOutline = adventureOutline,
       agentMessages = json("agentMessages").arr.map(MessageCodec.fromJson).toList,
       // A save from before the world state was kept starts from the world its outline plans

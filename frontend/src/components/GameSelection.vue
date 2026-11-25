@@ -47,6 +47,41 @@
         Start New Adventure
       </v-btn>
 
+      <div v-if="adventures.length > 0" class="saved-games-section ready-made-section">
+        <h2 class="section-title">Ready-Made Adventures</h2>
+        <div class="games-grid">
+          <v-card
+            v-for="adventure in adventures"
+            :key="adventure.id"
+            class="game-card adventure-card"
+            @click="playAdventure(adventure)"
+            hover
+          >
+            <v-card-title class="game-title">{{ adventure.title }}</v-card-title>
+            <v-card-subtitle v-if="adventure.tagline" class="game-theme">{{ adventure.tagline }}</v-card-subtitle>
+            <v-card-text>
+              <p class="adventure-quest">{{ adventure.mainQuest }}</p>
+              <div class="game-stats">
+                <div class="stat">
+                  <v-icon small>mdi-map-marker-path</v-icon>
+                  <span>{{ adventure.locations }} locations</span>
+                </div>
+                <div class="stat" v-if="adventure.artStyle">
+                  <v-icon small>mdi-palette</v-icon>
+                  <span>{{ adventure.artStyle }} • {{ adventure.images }}/{{ adventure.locations }} pictured</span>
+                </div>
+              </div>
+            </v-card-text>
+            <v-card-actions>
+              <v-btn variant="text" color="primary" @click.stop="playAdventure(adventure)">
+                Play
+                <v-icon end>mdi-play</v-icon>
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+        </div>
+      </div>
+
       <div v-if="loading" class="loading-container">
         <v-progress-circular indeterminate color="primary" size="40" width="3"></v-progress-circular>
       </div>
@@ -115,13 +150,15 @@
 <script lang="ts">
 import { defineComponent, ref, onMounted } from "vue";
 import axios from "axios";
-import type { FeatureFlags, SavedGameSummary } from "@/types/api";
+import type { AdventureSummary, FeatureFlags, SavedGameSummary } from "@/types/api";
 
 export default defineComponent({
   name: "GameSelection",
-  emits: ["start-new-game", "load-game"],
+  emits: ["start-new-game", "load-game", "play-adventure"],
   setup(props, { emit }) {
     const savedGames = ref<SavedGameSummary[]>([]);
+    // The adventure library: adventures kept to be played again
+    const adventures = ref<AdventureSummary[]>([]);
     const loading = ref(true);
     const featureFlagsLoaded = ref(false);
     const featureFlags = ref<FeatureFlags>({
@@ -149,6 +186,19 @@ export default defineComponent({
       } finally {
         loading.value = false;
       }
+    };
+
+    const loadAdventures = async () => {
+      try {
+        const response = await axios.get("/api/adventures");
+        if (response.data.status === "success") adventures.value = response.data.adventures as AdventureSummary[];
+      } catch (error) {
+        console.warn("Unable to fetch the adventure library:", error);
+      }
+    };
+
+    const playAdventure = (adventure: AdventureSummary) => {
+      emit("play-adventure", adventure);
     };
 
     const loadFeatureFlags = async () => {
@@ -226,11 +276,14 @@ export default defineComponent({
 
     onMounted(() => {
       loadSavedGames();
+      loadAdventures();
       loadFeatureFlags();
     });
 
     return {
       savedGames,
+      adventures,
+      playAdventure,
       loading,
       deleteDialog,
       featureFlagsLoaded,
@@ -374,6 +427,11 @@ export default defineComponent({
 
 .stat .v-icon {
   color: #777;
+}
+
+.adventure-quest {
+  margin-bottom: 0.75rem;
+  opacity: 0.85;
 }
 
 .no-games {

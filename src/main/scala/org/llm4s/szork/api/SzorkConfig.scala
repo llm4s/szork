@@ -80,6 +80,8 @@ case class SzorkConfig(
   // Saves and the media cache
   autoSaveEnabled: Boolean = true,
   savesDirectory: String = "szork-saves",
+  // The adventure library: ready-made adventures, their pictures and the mood music
+  adventuresDirectory: String = SzorkConfig.DefaultAdventuresDirectory,
   cache: MediaCacheConfig = MediaCacheConfig(),
 
   // How long a session with no connection lives before it expires
@@ -150,6 +152,9 @@ object LLMConfig {
 object SzorkConfig {
   val DefaultSessionTtlMinutes: Int = 30
 
+  /** Where the adventure library is kept unless SZORK_ADVENTURES_DIR says otherwise. */
+  val DefaultAdventuresDirectory = "adventures"
+
   /** Low: enough for a turn of a text adventure, and what lets a model that always reasons (the Claude 5 models, whose
     * own default is high) finish an outline within its answer. A model that does not reason is not sent an effort.
     */
@@ -215,6 +220,7 @@ object SzorkConfig {
       subagents = SubagentConfig.load(env),
       autoSaveEnabled = flag("SZORK_AUTO_SAVE"),
       savesDirectory = setting("SZORK_SAVES_DIR").getOrElse("szork-saves"),
+      adventuresDirectory = setting("SZORK_ADVENTURES_DIR").getOrElse(DefaultAdventuresDirectory),
       cache = MediaCacheConfig.load(env),
       sessionTtlMinutes = int("SZORK_SESSION_TTL_MINUTES").filter(_ > 0).getOrElse(DefaultSessionTtlMinutes)
     )
@@ -319,6 +325,7 @@ object SzorkConfig {
       logger.info(s"Auto-save: ${if (config.autoSaveEnabled) "Enabled" else "Disabled"}")
       logger.info(s"Cache: ${if (config.cache.enabled) s"Enabled (${config.cache.directory})" else "Disabled"}")
       logger.info(s"Saves Directory: ${config.savesDirectory}")
+      logger.info(s"Adventure Library: ${config.adventuresDirectory}")
       logger.info(s"Session TTL: ${config.sessionTtlMinutes} minutes")
       logger.info("========================")
     }

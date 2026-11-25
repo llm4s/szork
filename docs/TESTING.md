@@ -49,6 +49,7 @@ to `PlaytestChecks`:
 
 ```bash
 sbt "runMain org.llm4s.szork.playtest.Playtest"
+sbt "runMain org.llm4s.szork.playtest.Playtest --adventure the-last-toll-of-ravenmoor"   # a library adventure: the same outline every run
 sbt "runMain org.llm4s.szork.playtest.Playtest --theme 'a derelict space station' --turns 40 --report playtest.json"
 RUN_INTEGRATION=true sbt "testOnly *AdventureIntegrationSpec"     # the same, as a test (20 turns)
 ```

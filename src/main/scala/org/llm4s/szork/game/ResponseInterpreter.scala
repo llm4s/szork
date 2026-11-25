@@ -7,7 +7,11 @@ object ResponseInterpreter {
   /** A turn's answer, interpreted: the structured data if it is usable, the narration to show the player, and any
     * problems found (errors or warnings) for diagnostics.
     */
-  final case class Interpretation(data: Option[GameResponseData], narration: String, issues: Option[List[String]])
+  final case class Interpretation(
+    data: Option[GameResponseData],
+    narration: String,
+    issues: Option[List[String]],
+    imageUpdate: Option[String] = None)
 
   val FallbackNarration: String =
     "I apologize, but there was an error processing the game response. Please try your command again."
@@ -24,11 +28,20 @@ object ResponseInterpreter {
       case Right(data) =>
         val findings = GameResponseValidator.check(data)
         val issues = Option(findings.errors ++ findings.warnings).filter(_.nonEmpty)
-        if (findings.errors.isEmpty) Interpretation(Some(data), data.narrationText, issues)
+        if (findings.errors.isEmpty) Interpretation(Some(data), data.narrationText, issues, imageUpdateOf(answer))
         else Interpretation(None, data.narrationText, issues)
       case Left(error) =>
         Interpretation(None, narrationOf(answer).getOrElse(FallbackNarration), Some(List(error.message)))
     }
+
+  /** How the place looks now, when the answer says its picture is out of date (`imageUpdate`). */
+  private def imageUpdateOf(answer: String): Option[String] =
+    Try(ujson.read(answer)).toOption
+      .flatMap(_.objOpt)
+      .flatMap(_.get("imageUpdate"))
+      .flatMap(_.strOpt)
+      .map(_.trim)
+      .filter(_.nonEmpty)
 
   /** The narration of an answer that could not be read as game data. */
   private def narrationOf(answer: String): Option[String] =

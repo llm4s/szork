@@ -31,7 +31,7 @@ export interface GameMessage {
   text: string;
   isUser: boolean;
   timestamp: Date;
-  image?: string; // Base64 image data
+  image?: string; // The picture's source: a library URL, or a data: URL of a picture made for this game
   imageLoading?: boolean;
   hasImage?: boolean;
   scene?: SceneData;
@@ -66,7 +66,7 @@ export function useWebSocketGame() {
   const imageEnabled = ref(true);
 
   let scrollCallback: (() => void) | null = null;
-  let playBackgroundMusicCallback: ((musicBase64: string, mood: string) => void) | null = null;
+  let playBackgroundMusicCallback: ((musicSource: string, mood: string) => void) | null = null;
   let playAudioNarrationCallback: ((audioBase64: string) => void) | null = null;
   let pendingLoad: string | null = null;
   // The server's message index after the last response (or load) we received; null until then.
@@ -254,14 +254,16 @@ export function useWebSocketGame() {
     client.on<ImageReadyMessage>("imageReady", ({ data }) => {
       const message = messages.value.find((m) => m.messageIndex === data.messageIndex);
       if (message?.hasImage) {
-        message.image = data.image;
+        message.image = data.url ?? `data:image/png;base64,${data.image}`;
         message.imageLoading = false;
       }
     });
 
     client.on<MusicReadyMessage>("musicReady", ({ data }) => {
       // Played, not kept: holding every track's base64 would grow memory for the whole session
-      if (playBackgroundMusicCallback) playBackgroundMusicCallback(data.music, data.mood);
+      if (playBackgroundMusicCallback) {
+        playBackgroundMusicCallback(data.url ?? `data:audio/mpeg;base64,${data.music}`, data.mood);
+      }
     });
 
     client.on<MediaFailedMessage>("mediaFailed", ({ data }) => {
@@ -299,14 +301,18 @@ export function useWebSocketGame() {
     artStyle?: string,
     imageGeneration = true,
     adventureOutline?: AdventureOutline | null,
-    features?: FeatureRequest
+    features?: FeatureRequest,
+    adventureId?: string
   ) => {
     await connect();
     clearMessages();
-    wsClient.value?.newGame(theme, artStyle, adventureOutline, {
-      ...features,
-      image: imageGeneration && (features?.image ?? true),
-    });
+    wsClient.value?.newGame(
+      theme,
+      artStyle,
+      adventureOutline,
+      { ...features, image: imageGeneration && (features?.image ?? true) },
+      adventureId
+    );
   };
 
   /** Load the game again after another tab took its session, taking the session back. */
@@ -388,7 +394,7 @@ export function useWebSocketGame() {
     scrollCallback = callback;
   };
 
-  const setPlayBackgroundMusicCallback = (callback: (musicBase64: string, mood: string) => void) => {
+  const setPlayBackgroundMusicCallback = (callback: (musicSource: string, mood: string) => void) => {
     playBackgroundMusicCallback = callback;
   };
 

@@ -9,6 +9,7 @@
 - 🎙️ **Voice Control**: Speak your commands naturally (Speech-to-Text integration)
 - 🗣️ **Narrated Adventures**: Responses are spoken aloud (Text-to-Speech)
 - 🎨 **AI-Generated Scenes**: Each location is illustrated with AI-generated artwork
+- 📚 **Ready-Made Adventures**: Keep an adventure to play again, with its pictures and music made once ([docs/ADVENTURES.md](docs/ADVENTURES.md))
 - 💬 **Natural Language**: No need to remember specific commands - just speak naturally
 - 💾 **Auto-Save**: Game state is automatically saved and can be resumed anytime
 
@@ -81,6 +82,7 @@ Open your browser to http://localhost:3090
   - `GET /api/feature-flags` – capability discovery (LLM/image/music/tts/stt availability)
   - `GET /api/games` – list saved games; `DELETE /api/game/:gameId` – delete one
   - `POST /api/game/validate-theme`, `POST /api/game/generate-adventure` – adventure setup (JSON bodies)
+  - `GET /api/adventures`, `POST /api/adventures`, `DELETE /api/adventures/:id` – the adventure library; `GET /api/library/...` – its pictures and music
 
 See `frontend/src/types/WebSocketProtocol.ts` for the client protocol and `src/main/scala/org/llm4s/szork/websocket/protocol/WebSocketProtocol.scala` for the server types.
 
@@ -173,6 +175,7 @@ Set in `.env` (see `.env.example`) or the environment:
 | `SZORK_MUSIC_POLL_MAX_ATTEMPTS`, `SZORK_MUSIC_POLL_INTERVAL_MS` | `30`, `1000` | How long to wait for a music track (polls, and the time between them) |
 | `SZORK_MEDIA_CONNECT_TIMEOUT_MS`, `SZORK_MEDIA_READ_TIMEOUT_MS` | `10000`, `30000` | Network timeouts for the music provider |
 | `SZORK_AUTO_SAVE`, `SZORK_SAVES_DIR` | `true`, `szork-saves` | Saving each turn |
+| `SZORK_ADVENTURES_DIR` | `adventures` | The adventure library: ready-made adventures, their pictures and the mood music ([docs/ADVENTURES.md](docs/ADVENTURES.md)) |
 | `SZORK_CACHE_ENABLED`, `SZORK_CACHE_DIR`, `SZORK_CACHE_MAX_BYTES`, `SZORK_CACHE_TTL_MS` | `true`, `szork-cache`, 500MB, 7 days | Media cache |
 | `TRACING_MODE` (+ `LANGFUSE_*`) | off | Agent and scene image tracing: `console` or `langfuse` |
 

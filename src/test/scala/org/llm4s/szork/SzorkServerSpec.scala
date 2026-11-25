@@ -31,6 +31,7 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     port = freePort(),
     wsPort = freePort(),
     savesDirectory = saveRoot.resolve("saves").toString,
+    adventuresDirectory = saveRoot.resolve("adventures").toString,
     cache = MediaCacheConfig(directory = saveRoot.resolve("cache").toString),
     llmConfig = Some(LLMConfig("openai", "sk-test")),
     musicEnabled = false,
@@ -160,6 +161,61 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     postJson("/api/game/generate-adventure", "[1, 2]")("status").str shouldBe "error"
     postJson("/api/game/generate-adventure", "{}", "text/plain")("message").str should include("application/json")
     themeLLM.calls.size shouldBe calls
+  }
+
+  test("an adventure is kept, listed, played by id, its media served, and deleted") {
+    import org.llm4s.szork.game.{AdventureGenerator, AdventureOutline, LocationOutline}
+    val outline = AdventureOutline(
+      title = "The Lamp Room",
+      mainQuest = "Light the lamp",
+      subQuests = Nil,
+      keyLocations = List(LocationOutline("lamp_room", "Lamp Room", "A round room of glass.", "The only room")),
+      importantItems = Nil,
+      keyCharacters = Nil,
+      adventureArc = "Up, and light"
+    )
+    getJson("/api/adventures")("adventures").arr shouldBe empty
+
+    val body = ujson.Obj(
+      "outline" -> AdventureGenerator.outlineToJson(outline),
+      "theme" -> ujson.Obj("id" -> "sea", "name" -> "Sea", "prompt" -> "a lighthouse"),
+      "artStyle" -> ujson.Obj("id" -> "painting", "name" -> "Painting")
+    )
+    val kept = postJson("/api/adventures", ujson.write(body))
+    kept("status").str shouldBe "success"
+    kept("id").str shouldBe "the-lamp-room"
+    postJson("/api/adventures", ujson.write(body), contentType = "text/plain")("status").str shouldBe "error"
+    postJson("/api/adventures", """{"outline": {"title": 3}}""")("status").str shouldBe "error"
+
+    val listed = getJson("/api/adventures")("adventures").arr
+    listed.map(_("id").str) shouldBe Seq("the-lamp-room")
+    listed.head("title").str shouldBe "The Lamp Room"
+    listed.head("artStyle").str shouldBe "painting"
+    (listed.head("locations").num, listed.head("images").num) shouldBe (1, 0)
+
+    // The library's media is served from the URLs it gives out, and nothing else is
+    val picture = app.library
+      .imageOr("the-lamp-room", "lamp_room", "painting")(
+        Right(java.util.Base64.getEncoder.encodeToString("png".getBytes)))
+      .toOption
+      .get
+    val served = requests.get(s"$http${picture.url}")
+    served.text() shouldBe "png"
+    served.headers("content-type").head shouldBe "image/png"
+    served.headers("cache-control").head should include("immutable")
+    requests.get(s"$http/api/library/adventures/the-lamp-room/adventure.json", check = false).statusCode shouldBe 404
+    requests.get(s"$http/api/library/adventures/the-lamp-room/images/nope.png", check = false).statusCode shouldBe 404
+
+    val c = new Client
+    c.connectBlocking(5, TimeUnit.SECONDS) shouldBe true
+    c.sendJson("type" -> "newGame", "adventureId" -> "the-lamp-room")
+    val started = c.await("gameStarted")("data")
+    app.wsServer.endGame(started("gameId").str)(())
+    c.close()
+
+    deleteJson("/api/adventures/the-lamp-room")("status").str shouldBe "success"
+    deleteJson("/api/adventures/the-lamp-room")("status").str shouldBe "error"
+    getJson("/api/adventures")("adventures").arr shouldBe empty
   }
 
   test("saved games are listed, and other folders in the save directory are ignored") {

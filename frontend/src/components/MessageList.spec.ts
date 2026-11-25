@@ -47,7 +47,7 @@ describe("MessageList", () => {
     const wrapper = mountList([
       { text: "Stream", isUser: false, timestamp: at, isStreaming: true },
       { text: "Loading", isUser: false, timestamp: at, imageLoading: true },
-      { text: "Done", isUser: false, timestamp: at, image: "aW1hZ2U=" },
+      { text: "Done", isUser: false, timestamp: at, image: "data:image/png;base64,aW1hZ2U=" },
     ]);
     const [streaming, loading, done] = wrapper.findAll(".game-message");
     expect(streaming.find(".streaming-cursor").exists()).toBe(true);

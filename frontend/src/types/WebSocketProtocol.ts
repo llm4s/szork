@@ -22,6 +22,8 @@ export interface NewGameRequest extends FeatureRequest {
   theme?: string;
   artStyle?: string;
   adventureOutline?: AdventureOutline | null;
+  /** A library adventure to play: the server uses its outline, theme and art style. */
+  adventureId?: string;
 }
 
 export interface LoadGameRequest extends FeatureRequest {
@@ -191,7 +193,10 @@ export interface ImageReadyMessage {
   type: "imageReady";
   data: {
     messageIndex: number;
-    image: string; // Base64 encoded image
+    /** Base64 PNG, when the picture was made for this game. */
+    image?: string;
+    /** Where to fetch the picture, when it is the adventure library's. */
+    url?: string;
   };
 }
 
@@ -199,8 +204,11 @@ export interface MusicReadyMessage {
   type: "musicReady";
   data: {
     messageIndex: number;
-    music: string; // Base64 encoded audio
     mood: string;
+    /** Base64 MP3, when the track was made for this game. */
+    music?: string;
+    /** Where to fetch the track, when it is the adventure library's. */
+    url?: string;
   };
 }
 

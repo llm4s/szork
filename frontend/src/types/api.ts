@@ -74,6 +74,19 @@ export interface SavedGameSummary {
   totalPlayTime: number;
 }
 
+/** A ready-made adventure in the `/api/adventures` response. */
+export interface AdventureSummary {
+  id: string;
+  title: string;
+  tagline: string | null;
+  mainQuest: string;
+  theme: string | null;
+  artStyle: string | null;
+  locations: number;
+  /** How many of its locations already have a picture in its art style. */
+  images: number;
+}
+
 /** The theme the player chose, as sent to `/api/game/generate-adventure`. */
 export interface ThemeChoice {
   id: string;
@@ -101,5 +114,7 @@ export interface AdventureConfig {
   style: StyleChoice;
   /** Null when generation failed: the game starts without an outline. */
   outline: AdventureOutline | null;
+  /** The library adventure to play, when the outline was kept in (or came from) the adventure library. */
+  adventureId?: string;
   sessionFeatures: SessionFeatures;
 }

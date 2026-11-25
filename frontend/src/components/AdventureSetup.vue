@@ -73,6 +73,14 @@
               <v-switch
                 density="compact"
                 hide-details
+                class="mr-2 keep-adventure"
+                v-model="keepAdventure"
+                label="Keep adventure"
+                title="Add this adventure to the library, to play again; its pictures are then made once for every game of it"
+              />
+              <v-switch
+                density="compact"
+                hide-details
                 class="mr-2"
                 v-model="enableImages"
                 :disabled="!featureFlags.image.enabled || !featureFlags.image.available"
@@ -184,6 +192,8 @@ export default defineComponent({
     const enableMusic = ref(true);
     const enableTTS = ref(true);
     const enableSTT = ref(true);
+    // Whether the designed adventure is added to the adventure library, to be played again
+    const keepAdventure = ref(false);
 
     const predefinedThemes = PREDEFINED_THEMES;
     const artStyles = ART_STYLES;
@@ -321,6 +331,22 @@ export default defineComponent({
       }
     };
 
+    /** Adds the outline to the adventure library; its id there, or undefined if it could not be kept. */
+    const keepInLibrary = async (
+      outline: AdventureOutline,
+      themeData: ThemeChoice,
+      styleData: StyleChoice
+    ): Promise<string | undefined> => {
+      try {
+        const response = await axios.post("/api/adventures", { outline, theme: themeData, artStyle: styleData });
+        if (response.data.status === "success") return response.data.id as string;
+        console.warn("The adventure was not kept:", response.data.message);
+      } catch (error) {
+        console.warn("The adventure was not kept:", error);
+      }
+      return undefined;
+    };
+
     // Fetch the server's feature flags on mount; an answer also shows the server is available
     onMounted(async () => {
       checkingServer.value = true;
@@ -375,12 +401,16 @@ export default defineComponent({
 
       // Generate the adventure outline
       const outline = await generateAdventureOutline(themeData, styleData);
+      // A kept adventure is played from the library, like any ready-made one
+      const adventureId =
+        outline && keepAdventure.value ? await keepInLibrary(outline, themeData, styleData) : undefined;
 
       // Emit the ready event with the outline and session feature choices
       emit("adventure-ready", {
         theme: themeData,
         style: styleData,
         outline: outline,
+        adventureId,
         sessionFeatures: {
           image: enableImages.value && featureFlags.value.image.enabled && featureFlags.value.image.available,
           music: enableMusic.value && featureFlags.value.music.enabled && featureFlags.value.music.available,
@@ -415,6 +445,7 @@ export default defineComponent({
       checkingServer,
       featureFlagsLoaded,
       featureFlags,
+      keepAdventure,
       enableImages,
       enableMusic,
       enableTTS,

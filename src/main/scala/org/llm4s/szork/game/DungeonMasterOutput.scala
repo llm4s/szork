@@ -76,10 +76,18 @@ object DungeonMasterOutput {
     .withProperty(Schema.property("locationName", nullableString("fullScene: the location's name; simple: null")))
     .withProperty(
       Schema.property("imageDescription", nullableString("fullScene: 2-3 sentence visual description; simple: null")))
+    .withProperty(Schema.property(
+      "imageUpdate",
+      nullableString(
+        "Normally null: a place keeps the picture it was first shown with. Only when what the player sees here has " +
+          "visibly and lastingly changed since then (a wall brought down, a fire lit, a door broken open, a " +
+          "character gone for good): a 2-3 sentence visual description of how the place looks now, for a new " +
+          "picture. Either response type may give it")
+    ))
     .withProperty(
       Schema.property("musicDescription", nullableString("fullScene: atmosphere for background music; simple: null")))
-    .withProperty(
-      Schema.property("musicMood", nullableString(s"fullScene: one of ${MusicMoods.mkString(", ")}; simple: null")))
+    .withProperty(Schema
+      .property("musicMood", nullableString(s"fullScene: one of ${MusicMoods.mkString(", ")}; simple: null")))
     .withProperty(Schema.property("exits", Schema.nullable(Schema.array("fullScene: every exit; simple: null", exit))))
     .withProperty(Schema.property(
       "items",

@@ -128,6 +128,14 @@ object MediaCache {
     lookup(gameId)(_.locations.get(locationId).flatMap(_.images.find(_.key == key)).map(_.path))
   }
 
+  /** The picture of `locationId` most recently made for this game in `artStyle`: how the place looks now. */
+  def latestImage(gameId: String, locationId: String, artStyle: String): Option[String] =
+    lookup(gameId)(
+      _.locations
+        .get(locationId)
+        .flatMap(_.images.filter(_.artStyle == artStyle).maxByOption(_.generatedAt))
+        .map(_.path))
+
   def cacheImage(
     gameId: String,
     locationId: String,

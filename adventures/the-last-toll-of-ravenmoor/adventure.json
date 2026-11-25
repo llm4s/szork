@@ -1,0 +1,275 @@
+{
+  "theme": {
+    "id": "custom",
+    "name": "Gothic Mystery",
+    "prompt": "a gothic mystery in a haunted abbey"
+  },
+  "artStyle": {
+    "id": "painting",
+    "name": "Painting"
+  },
+  "createdAt": 1795596362890,
+  "outline": {
+    "title": "The Last Toll of Ravenmoor",
+    "tagline": "The bell has not rung in forty years. Tonight, something is going to ring it.",
+    "mainQuest": "Reach the belfry of Ravenmoor Abbey and ring the silent Mourning Bell before the midnight storm peaks, breaking the vigil that keeps the abbey's dead from resting.",
+    "subQuests": [
+      "Return Sister Odalys's locket to the crypt tomb it was taken from, so her ghost can finally speak plainly.",
+      "Light all three lamps of the chapel's votive stand to unlock the truth in the confessional ledger.",
+      "Find the hidden sacristy passage and read the abbess's final testament."
+    ],
+    "keyLocations": [
+      {
+        "id": "gatehouse",
+        "name": "Abbey Gatehouse",
+        "description": "Rain hammers the slate roof of the gatehouse where your coach left you. A cold iron lantern sits on the warden's table beside a ledger, and a cracked mirror hangs above it. To the north, a carved oak door opens into the abbey cloister. To the east, a rusted portcullis blocks the road you came by.",
+        "significance": "Tutorial room: take the lantern, examine the ledger and mirror, and walk north. It establishes the forty-year silence, the uncanny tone, and the number twelve (eleven sisters plus one unaccounted soul).",
+        "exits": [
+          {
+            "direction": "north",
+            "targetId": "cloister",
+            "description": "A carved oak door stands ajar to the north, leading to the cloister.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "warden's ledger",
+          "cracked mirror",
+          "warden's table",
+          "iron portcullis"
+        ],
+        "puzzles": null,
+        "secrets": "Examining the mirror shows a reflection where the portcullis is already raised and a pale nun stands behind you. Reading the ledger shows the last entry dated forty years ago: 'Eleven sisters entered. Twelve bells were counted.'"
+      },
+      {
+        "id": "cloister",
+        "name": "Moonless Cloister",
+        "description": "A square of overgrown garden is ringed by crumbling arcades, with a dry fountain at its heart. A heavy chapel door stands to the east, a low iron grate leads down to the crypt on the south side, and a spiral stair west climbs toward the bell tower. The gatehouse lies back to the south-west door through which you came.",
+        "significance": "Hub of the adventure. Teaches mechanisms (wheel), obstacles (grate, beam), and seeds the twelve-versus-eleven mystery.",
+        "exits": [
+          {
+            "direction": "back",
+            "targetId": "gatehouse",
+            "description": "The oak door returns you to the gatehouse.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "east",
+            "targetId": "chapel",
+            "description": "A heavy chapel door of black oak stands to the east.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "down",
+            "targetId": "crypt",
+            "description": "An iron grate set in the flagstones opens onto steps descending to the crypt.",
+            "state": "locked",
+            "obstacle": "Padlocked grate; the crypt key hangs on the dry fountain's statue, reachable only after the statue's outstretched hand is turned to the pouring position by cranking the fountain wheel, which drops the key into the basin."
+          },
+          {
+            "direction": "west",
+            "targetId": "belfry_stair",
+            "description": "A narrow spiral stair winds upward behind an arch to the west.",
+            "state": "sealed",
+            "obstacle": "Barred by a fallen beam of the arcade; the iron crowbar from the chapel lifts it, or the rope from the belfry stair cannot be reached. Use the crowbar."
+          }
+        ],
+        "interactables": [
+          "dry fountain",
+          "weeping angel statue",
+          "fountain wheel",
+          "overgrown roses"
+        ],
+        "puzzles": "The dry fountain has a small wheel at its base. Turning it makes the angel statue tilt its jug and drop a tarnished crypt key from its hollow hand into the basin. Alternatively, shaking the statue's loose arm with the crowbar also dislodges the key.",
+        "secrets": "The roses grow only on the graves of the eleven sisters. Counting the blooms reveals a twelfth bush with no marker, hinting at the extra soul."
+      },
+      {
+        "id": "chapel",
+        "name": "Chapel of Whispers",
+        "description": "Pews sag beneath decades of dust, and a votive stand holds three unlit lamps before a cracked altar. A confessional booth huddles against the north wall, while the cloister lies back out the door to the west. Behind the altar, a stained glass window shows twelve kneeling nuns, though only eleven faces are painted.",
+        "significance": "Source of the crowbar and the first major revelation. The hidden panel is the story's secret passage and rewards observation of the window.",
+        "exits": [
+          {
+            "direction": "west",
+            "targetId": "cloister",
+            "description": "The black oak door leads west back to the cloister.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "north",
+            "targetId": "sacristy",
+            "description": "A narrow panel behind the altar slides aside into a hidden sacristy.",
+            "state": "hidden",
+            "obstacle": "Found by lighting all three votive lamps; the shadows on the window then reveal a seam behind the altar, and pressing the twelfth faceless nun opens it."
+          }
+        ],
+        "interactables": [
+          "votive stand with three lamps",
+          "confessional booth",
+          "stained glass window",
+          "altar",
+          "iron crowbar leaning by the pews"
+        ],
+        "puzzles": "The confessional ledger is locked in the booth's drawer. The drawer opens with a three-digit dial: the answer is 111 (eleven sisters plus one, tallied on the window as 1-1-1 candle marks). Lighting the lamps needs the lantern's flame. The lamps must be lit in order of the window's candle heights: left, centre, right. If lit wrongly, a cold draft snuffs them and the player can retry.",
+        "secrets": "Kneeling in the confessional and listening causes whispers revealing the dial hint: 'Count the faithful, then count the one who was not.' Under a pew cushion is a child's hair ribbon, later matched to the locket."
+      },
+      {
+        "id": "sacristy",
+        "name": "Hidden Sacristy",
+        "description": "A narrow vaulted room smells of wax and old paper. A tall wardrobe of vestments stands against one wall, and an iron-bound chest sits beneath a slit window. The only way out is south, back through the sliding panel into the chapel.",
+        "significance": "Delivers the story's central truth and the Bell Clapper's location clue. Quiet, sorrowful, and rewarding.",
+        "exits": [
+          {
+            "direction": "south",
+            "targetId": "chapel",
+            "description": "The sliding panel leads south into the chapel.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "vestment wardrobe",
+          "iron-bound chest",
+          "slit window",
+          "abbess's writing desk"
+        ],
+        "puzzles": "The chest is held by a silver clasp that fits the silver locket's chain. Alternatively, the desk drawer holds the abbess's key, hidden behind a loose board noticed by dust patterns, which also opens it.",
+        "secrets": "The wardrobe's back panel holds a child-sized habit stitched with the name 'Odalys'. The abbess's testament reveals that the twelfth soul was a child hidden in the abbey, and that the abbess tolled the bell to cover her death."
+      },
+      {
+        "id": "crypt",
+        "name": "Crypt of the Eleven",
+        "description": "Eleven stone tombs line the damp vault, each bearing a carved name, and a twelfth stands blank and open at the far end. A pale figure in a grey habit waits beside it, hands clasped. Stone steps climb up to the cloister.",
+        "significance": "Emotional heart of the adventure. The ghost, Sister Odalys, is the wow moment: she steps into the mirror reflection from the gatehouse, tying the first scene to the last.",
+        "exits": [
+          {
+            "direction": "up",
+            "targetId": "cloister",
+            "description": "Worn stone steps climb up to the cloister grate.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "eleven tombs",
+          "open blank tomb",
+          "carved name plaques",
+          "iron candle sconce"
+        ],
+        "puzzles": "The ghost refuses to speak until the player returns her silver locket to the open twelfth tomb (fetch quest). The locket is found in the belfry stair. Placing the ribbon with it earns the full story and her gift, the Bell Clapper's iron pin.",
+        "secrets": "The plaques' initials spell R-E-S-T-I-N-P-E-A-C-E. The twelfth tomb's floor bears a child's chalk drawing of a bell."
+      },
+      {
+        "id": "belfry_stair",
+        "name": "Belfry Stair",
+        "description": "A spiral stair of worn stone climbs through shafts of storm light, ending at a trapdoor above. A bundle of old rope hangs from a hook, and a silver locket gleams in a wall niche. The cloister lies back down the steps to the east.",
+        "significance": "Bridge to the finale and the locket's resting place, tying fetch quest and traversal together.",
+        "exits": [
+          {
+            "direction": "east",
+            "targetId": "cloister",
+            "description": "The stairs lead east and down to the cloister.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "up",
+            "targetId": "belfry",
+            "description": "A heavy trapdoor at the stair's top leads up to the belfry.",
+            "state": "locked",
+            "obstacle": "Bolted from above; the rope and iron hook lets the player climb to the sliding bolt, or ringing the small hand-bell hung on the wall startles the sleeping bats whose flight dislodges the bolt. Needs the rope or the hand-bell."
+          }
+        ],
+        "interactables": [
+          "coiled rope",
+          "wall niche",
+          "hand-bell",
+          "slit windows"
+        ],
+        "puzzles": "The trapdoor bolt is above reach. Throwing the hooked rope up catches the bolt ring and pulls it open. A second solution: ring the hand-bell so the bats burst out and knock the bolt loose.",
+        "secrets": "Scratches on the wall count eleven strokes, then a twelfth in chalk, a child's tally."
+      },
+      {
+        "id": "belfry",
+        "name": "The Belfry",
+        "description": "Wind howls through open arches around a vast bronze bell, green with age. Its clapper lies on the floor, missing its iron pin, and a rotted bell-rope dangles uselessly. The trapdoor leads down to the stair.",
+        "significance": "Climax. The twelve tolls call out each soul, ending with a thirteenth toll for the player's own unexpected place in the story.",
+        "exits": [
+          {
+            "direction": "down",
+            "targetId": "belfry_stair",
+            "description": "The trapdoor descends to the belfry stair.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "Mourning Bell",
+          "bell clapper",
+          "rotted rope",
+          "storm arches"
+        ],
+        "puzzles": "Fit the iron pin into the clapper, then hoist it with the rope into place. Ring the bell by pulling the rope. Alternatively, striking the bell with the crowbar produces a quieter, partial toll that frees only some spirits, leading to a bittersweet ending.",
+        "secrets": "Engraved inside the bell's lip: 'Rung for the unnamed.' Ringing it with the child's ribbon tied to the rope triggers the best ending."
+      }
+    ],
+    "importantItems": [
+      {
+        "name": "Iron Lantern",
+        "description": "A cold iron lantern sits on the warden's table.",
+        "purpose": "Provides light and flame for the votive lamps, revealing the chapel's secret."
+      },
+      {
+        "name": "Iron Crowbar",
+        "description": "A crowbar leans against the end of a pew.",
+        "purpose": "Lifts the fallen beam to open the belfry stair path."
+      },
+      {
+        "name": "Crypt Key",
+        "description": "A tarnished key hides in the angel's hollow hand.",
+        "purpose": "Opens the crypt grate."
+      },
+      {
+        "name": "Silver Locket",
+        "description": "A silver locket gleams in a niche.",
+        "purpose": "Returned to the twelfth tomb, it frees Odalys's voice and opens the sacristy chest."
+      },
+      {
+        "name": "Child's Ribbon",
+        "description": "A faded ribbon lies under a pew cushion.",
+        "purpose": "Ties to the bell-rope for the best ending."
+      },
+      {
+        "name": "Bell Clapper Pin",
+        "description": "An iron pin given by Odalys.",
+        "purpose": "Repairs the clapper so the bell can ring."
+      }
+    ],
+    "keyCharacters": [
+      {
+        "name": "Sister Odalys",
+        "role": "Ghost and emotional guide",
+        "description": "A pale child-faced nun in grey, gentle but evasive. She speaks in half-sentences until her locket is returned.",
+        "location": "crypt"
+      },
+      {
+        "name": "Abbess Verena",
+        "role": "Absent antagonist/tragic figure",
+        "description": "Known through her testament; a stern woman who hid a child and chose silence over truth.",
+        "location": null
+      },
+      {
+        "name": "Warden Thorne",
+        "role": "Dead gatekeeper known through the ledger",
+        "description": "A meticulous man whose ledger entries grow frantic. He counted the bells and was never believed.",
+        "location": null
+      }
+    ],
+    "adventureArc": "Act 1: You arrive in a storm at the gatehouse, read the ledger's eerie count, and explore the cloister. Act 2: Opening the chapel, crypt and sacristy reveals that the abbess hid a child, Odalys, whose death went unmourned and unrung. The emotional tone shifts from fear to sorrow. Act 3: With the pin and ribbon, you climb to the belfry and ring the bell. Twist: the mirror's reflection and the thirteenth toll reveal that you were summoned because you carry Odalys's family blood; she rests, and the storm breaks.",
+    "specialMechanics": "The cracked mirror in the gatehouse is revisited at the end, changing its reflection based on progress. Candle-lighting order is drawn from the window. The ending varies with the crowbar, ribbon, and locket choices."
+  }
+}

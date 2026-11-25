@@ -88,7 +88,7 @@ See `frontend/src/types/WebSocketProtocol.ts` for the client protocol and `src/m
 
 ### Technology Stack
 - **Backend**: Scala 3 with the Cask web framework and Java-WebSocket
-- **AI Integration**: LLM4S 0.6 — `llm4s-agent` (the Dungeon Master agent: tools, threads, streaming, structured output, step limit, tracing), `llm4s-openai` / `llm4s-anthropic` (providers), `llm4s-image` (scene art), `llm4s-speech` (narration and voice input), `llm4s-observability` (Langfuse tracing)
+- **AI Integration**: LLM4S 0.7 — `llm4s-agent` (the Dungeon Master agent: tools, threads, streaming, structured output, step limit, tracing), `llm4s-openai` / `llm4s-anthropic` (providers), `llm4s-image` (scene art), `llm4s-speech` (narration and voice input), `llm4s-observability` (Langfuse tracing)
 - **Frontend**: Vue 3 + Vuetify 3 + TypeScript
 - **Real-time**: WebSockets for streaming responses
 - **Build Tool**: sbt with hot reload support
@@ -104,12 +104,13 @@ szork/
 │   ├── media/        # Image, music, text-to-speech and speech-to-text, media cache
 │   ├── persistence/  # Step-based save/load
 │   ├── streaming/    # Narration extraction from the streamed JSON answer
+│   ├── playtest/     # A whole adventure designed, played and checked against a model
 │   └── debug/        # CLI tools to create and step through games
 └── frontend/         # Vue 3 / Vuetify web interface
 ```
 
 ### How a turn works
-The game is one llm4s agent **thread**: each command is the next turn on it. The Dungeon Master may call the inventory tools, then answers with a JSON object matching `DungeonMasterOutput.schema` (llm4s validates it and asks the model to correct an invalid answer). Its `narrationText` streams to the player as it is written; the scene drives image and music generation. Each turn is saved as a step under `szork-saves/`.
+The game is one llm4s agent **thread**: each command is the next turn on it. The Dungeon Master may call the inventory and world-state tools, then answers with a JSON object matching `DungeonMasterOutput.schema` (llm4s validates it and asks the model to correct an invalid answer). Its `narrationText` streams to the player as it is written; the scene drives image and music generation. A scene never moves the player through an exit the world state says is not open: such an answer goes back to the model once (`ExitGuard`). Each turn is saved as a step under `szork-saves/`.
 
 The thread keeps the whole game, but each model call is sent only the system prompt (with the adventure outline) and the most recent conversation that fits the context window: llm4s's `ContextWindowMiddleware` drops the oldest turns, never splits a tool call from its result and always sends the current turn whole. Saves hold the whole thread, so a loaded game is pruned the same way.
 
@@ -128,6 +129,7 @@ sbt "~szorkStart"
 - `sbt szorkStatus` - Check server status
 - `sbt compile` - Compile the project
 - `sbt test` - Run tests
+- `sbt "runMain org.llm4s.szork.playtest.Playtest"` - Design and play a whole adventure against the configured model
 
 ### Feature Flags & Per‑Session Overrides
 
@@ -152,7 +154,8 @@ Set in `.env` (see `.env.example`) or the environment:
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `LLAMA_BASE_URL` | – | LLM provider credentials (OpenAI also powers DALL-E, TTS and Whisper) |
-| `SZORK_LLM_PROVIDER`, `SZORK_LLM_MODEL` | from the keys present; `gpt-4o` / `claude-sonnet-5-5` | Dungeon Master provider and model |
+| `SZORK_LLM_PROVIDER`, `SZORK_LLM_MODEL` | from the keys present; `gpt-4o` / `claude-sonnet-5-5` | Dungeon Master provider and model (see [Models](#models)) |
+| `SZORK_REASONING_EFFORT` | `low` | How hard the adventure designer, the Dungeon Master and its subagents reason before answering, on models that reason: `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `default` to leave it to the model. Not sent to a model that does not reason. The Claude 5 models always reason, at `high` unless told otherwise, which is slow and can use up the whole answer |
 | `SZORK_DM_CONTEXT_MAX_TOKENS` | `24000` | Conversation tokens sent with each Dungeon Master call, besides the system prompt (oldest turns are dropped first; capped at half the model's context window; `0` or `off` sends the whole game) |
 | `SZORK_DM_CONTEXT_MAX_MESSAGES` | – | Limit each call by conversation messages instead of tokens |
 | `SZORK_INPUT_GUARDRAIL` | `true` | Check each command with llm4s's prompt-injection guardrail before the Dungeon Master sees it ("ignore your instructions", "print your system prompt"); a refused command gets "The dungeon does not understand you." and changes nothing (`false` or `off` disables) |
@@ -173,10 +176,34 @@ Set in `.env` (see `.env.example`) or the environment:
 | `SZORK_CACHE_ENABLED`, `SZORK_CACHE_DIR`, `SZORK_CACHE_MAX_BYTES`, `SZORK_CACHE_TTL_MS` | `true`, `szork-cache`, 500MB, 7 days | Media cache |
 | `TRACING_MODE` (+ `LANGFUSE_*`) | off | Agent and scene image tracing: `console` or `langfuse` |
 
+### Models
+
+Checked with the playtest harness on llm4s 0.7.0, at the default reasoning effort (`low`):
+
+| Model | Status |
+|---|---|
+| `claude-sonnet-5-5` (Anthropic default) | Works: designed an adventure in one call and played 30 turns with no finding, about 3.5 s a turn |
+| `claude-haiku-5-5` | Works: 20 turns with no rule broken, about 2.7 s a turn; its first outline needed llm4s's one correction |
+| `claude-sonnet-4-6` | Works: 12 turns with no finding, but about 11 s a turn, because `low` turns its extended thinking on. Set `SZORK_REASONING_EFFORT=default` to play it without |
+| `gpt-4o` (OpenAI default) | Not replayed in the latest live tests |
+
+To check a model, run a playtest on it: `SZORK_LLM_MODEL=<model> sbt "runMain org.llm4s.szork.playtest.Playtest"`
+(see [Testing](docs/TESTING.md)).
+
+### Troubleshooting
+
+- **"The AI service rejected the server's API key"**: the key in `.env` is missing, mistyped or for another provider than `SZORK_LLM_PROVIDER`.
+- **"The AI service rejected the request; the configured model may not be supported"**: the provider refused the request (often a parameter the model does not take). Set `SZORK_LLM_MODEL` to a model from the table above; the server log has the provider's message.
+- **"The AI's adventure design came back incomplete or malformed"**: the model did not finish the outline. Try again; if it repeats, the model may be spending its answer on reasoning: check that `SZORK_REASONING_EFFORT` is not `default`, `high` or above. The server log has the outline's problem.
+- **A turn fails with "the turn ended StepLimitReached"**: the Dungeon Master called tools twelve times without answering. The game is unchanged; send the command again. (A call repeated with the same arguments within a turn is not run again, which stops the commonest loop.)
+- **The game restarts while you play**: the server is in watch mode (`sbt "~szorkStart"`) and a source file changed. Use `sbt szorkStart` to play.
+- **No images, music or voice**: `GET /api/feature-flags` shows what the server can provide; each needs its provider's key (see the table above).
+
 ## 📚 Documentation
 
-- [Development Guide](docs/README_DEVELOPMENT.md) - Detailed development setup and build instructions
-- [SBT Revolver Guide](docs/README_SBT_REVOLVER.md) - Hot reload configuration with file watching
+- [Development Guide](docs/README_DEVELOPMENT.md) - Development setup, build and hot reload
+- [Testing](docs/TESTING.md) - The test layers, the playtest harness and what CI runs
+- [llm4s features](docs/LLM4S_FEATURES.md) - Which llm4s feature is used where, and the workarounds tracked upstream
 - [Debug Tools](docs/DEBUG_TOOLS.md) - Create and step through games from the command line
 - [Frontend README](frontend/README.md) - Frontend development, features, and configuration
 - [Claude Code Guide](CLAUDE.md) - Guide for AI assistants working with this codebase

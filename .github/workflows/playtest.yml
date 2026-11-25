@@ -1,0 +1,93 @@
+name: Playtest
+
+# A live playtest: each model designs an adventure, plays it and is held to the game's rules
+# (see src/main/scala/org/llm4s/szork/playtest). It calls real models, so it runs on request
+# and once a week, never on a pull request. A provider whose key is not set as a repository
+# secret is skipped.
+
+on:
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: The adventure to design and play
+        default: a haunted lighthouse on a storm-battered coast
+      turns:
+        description: Most turns to play
+        default: '25'
+  schedule:
+    - cron: '0 5 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  playtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - provider: openai
+            model: gpt-4o
+          - provider: anthropic
+            model: claude-sonnet-5-5
+          - provider: anthropic
+            model: claude-haiku-5-5
+          - provider: anthropic
+            model: claude-sonnet-4-6
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SZORK_LLM_PROVIDER: ${{ matrix.provider }}
+      SZORK_LLM_MODEL: ${{ matrix.model }}
+      THEME: ${{ inputs.theme || 'a haunted lighthouse on a storm-battered coast' }}
+      TURNS: ${{ inputs.turns || '25' }}
+    steps:
+      - name: Check for the provider's key
+        id: key
+        run: |
+          if [ "${{ matrix.provider }}" = "openai" ] && [ -n "$OPENAI_API_KEY" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
+          if [ "${{ matrix.provider }}" = "anthropic" ] && [ -n "$ANTHROPIC_API_KEY" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.present == 'true'
+      - name: Setup Java
+        if: steps.key.outputs.present == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Setup sbt
+        if: steps.key.outputs.present == 'true'
+        uses: sbt/setup-sbt@v1
+      - name: Cache Ivy2 and Coursier
+        if: steps.key.outputs.present == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ivy2/cache
+            ~/.cache/coursier
+          key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt', 'project/**') }}
+      - name: Playtest
+        if: steps.key.outputs.present == 'true'
+        run: |
+          set -o pipefail
+          sbt -batch "runMain org.llm4s.szork.playtest.Playtest --theme \"$THEME\" --turns $TURNS --report playtest-report.json" | tee playtest.log
+      - name: Summary
+        if: always() && steps.key.outputs.present == 'true'
+        run: |
+          {
+            echo '### ${{ matrix.provider }} / ${{ matrix.model }}'
+            echo '```'
+            grep -A40 -E '^(PASSED|FAILED|The playtest could not run)' playtest.log || echo 'no summary: see the log'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the report
+        if: always() && steps.key.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playtest-${{ matrix.provider }}-${{ matrix.model }}
+          path: |
+            playtest-report.json
+            playtest.log
+          if-no-files-found: ignore

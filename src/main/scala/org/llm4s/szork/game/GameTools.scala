@@ -32,8 +32,8 @@ final class PlayerInventory(initial: List[String] = Nil) {
 object GameTools {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
-  // Unwrap a tool built via buildSafe(); a Left here is a static definition error.
-  private def orThrow[T, R](result: org.llm4s.types.Result[ToolFunction[T, R]]): ToolFunction[T, R] =
+  // Unwrap a built tool; a Left here is a static definition error.
+  private def orThrow[R](result: org.llm4s.types.Result[ToolFunction[R]]): ToolFunction[R] =
     result match {
       case Right(tool) => tool
       case Left(error) => throw new IllegalStateException(s"Failed to build tool: ${error.message}")
@@ -63,9 +63,9 @@ object GameTools {
     .withProperty(Schema.property("item", Schema.string("The name of the item (REQUIRED)")))
 
   /** The inventory tools, reading and changing `inventory`. */
-  def forInventory(inventory: PlayerInventory): Seq[ToolFunction[?, ?]] = {
+  def forInventory(inventory: PlayerInventory): Seq[ToolFunction[?]] = {
     val listInventoryTool = orThrow(
-      ToolBuilder[Map[String, Any], InventoryListResult](
+      ToolBuilder[InventoryListResult](
         "list_inventory",
         "List all items currently in the player's inventory. The current game state in the prompt already lists " +
           "them; use this only when it says the inventory was cut short.",
@@ -76,10 +76,10 @@ object GameTools {
         val message =
           if (items.isEmpty) "Your inventory is empty" else s"You have ${items.size} item(s) in your inventory"
         Right(InventoryListResult(items, items.size, message))
-      }.buildSafe())
+      }.build())
 
     val addInventoryItemTool = orThrow(
-      ToolBuilder[Map[String, Any], InventoryModifyResult](
+      ToolBuilder[InventoryModifyResult](
         "add_inventory_item",
         "Add a new item to the player's inventory",
         itemSchema("Add inventory item parameters")
@@ -90,10 +90,10 @@ object GameTools {
           val message = if (added) s"Added '$item' to your inventory" else s"You already have '$item' in your inventory"
           InventoryModifyResult(added, message, item, inventory.list)
         }
-      }.buildSafe())
+      }.build())
 
     val removeInventoryItemTool = orThrow(
-      ToolBuilder[Map[String, Any], InventoryModifyResult](
+      ToolBuilder[InventoryModifyResult](
         "remove_inventory_item",
         "Remove an item from the player's inventory",
         itemSchema("Remove inventory item parameters")
@@ -105,7 +105,7 @@ object GameTools {
             if (removed) s"Removed '$item' from your inventory" else s"You don't have '$item' in your inventory"
           InventoryModifyResult(removed, message, item, inventory.list)
         }
-      }.buildSafe())
+      }.build())
 
     Seq(listInventoryTool, addInventoryItemTool, removeInventoryItemTool)
   }
@@ -200,9 +200,9 @@ object GameTools {
   /** The world-state tools, reading and changing `world`. A scene answer moves the player (the engine records it in the
     * world state), so there is no tool for movement.
     */
-  def forWorld(world: WorldState): Seq[ToolFunction[?, ?]] = {
+  def forWorld(world: WorldState): Seq[ToolFunction[?]] = {
     val getLocationStateTool = orThrow(
-      ToolBuilder[Map[String, Any], LocationView](
+      ToolBuilder[LocationView](
         "get_location_state",
         "Get a location's current state: its exits (direction, destination, state open/closed/locked/sealed/" +
           "blocked/hidden, obstacle), the facts recorded about it and the characters met there. The player's " +
@@ -229,10 +229,10 @@ object GameTools {
               message = s"No record of location '$id'. Known locations: ${snapshot.locations.map(_.id).mkString(", ")}"
             )
         })
-      }.buildSafe())
+      }.build())
 
     val setExitStateTool = orThrow(
-      ToolBuilder[Map[String, Any], WorldChangeResult](
+      ToolBuilder[WorldChangeResult](
         "set_exit_state",
         "Change an exit's state when the player changes it: unlocks, opens, closes or locks a door, clears or " +
           "unseals a passage, or discovers a hidden way. The way back from the other side changes with it. The " +
@@ -254,7 +254,8 @@ object GameTools {
           stateName <- params.getString("state")
           state <- ExitState
             .parse(stateName)
-            .toRight(s"Unknown state '$stateName'; use one of ${ExitState.names.mkString(", ")}")
+            .toRight(
+              ToolHandlerError.failed(s"Unknown state '$stateName'; use one of ${ExitState.names.mkString(", ")}"))
         } yield {
           val location = optionalString(params, "location_id")
           logger.info(s"Setting exit $direction at ${location.getOrElse("the current location")} to ${state.wire}")
@@ -266,10 +267,10 @@ object GameTools {
               optionalString(params, "target_id"),
               optionalString(params, "obstacle")))
         }
-      }.buildSafe())
+      }.build())
 
     val setLocationFlagTool = orThrow(
-      ToolBuilder[Map[String, Any], WorldChangeResult](
+      ToolBuilder[WorldChangeResult](
         "set_location_flag",
         "Record a lasting fact about a location that later turns must respect: a lever pulled, a chest emptied, a " +
           "fire lit, a guard bribed. An empty value clears the fact.",
@@ -286,10 +287,10 @@ object GameTools {
           logger.info(s"Setting location flag $flag = $value")
           changeResult(world.setFlag(optionalString(params, "location_id"), flag, value))
         }
-      }.buildSafe())
+      }.build())
 
     val recordNpcMetTool = orThrow(
-      ToolBuilder[Map[String, Any], WorldChangeResult](
+      ToolBuilder[WorldChangeResult](
         "record_npc_met",
         "Record that the player met or talked with a character, with a short note of anything that matters later " +
           "(what they asked for, promised or revealed).",
@@ -305,10 +306,10 @@ object GameTools {
             success = true,
             world.recordNpcMet(name, optionalString(params, "location_id"), optionalString(params, "note")))
         }
-      }.buildSafe())
+      }.build())
 
     val updateQuestProgressTool = orThrow(
-      ToolBuilder[Map[String, Any], WorldChangeResult](
+      ToolBuilder[WorldChangeResult](
         "update_quest_progress",
         "Record progress on a quest when the player starts, advances, completes or fails it. The main quest's id " +
           "is 'main' and side quests are side-1, side-2, ... (a quest's description also finds it; a new one is added).",
@@ -323,21 +324,22 @@ object GameTools {
           statusName <- params.getString("status")
           status <- QuestStatus
             .parse(statusName)
-            .toRight(s"Unknown status '$statusName'; use one of ${QuestStatus.names.mkString(", ")}")
+            .toRight(
+              ToolHandlerError.failed(s"Unknown status '$statusName'; use one of ${QuestStatus.names.mkString(", ")}"))
         } yield {
           logger.info(s"Updating quest $quest to ${status.wire}")
           WorldChangeResult(success = true, world.updateQuest(quest, status, optionalString(params, "note")))
         }
-      }.buildSafe())
+      }.build())
 
     val getWorldSummaryTool = orThrow(
-      ToolBuilder[Map[String, Any], WorldSummary](
+      ToolBuilder[WorldSummary](
         "get_world_summary",
         "Get a summary of the whole world: where the player is and has been, every exit that is not open, the " +
           "facts recorded about locations, the characters met and every quest's status. Use it when the player asks " +
           "about their progress or goals, or when earlier events are no longer in the conversation.",
         Schema.`object`[Map[String, Any]]("No parameters")
-      ).withHandler(_ => Right(worldSummary(world.snapshot))).buildSafe())
+      ).withHandler(_ => Right(worldSummary(world.snapshot))).build())
 
     Seq(
       getLocationStateTool,

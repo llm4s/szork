@@ -96,7 +96,9 @@ class GameEngineContextWindowSpec extends AnyFunSuite with Matchers {
   }
 
   test("a token limit keeps each call's conversation within maxTokens, counted with cl100k_base") {
-    val counter = ConversationTokenCounter.openAI().fold(e => fail(e.message), identity)
+    val counter = ConversationTokenCounter
+      .create(org.llm4s.context.tokens.TokenizerId.CL100K_BASE)
+      .fold(e => fail(e.message), identity)
     val llm = recordingLLM()
     val maxTokens = 600
     val engine = newEngine(llm, ContextWindowConfig(maxTokens = Some(maxTokens)))

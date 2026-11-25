@@ -126,7 +126,7 @@ final class SzorkApp(
       workPool.shutdownNow(); mediaPool.shutdownNow(); musicPool.shutdownNow(); caskMain.executionContext.shutdown()
     }
     // Langfuse sends traces in batches: flush the last one
-    quietly("shutting down tracing")(tracing.foreach(_.shutdown()))
+    quietly("shutting down tracing")(tracing.foreach(_.close()))
     quietly("closing the LLM client")(llmClient.close())
   }
 }
@@ -315,7 +315,7 @@ final class SzorkRoutes(
     val themePrompt = theme.map(_.prompt).getOrElse("classic fantasy adventure")
     logger.info(s"Generating adventure for theme: ${theme.map(_.name).getOrElse("default")}")
 
-    AdventureGenerator.generateAdventureOutline(themePrompt, tracing)(using llmClient) match {
+    AdventureGenerator.generateAdventureOutline(themePrompt, tracing, config.reasoningEffort)(using llmClient) match {
       case Right(outline) =>
         logger.info(s"Adventure outline generated: ${outline.title}")
         ujson.Obj(

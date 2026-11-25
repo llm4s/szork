@@ -7,6 +7,7 @@ import org.llm4s.config.{ConfigReader, EnvLoader}
 import org.llm4s.szork.game.GameEngine
 import org.llm4s.szork.media.{MediaCache, SceneImages}
 import org.llm4s.szork.persistence.StepPersistence
+import org.llm4s.llmconnect.model.ReasoningEffort
 import org.llm4s.security.Secret
 import org.slf4j.Logger
 import java.nio.file.Paths
@@ -71,6 +72,8 @@ case class SzorkConfig(
   dmContextWindow: Option[ContextWindowConfig] = Some(GameEngine.DefaultContextWindow),
   // Whether player commands pass the Dungeon Master's prompt-injection guardrail (PlayerInputGuardrail)
   inputGuardrailEnabled: Boolean = true,
+  // How hard the designer, the Dungeon Master and its subagents reason, on models that do (None: the model's default)
+  reasoningEffort: Option[ReasoningEffort] = Some(SzorkConfig.DefaultReasoningEffort),
   // The Dungeon Master's subagents: NPC dialogue and hints, and the model they use
   subagents: SubagentConfig = SubagentConfig(),
 
@@ -96,22 +99,23 @@ case class LLMConfig(
 ) {
 
   /** Convert to llm4s ProviderConfig for the new API */
-  def toProviderConfig: org.llm4s.llmconnect.config.ProviderConfig =
+  def toProviderConfig: org.llm4s.llmconnect.config.ProviderConfig = {
+    import org.llm4s.types.ProviderModelTypes.{BaseUrl, ModelName}
     provider.toLowerCase match {
       case "openai" =>
         org.llm4s.llmconnect.config.OpenAIConfig(
           apiKey = Secret(apiKey),
-          model = model.getOrElse(LLMConfig.DefaultOpenAIModel),
+          model = ModelName(model.getOrElse(LLMConfig.DefaultOpenAIModel)),
           organization = None,
-          baseUrl = baseUrl.getOrElse("https://api.openai.com/v1"),
+          baseUrl = BaseUrl(baseUrl.getOrElse("https://api.openai.com/v1")),
           contextWindow = 128000,
           reserveCompletion = 4096
         )
       case "anthropic" =>
         org.llm4s.llmconnect.config.AnthropicConfig(
           apiKey = Secret(apiKey),
-          model = model.getOrElse(LLMConfig.DefaultAnthropicModel),
-          baseUrl = baseUrl.getOrElse("https://api.anthropic.com"),
+          model = ModelName(model.getOrElse(LLMConfig.DefaultAnthropicModel)),
+          baseUrl = BaseUrl(baseUrl.getOrElse("https://api.anthropic.com")),
           contextWindow = 200000,
           reserveCompletion = 4096
         )
@@ -119,27 +123,37 @@ case class LLMConfig(
         // Use OpenAI-compatible config for local LLaMA servers
         org.llm4s.llmconnect.config.OpenAIConfig(
           apiKey = Secret(if (apiKey == "not-required") "sk-no-key-required" else apiKey),
-          model = model.getOrElse(LLMConfig.DefaultLlamaModel),
+          model = ModelName(model.getOrElse(LLMConfig.DefaultLlamaModel)),
           organization = None,
-          baseUrl = baseUrl.getOrElse("http://localhost:11434/v1"),
+          baseUrl = BaseUrl(baseUrl.getOrElse("http://localhost:11434/v1")),
           contextWindow = 8192,
           reserveCompletion = 2048
         )
       case other =>
         throw new IllegalArgumentException(s"Unknown LLM provider: $other")
     }
+  }
 }
 
 object LLMConfig {
 
   /** Models used when SZORK_LLM_MODEL is not set. */
   val DefaultOpenAIModel = "gpt-4o"
+
+  /** Claude Sonnet 5.5, which plays a whole adventure at [[SzorkConfig.DefaultReasoningEffort]]. Run a playtest on a
+    * model before making it this.
+    */
   val DefaultAnthropicModel = "claude-sonnet-5-5"
   val DefaultLlamaModel = "llama3"
 }
 
 object SzorkConfig {
   val DefaultSessionTtlMinutes: Int = 30
+
+  /** Low: enough for a turn of a text adventure, and what lets a model that always reasons (the Claude 5 models, whose
+    * own default is high) finish an outline within its answer. A model that does not reason is not sent an effort.
+    */
+  val DefaultReasoningEffort: ReasoningEffort = ReasoningEffort.Low
 
   /** The configuration from the environment (.env and the process environment), for the command-line tools. */
   lazy val instance: SzorkConfig = load()
@@ -149,7 +163,7 @@ object SzorkConfig {
     config.llmConfig match {
       case Some(llm) =>
         try
-          SzorkModelRegistry.load().left.map(_.message).flatMap { registry =>
+          org.llm4s.model.ModelRegistryService.default().left.map(_.message).flatMap { registry =>
             given org.llm4s.model.ModelRegistryService = registry
             org.llm4s.llmconnect.LLMConnect.getClient(llm.toProviderConfig).left.map(_.message)
           }
@@ -191,6 +205,13 @@ object SzorkConfig {
       dmContextWindow = loadDmContextWindow(env),
       inputGuardrailEnabled =
         setting("SZORK_INPUT_GUARDRAIL").map(_.toLowerCase).forall(v => v != "false" && v != "off"),
+      reasoningEffort = setting("SZORK_REASONING_EFFORT").map(_.toLowerCase) match {
+        case None => Some(DefaultReasoningEffort)
+        case Some("default" | "off" | "none") => None
+        case Some(name) =>
+          // a value that is not an effort is ignored, like a number that does not parse
+          ReasoningEffort.fromString(name).orElse(Some(DefaultReasoningEffort))
+      },
       subagents = SubagentConfig.load(env),
       autoSaveEnabled = flag("SZORK_AUTO_SAVE"),
       savesDirectory = setting("SZORK_SAVES_DIR").getOrElse("szork-saves"),
@@ -289,6 +310,7 @@ object SzorkConfig {
         w.maxMessages.fold(s"${w.maxTokens.getOrElse(0)} tokens")(m => s"$m messages")
       }
       logger.info(s"DM context window: $window")
+      logger.info(s"Reasoning effort: ${config.reasoningEffort.fold("the model's default")(_.name)}")
       logger.info(s"DM input guardrail: ${if (config.inputGuardrailEnabled) "Enabled" else "Disabled"}")
       def onOff(on: Boolean) = if (on) "Enabled" else "Disabled"
       logger.info(

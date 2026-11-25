@@ -58,15 +58,16 @@ object CreateAdventure {
       // Generate adventure outline
       println(s"\nGenerating adventure outline for theme: '${config.theme}'...")
       val startTime = System.currentTimeMillis()
-      val outline: AdventureOutline = AdventureGenerator.generateAdventureOutline(config.theme, tracing) match {
-        case Right(o) =>
-          println(s"✓ Adventure outline generated: ${o.title}")
-          o
-        case Left(error) =>
-          println(s"ERROR: Failed to generate adventure outline: ${error.message}")
-          System.exit(1)
-          return
-      }
+      val outline: AdventureOutline =
+        AdventureGenerator.generateAdventureOutline(config.theme, tracing, SzorkConfig.instance.reasoningEffort) match {
+          case Right(o) =>
+            println(s"✓ Adventure outline generated: ${o.title}")
+            o
+          case Left(error) =>
+            println(s"ERROR: Failed to generate adventure outline: ${error.message}")
+            System.exit(1)
+            return
+        }
 
       // Create game engine with the outline
       println("\nInitializing game engine...")
@@ -79,7 +80,8 @@ object CreateAdventure {
         theme = Some(config.theme),
         artStyle = Some(config.artStyle),
         adventureOutline = Some(outline),
-        tracing = tracing
+        tracing = tracing,
+        reasoning = SzorkConfig.instance.reasoningEffort
       )
       println("✓ Game engine created")
 
@@ -144,7 +146,7 @@ object CreateAdventure {
       // Print summary
       DebugHelpers.printAdventureSummary(config.gameId, outline, initialScene)
 
-      tracing.foreach(_.shutdown())
+      tracing.foreach(_.close())
       println("SUCCESS: Adventure created and ready for play!")
       println(s"Next step: Run user commands with RunUserStep")
       println(s"""Example: sbt "runMain org.llm4s.szork.debug.RunUserStep ${config.gameId} 1 'look around'" """)

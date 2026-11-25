@@ -93,4 +93,25 @@ class Llm4sFeaturesSpec extends AnyFunSuite with Matchers {
     val response = engine.processCommand("test", generateAudio = false, onTextChunk = Some(_ => ()))
     response.toOption.get.text shouldBe "The dust settles."
   }
+
+  test("a tool call repeated within a turn is not run again, and the model is told to answer") {
+    import org.llm4s.szork.game.RepeatedToolCallMiddleware
+    // Records the lamp again and again until it is told the call was a repeat
+    val repeating = ScriptedDm {
+      case c if c.messages.exists(_.content.contains(RepeatedToolCallMiddleware.Repeated)) =>
+        Reply.text(DmAnswers.simple("You take the lamp.", "cavern_entrance", "take"))
+      case c if ScriptedDm.lastUserText(c) == "take lamp" =>
+        Reply.toolCall("add_inventory_item", """{"item": "lamp"}""")
+    }
+    val engine = GameEngine.create(repeating, "repeating")
+    engine.initialize().isRight shouldBe true
+
+    engine.processCommand("take lamp", generateAudio = false).toOption.get.text shouldBe "You take the lamp."
+    engine.getInventory shouldBe List("lamp")
+    // the call, its repeat, and the answer
+    repeating.calls.count(_.lastUserText.contains("take lamp")) shouldBe 3
+
+    // the next turn may make the same call again
+    engine.processCommand("take lamp", generateAudio = false).isRight shouldBe true
+  }
 }

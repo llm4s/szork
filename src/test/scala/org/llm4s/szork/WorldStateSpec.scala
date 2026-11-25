@@ -115,7 +115,7 @@ class WorldStateSpec extends AnyFunSuite with Matchers {
     exit(engine.getWorldState, "hall", "south").state shouldBe ExitState.Open
     val fedBack = llm.lastCall.get.messages.last
     fedBack shouldBe a[ToolMessage]
-    fedBack.asInstanceOf[ToolMessage].toolCallId shouldBe "call-unlock"
+    fedBack.asInstanceOf[ToolMessage].toolCallId.asString shouldBe "call-unlock"
     fedBack.content should include("is now open")
 
     run(engine, "pull lever", "talk to archivist", "read ledger", "go north")
@@ -138,8 +138,8 @@ class WorldStateSpec extends AnyFunSuite with Matchers {
   test("optional tool parameters may be null, as a strict schema (every property required) needs") {
     val tools = GameTools.forWorld(WorldState.seededFrom(Some(outline)))
     tools.foreach { tool =>
-      val params = tool.toOpenAITool(true)("function")("parameters")
-      val loose = tool.toOpenAITool(false)("function")("parameters")("required").arr.map(_.str).toSet
+      val params = tool.toolDefinition(strict = true)("function")("parameters")
+      val loose = tool.toolDefinition(strict = false)("function")("parameters")("required").arr.map(_.str).toSet
       params("properties").obj.foreach { case (name, schema) =>
         if (!loose.contains(name)) withClue(s"${tool.name}.$name: ")(schema.render() should include("null"))
       }
@@ -289,7 +289,7 @@ class WorldStateSpec extends AnyFunSuite with Matchers {
       "set_exit_state"
     // ... but the tool's answer says the gate is open
     val answer = lastRequest.last
-    answer.asInstanceOf[ToolMessage].toolCallId shouldBe "call-check"
+    answer.asInstanceOf[ToolMessage].toolCallId.asString shouldBe "call-check"
     val view = ujson.read(answer.content)
     val north = view("exits").arr.find(_("direction").str == "north").get
     north("state").str shouldBe "open"

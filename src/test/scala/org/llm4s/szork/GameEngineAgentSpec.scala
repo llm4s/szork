@@ -3,7 +3,7 @@ package org.llm4s.szork
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.llm4s.llmconnect.model._
-import org.llm4s.szork.stubs.ScriptedDm
+import org.llm4s.szork.stubs.{DmAnswers, ScriptedDm}
 import org.llm4s.testkit.Reply
 import org.llm4s.szork.game.{GameConstants, GameEngine}
 
@@ -93,7 +93,7 @@ class GameEngineAgentSpec extends AnyFunSuite with Matchers {
     original.initialize().isRight shouldBe true
     val saved = original.getGameState("game-1", None, None)
     val dangling =
-      AssistantMessage(contentOpt = None, toolCalls = Seq(ToolCall("call-x", "list_inventory", ujson.Obj())))
+      AssistantMessage(None, Seq(ToolCall(ToolCallId("call-x"), "list_inventory", ujson.Obj())))
     val broken = saved.copy(agentMessages = saved.agentMessages :+ UserMessage("look") :+ dangling)
 
     val restored = newEngine("midturn-restore")
@@ -101,5 +101,32 @@ class GameEngineAgentSpec extends AnyFunSuite with Matchers {
     restored.getMessages shouldBe original.getMessages.toVector :+ UserMessage("look")
 
     restored.processCommand("examine wall", generateAudio = false).isRight shouldBe true
+  }
+
+  test("an item the player carries is not also listed in the scene") {
+    def withItems(answer: String, items: String*) = {
+      val json = ujson.read(answer)
+      json("items") = items
+      ujson.write(json)
+    }
+    val entrance =
+      withItems(
+        DmAnswers.scene("A lamp hangs here.", "entrance", "Entrance", Seq("north" -> "hall")),
+        "Brass Lamp",
+        "rope")
+    val llm = ScriptedDm {
+      case ScriptedDm.Command("take lamp") => Reply.toolCall("add_inventory_item", """{"item": "brass lamp"}""")
+      case c if ScriptedDm.lastUserText(c) == "take lamp" =>
+        Reply.text(DmAnswers.simple("You take the lamp.", "entrance", "take"))
+      case _ => Reply.text(entrance)
+    }
+    val engine = GameEngine.create(llm, "carried")
+    engine.initialize().isRight shouldBe true
+    engine.getCurrentScene.get.items shouldBe List("Brass Lamp", "rope")
+
+    // taken with an answer that does not say what is left, then seen again in a scene that still lists it
+    engine.processCommand("take lamp", generateAudio = false).toOption.get.scene.get.items shouldBe List("rope")
+    engine.processCommand("look", generateAudio = false).toOption.get.scene.get.items shouldBe List("rope")
+    engine.getCurrentScene.get.items shouldBe List("rope")
   }
 }

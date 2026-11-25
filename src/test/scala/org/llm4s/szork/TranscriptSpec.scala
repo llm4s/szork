@@ -2,7 +2,7 @@ package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
-import org.llm4s.llmconnect.model.{AssistantMessage, ToolCall, ToolMessage, UserMessage}
+import org.llm4s.llmconnect.model.{AssistantMessage, ToolCall, ToolCallId, ToolMessage, UserMessage}
 import org.llm4s.szork.game.{GameConstants, GameEngine, ResponseInterpreter, Transcript}
 import org.llm4s.szork.stubs.{DmAnswers, ScriptedDm}
 
@@ -17,8 +17,8 @@ class TranscriptSpec extends AnyFunSuite with Matchers {
       UserMessage(GameConstants.Prompts.INIT_ADVENTURE),
       AssistantMessage(opening),
       UserMessage("take lamp"),
-      AssistantMessage("", Seq(ToolCall("call-1", "add_inventory_item", ujson.Obj("item" -> "lamp")))),
-      ToolMessage("Added lamp", "call-1"),
+      AssistantMessage("", Seq(ToolCall(ToolCallId("call-1"), "add_inventory_item", ujson.Obj("item" -> "lamp")))),
+      ToolMessage("Added lamp", ToolCallId("call-1")),
       AssistantMessage(DmAnswers.simple("You take the lamp.", "entrance", "take"))
     )
 
@@ -33,8 +33,8 @@ class TranscriptSpec extends AnyFunSuite with Matchers {
       UserMessage(GameConstants.Prompts.INIT_ADVENTURE),
       AssistantMessage(opening),
       UserMessage("dig"),
-      AssistantMessage("", Seq(ToolCall("call-1", "check_exit", ujson.Obj()))),
-      ToolMessage("none", "call-1"),
+      AssistantMessage("", Seq(ToolCall(ToolCallId("call-1"), "check_exit", ujson.Obj()))),
+      ToolMessage("none", ToolCallId("call-1")),
       UserMessage("look"),
       AssistantMessage("not json")
     )

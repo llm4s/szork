@@ -2,7 +2,7 @@ package org.llm4s.szork
 
 import org.llm4s.config.ConfigReader
 import org.llm4s.error.LLMError
-import org.llm4s.llmconnect.model.{Conversation, SystemMessage, TokenUsage, ToolCall, ToolMessage}
+import org.llm4s.llmconnect.model.{Conversation, SystemMessage, TokenUsage, ToolCall, ToolCallId, ToolMessage}
 import org.llm4s.szork.api.{EngineFactory, LLMConfig, SubagentConfig, SzorkConfig}
 import org.llm4s.szork.game._
 import org.llm4s.szork.stubs.{DmAnswers, ScriptedDm}
@@ -59,11 +59,11 @@ class DmSubagentsSpec extends AnyFunSuite with Matchers with LoneElement {
 
   private def json(text: String): Option[ujson.Value] = scala.util.Try(ujson.read(text)).toOption
 
-  private def talkCall(who: String, id: String = "talk-1") =
+  private def talkCall(who: String, id: String = "talk-1", says: String = "Hello there") =
     ToolCall(
-      id,
+      ToolCallId(id),
       DmSubagents.NpcDialogueTool,
-      ujson.Obj("character" -> who, "playerSays" -> "Hello there", "situation" -> "By the cave mouth."))
+      ujson.Obj("character" -> who, "playerSays" -> says, "situation" -> "By the cave mouth."))
 
   /** The cavern's Dungeon Master with subagents: it delegates "talk to X" and "hint", and weaves each report into its
     * answer; the subagents answer as `npc` and `hint` say.
@@ -189,7 +189,7 @@ class DmSubagentsSpec extends AnyFunSuite with Matchers with LoneElement {
     val runs = events.collect { case e: TraceEvent.AgentRunEnded => e }.toList
     val dmRuns = runs.filter(_.agent == GameEngine.AgentId)
     val child = runs.filter(_.agent == DmSubagents.NpcDialogueId).loneElement
-    child.status shouldBe "completed"
+    child.status.name shouldBe "completed"
     child.parentThreadId shouldBe Some(dmRuns.last.threadId)
     child.parentRunId shouldBe Some(dmRuns.last.runId)
   }
@@ -220,7 +220,8 @@ class DmSubagentsSpec extends AnyFunSuite with Matchers with LoneElement {
   }
 
   test("a turn delegates at most the configured number of tasks") {
-    val calls = (1 to 4).map(i => talkCall("the hermit", s"talk-$i"))
+    // four different things said: the same call made twice in a turn is not run again (RepeatedToolCallMiddleware)
+    val calls = (1 to 4).map(i => talkCall("the hermit", s"talk-$i", says = s"Hello, for the ${i}th time"))
     val llm = scripted(rules = { case ScriptedDm.Command("talk to everyone") => Reply.toolCalls(calls*) })
     val engine = engineWith(llm)
     engine.initialize().isRight shouldBe true

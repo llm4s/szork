@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import MessageList from "./MessageList.vue";
 import { mountWithVuetify } from "@/test/mountWithVuetify";
 import type { GameMessage } from "@/composables/useWebSocketGame";
@@ -21,6 +21,34 @@ describe("MessageList", () => {
     expect(command.text()).toBe("> look");
     expect(response.classes()).toContain("game");
     expect(response.text()).toBe("You are in a cave.");
+  });
+
+  it("says the game is opening until there is something to show", async () => {
+    const wrapper = mountWithVuetify(MessageList, {
+      props: { messages: [], loading: false, opening: "Starting your adventure..." },
+    });
+    expect(wrapper.find(".opening-indicator").text()).toBe("Starting your adventure...");
+
+    await wrapper.setProps({ messages: [{ text: "You are in a cave.", isUser: false, timestamp: at }] });
+    expect(wrapper.find(".opening-indicator").exists()).toBe(false);
+  });
+
+  it("enlarges a scene picture when it is clicked", async () => {
+    const wrapper = mountWithVuetify(MessageList, {
+      props: {
+        messages: [{ text: "A hall", isUser: false, timestamp: at, image: "/pictures/hall.jpg" }],
+        loading: false,
+      },
+      attachTo: document.body,
+    });
+    // The dialog positions itself by the visual viewport, which jsdom does not have
+    vi.stubGlobal("visualViewport", new EventTarget());
+    expect(document.querySelector(".scene-image-enlarged")).toBeNull();
+
+    await wrapper.find("img.scene-image").trigger("click");
+    expect(document.querySelector(".scene-image-enlarged")?.getAttribute("src")).toBe("/pictures/hall.jpg");
+    wrapper.unmount();
+    vi.unstubAllGlobals();
   });
 
   it("lists a scene's exits", () => {

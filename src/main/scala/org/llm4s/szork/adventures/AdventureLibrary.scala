@@ -4,7 +4,7 @@ import org.llm4s.szork.api.{ArtStyle, GameTheme}
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.szork.game.{AdventureGenerator, AdventureOutline}
-import org.llm4s.szork.media.{AtomicFiles, MediaRef}
+import org.llm4s.szork.media.{AtomicFiles, MediaRef, PictureFiles}
 import org.slf4j.LoggerFactory
 import ujson.{Null, Obj, Value}
 
@@ -38,7 +38,7 @@ final case class AdventureSummary(
   *
   * Layout under `root` (SZORK_ADVENTURES_DIR):
   *   - `<adventure-id>/adventure.json`: the outline, theme and art style
-  *   - `<adventure-id>/images/<location>.<style>.png`: one picture per location and art style
+  *   - `<adventure-id>/images/<location>.<style>.jpg`: one picture per location and art style
   *   - `_music/<mood>.mp3`: one track per music mood, shared by every game on the server
   *
   * Unlike the [[org.llm4s.szork.media.MediaCache]], nothing here expires: an image or track is made once (by
@@ -112,13 +112,29 @@ final class AdventureLibrary(val root: Path) {
           .find(candidate => !Files.exists(root.resolve(candidate)))
           .get
         val adventure = Adventure(id, outline, theme, artStyle, now)
-        Files.createDirectories(root.resolve(id))
-        AtomicFiles.write(
-          root.resolve(id).resolve(AdventureFile),
-          ujson.write(toJson(adventure), indent = 2).getBytes(StandardCharsets.UTF_8))
+        write(adventure)
         logger.info(s"Kept adventure '${outline.title}' as $id")
         adventure
       }.toEither.left.map(e => PersistenceError(s"Could not keep the adventure: ${e.getMessage}", operation = "save"))
+    }
+
+  private def write(adventure: Adventure): Unit = {
+    Files.createDirectories(root.resolve(adventure.id))
+    AtomicFiles.write(
+      root.resolve(adventure.id).resolve(AdventureFile),
+      ujson.write(toJson(adventure), indent = 2).getBytes(StandardCharsets.UTF_8))
+  }
+
+  /** Replaces the outline of the adventure `id` (to add picture briefs to it, say). */
+  def update(id: String, outline: AdventureOutline): SzorkResult[Adventure] =
+    synchronized {
+      load(id).toRight(NotFoundError(s"No adventure '${id.take(40)}'")).flatMap { adventure =>
+        val updated = adventure.copy(outline = outline)
+        Try(write(updated)).toEither
+          .map(_ => updated)
+          .left
+          .map(e => PersistenceError(s"Could not update the adventure: ${e.getMessage}", operation = "save"))
+      }
     }
 
   /** Removes the adventure `id` and its images; false if there was none. */
@@ -185,7 +201,10 @@ final class AdventureLibrary(val root: Path) {
       case Seq("music", name) if isMediaName(name) => Some(root.resolve(MusicDir).resolve(name))
       case _ => None
     }
-    file.filter(Files.isRegularFile(_)).map(f => f -> (if (f.toString.endsWith(".png")) "image/png" else "audio/mpeg"))
+    file.filter(Files.isRegularFile(_)).map { f =>
+      // A picture's type is read from the file itself: it is whatever the image provider answered with
+      f -> (if (f.toString.endsWith(".mp3")) "audio/mpeg" else PictureFiles.mediaType(firstBytes(f)))
+    }
   }
 
   private def stored(urlDir: String, file: Path): MediaRef.Stored =
@@ -205,6 +224,9 @@ final class AdventureLibrary(val root: Path) {
           }.toEither.left.map(e => CacheError(s"Could not keep ${path.getFileName}: ${e.getMessage}", Some(e)))
         }
     }
+
+  private def firstBytes(file: Path): Array[Byte] =
+    Using.resource(Files.newInputStream(file))(_.readNBytes(4))
 
   private def isMedia(file: Path): Boolean = isMediaName(file.getFileName.toString)
 
@@ -232,7 +254,7 @@ object AdventureLibrary {
   private val MusicDir = "_music"
   private val MaxIdLength = 60
   private val Id = "[a-z0-9][a-z0-9-]*".r
-  private val MediaName = """[a-z0-9_]+(\.[a-z0-9_]+)?\.(png|mp3)""".r
+  private val MediaName = """[a-z0-9_]+(\.[a-z0-9_]+)?\.(jpg|mp3)""".r
 
   def isValidId(id: String): Boolean = id.length <= MaxIdLength && Id.matches(id)
 
@@ -254,7 +276,7 @@ object AdventureLibrary {
     if (safe.isEmpty) "_" else safe
   }
 
-  private def imageName(locationId: String, style: String): String = s"${fileSafe(locationId)}.${fileSafe(style)}.png"
+  private def imageName(locationId: String, style: String): String = s"${fileSafe(locationId)}.${fileSafe(style)}.jpg"
 
   private[adventures] def toJson(adventure: Adventure): Value =
     Obj(

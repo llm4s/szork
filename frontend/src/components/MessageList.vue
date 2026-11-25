@@ -8,7 +8,14 @@
         :class="message.isUser ? 'user' : 'game'"
       >
         <div v-if="message.image || message.imageLoading" class="scene-image-container">
-          <img v-if="message.image" :src="message.image" alt="Scene visualization" class="scene-image" />
+          <img
+            v-if="message.image"
+            :src="message.image"
+            alt="Scene visualization"
+            class="scene-image"
+            title="Click to enlarge"
+            @click="enlarged = message.image"
+          />
           <div v-else-if="message.imageLoading" class="image-loading">
             <v-progress-circular indeterminate color="primary" size="40" width="3"></v-progress-circular>
           </div>
@@ -26,11 +33,25 @@
           </div>
         </div>
       </div>
+      <div v-if="opening && messages.length === 0" class="loading-indicator opening-indicator">
+        <v-progress-circular indeterminate color="primary" size="20" width="2" class="mr-2"></v-progress-circular>
+        <span>{{ opening }}</span>
+      </div>
       <div v-if="loading" class="loading-indicator">
         <v-progress-circular indeterminate color="primary" size="20" width="2" class="mr-2"></v-progress-circular>
         <span>Thinking...</span>
       </div>
     </div>
+
+    <!-- A scene picture at full size; a click anywhere closes it -->
+    <v-dialog :model-value="!!enlarged" @update:model-value="enlarged = undefined" max-width="1024">
+      <img
+        :src="enlarged"
+        alt="Scene visualization, enlarged"
+        class="scene-image-enlarged"
+        @click="enlarged = undefined"
+      />
+    </v-dialog>
   </div>
 </template>
 
@@ -43,9 +64,13 @@ defineProps<{
   messages: GameMessage[];
   /** Waiting for a response. */
   loading: boolean;
+  /** What to say while the game is opening and there is nothing to show yet (e.g. "Starting your adventure..."). */
+  opening?: string;
 }>();
 
 const output = ref<HTMLElement>();
+// The picture the player clicked on, shown at full size
+const enlarged = ref<string>();
 
 /** Scroll to the latest message once the DOM has updated. */
 const scrollToBottom = async () => {
@@ -157,8 +182,8 @@ defineExpose({ scrollToBottom });
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  width: 256px;
-  height: 256px;
+  width: 320px;
+  height: 320px;
   order: -1; /* Places image on the left */
 }
 
@@ -168,6 +193,16 @@ defineExpose({ scrollToBottom });
   object-fit: cover;
   display: block;
   border-radius: 8px;
+  cursor: zoom-in;
+}
+
+.scene-image-enlarged {
+  display: block;
+  width: 100%;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: zoom-out;
 }
 
 .message-text {

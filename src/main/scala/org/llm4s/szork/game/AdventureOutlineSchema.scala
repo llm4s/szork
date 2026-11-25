@@ -49,8 +49,9 @@ object AdventureOutlineSchema {
     .withProperty(Schema.property(
       "description",
       Schema.string(
-        "First-visit description: 2-4 concise sentences (400-600 characters, at most 750) that work every exit " +
-          "naturally into the prose, e.g. 'To the north, a wooden door stands closed'")
+        "First-visit description: a vivid paragraph of 3-5 flowing sentences (400-600 characters, at most 750) " +
+          "with a sensory detail or two, that works every exit into the prose by its own direction, e.g. 'To " +
+          "the north, a wooden door stands closed'")
     ))
     .withProperty(Schema.property("exits", Schema.array("Every exit from the location", exit)))
     .withProperty(

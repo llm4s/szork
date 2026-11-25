@@ -62,6 +62,10 @@ case class SzorkConfig(
   imageProvider: ImageProvider = ImageProvider.None,
   // The provider's model, when not its default (SZORK_IMAGE_MODEL)
   imageModel: Option[String] = None,
+  // How well GPT Image models draw (SZORK_IMAGE_QUALITY: low, medium, high or auto), and the longer side in pixels
+  // pictures are kept and sent at (SZORK_IMAGE_PIXELS)
+  imageQuality: String = SceneImages.DefaultQuality,
+  imagePixels: Int = SceneImages.DefaultPictureSide,
 
   // Audio/speech/media feature flags and settings
   ttsEnabled: Boolean = true,
@@ -206,6 +210,11 @@ object SzorkConfig {
       imageGenerationEnabled = flag("SZORK_IMAGE_GENERATION_ENABLED"),
       imageProvider = setting("SZORK_IMAGE_PROVIDER").map(ImageProvider.fromString).getOrElse(ImageProvider.None),
       imageModel = setting("SZORK_IMAGE_MODEL"),
+      imageQuality = setting("SZORK_IMAGE_QUALITY").map(_.toLowerCase).getOrElse(SceneImages.DefaultQuality),
+      imagePixels = setting("SZORK_IMAGE_PIXELS")
+        .flatMap(_.toIntOption)
+        .filter(_ >= 64)
+        .getOrElse(SceneImages.DefaultPictureSide),
       ttsEnabled = flag("SZORK_TTS_ENABLED"),
       sttEnabled = flag("SZORK_STT_ENABLED"),
       musicEnabled = flag("SZORK_MUSIC_ENABLED"),

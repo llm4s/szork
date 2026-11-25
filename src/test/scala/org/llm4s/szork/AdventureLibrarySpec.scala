@@ -7,11 +7,19 @@ import org.llm4s.szork.adventures.{AdventureLibrary, BakeAdventure}
 import org.llm4s.szork.api.{ArtStyle, GameTheme}
 import org.llm4s.szork.error.ErrorHandling.SzorkResult
 import org.llm4s.szork.error.ImageGenerationError
-import org.llm4s.szork.game.{AdventureOutline, DungeonMasterOutput, ExitOutline, GameEngine, LocationOutline}
-import org.llm4s.szork.media.MediaRef
+import org.llm4s.szork.game.{
+  AdventureOutline,
+  ArtDirector,
+  DungeonMasterOutput,
+  ExitOutline,
+  GameEngine,
+  LocationOutline,
+  SceneMedia
+}
+import org.llm4s.szork.media.{MediaRef, PictureFiles}
 import org.llm4s.szork.spi.{ImageClient, MusicClient}
 import org.llm4s.szork.stubs.{DmAnswers, ScriptedDm}
-import org.llm4s.testkit.Reply
+import org.llm4s.testkit.{Reply, ScriptedLLMClient}
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 
@@ -142,7 +150,7 @@ class AdventureLibrarySpec extends AnyFunSuite with Matchers {
     picture("pixel").toOption.get shouldBe first
     library.image(id, "hall", "pixel") shouldBe Some(first)
     made.get shouldBe 1
-    first.url should startWith(s"${AdventureLibrary.UrlPrefix}/adventures/$id/images/hall.pixel.png?v=")
+    first.url should startWith(s"${AdventureLibrary.UrlPrefix}/adventures/$id/images/hall.pixel.jpg?v=")
     bytesAt(library, first) shouldBe "hall in pixel"
 
     bytesAt(library, picture("painting").toOption.get) shouldBe "hall in painting"
@@ -165,13 +173,13 @@ class AdventureLibrarySpec extends AnyFunSuite with Matchers {
     library.imageOr(id, "hall", "pixel")(Right(base64("hall")))
     library.musicOr("mystery")(Right(base64("track")))
 
-    library.resolve(Seq("adventures", id, "images", "hall.pixel.png")).map(_._2) shouldBe Some("image/png")
+    library.resolve(Seq("adventures", id, "images", "hall.pixel.jpg")).map(_._2) shouldBe Some("image/png")
     library.resolve(Seq("music", "mystery.mp3")).map(_._2) shouldBe Some("audio/mpeg")
     Seq(
       Seq("adventures", id, "adventure.json"),
       Seq("adventures", id, "images", "..", "adventure.json"),
-      Seq("adventures", "..", id, "images", "hall.pixel.png"),
-      Seq("adventures", id, "images", "missing.pixel.png"),
+      Seq("adventures", "..", id, "images", "hall.pixel.jpg"),
+      Seq("adventures", id, "images", "missing.pixel.jpg"),
       Seq("music", "..", id, "adventure.json"),
       Seq("music", "../mystery.mp3"),
       Seq("music"),
@@ -189,6 +197,27 @@ class AdventureLibrarySpec extends AnyFunSuite with Matchers {
     first.url should startWith(s"${AdventureLibrary.UrlPrefix}/music/mystery.mp3?v=")
     bytesAt(library, first) shouldBe "track for mystery"
     library.hasMusic shouldBe true
+  }
+
+  test("a generated picture is kept as a small JPEG, and anything unreadable is kept as it is") {
+    val drawn = new java.awt.image.BufferedImage(1024, 768, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    val out = new java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(drawn, "png", out)
+    val png = Base64.getEncoder.encodeToString(out.toByteArray)
+
+    val kept = Base64.getDecoder.decode(PictureFiles.shrink(png, 512))
+    PictureFiles.mediaType(kept) shouldBe "image/jpeg"
+    PictureFiles.mediaType(out.toByteArray) shouldBe "image/png"
+    val small = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(kept))
+    (small.getWidth, small.getHeight) shouldBe (512, 384)
+
+    PictureFiles.shrink(base64("not a picture"), 512) shouldBe base64("not a picture")
+
+    // The library serves a picture as what its bytes are
+    val library = newLibrary()
+    val id = library.keep(cavern, theme, pixel).toOption.get.id
+    library.imageOr(id, "hall", "pixel")(Right(PictureFiles.shrink(png, 512)))
+    library.resolve(Seq("adventures", id, "images", "hall.pixel.jpg")).map(_._2) shouldBe Some("image/jpeg")
   }
 
   // ============= Baking =============
@@ -224,6 +253,62 @@ class AdventureLibrarySpec extends AnyFunSuite with Matchers {
     val report = BakeAdventure.images(library, adventure, None, flaky)
     report.made should have size 1
     report.failed.map(_._1) shouldBe List(s"${adventure.id}/hall (pixel)")
+  }
+
+  // ============= Art direction =============
+
+  private val briefs = ujson
+    .Obj(
+      "locations" -> ujson.Arr(
+        ujson.Obj("id" -> "cavern_entrance", "image" -> "Exterior of a cave mouth seen from the scree below it."),
+        ujson.Obj("id" -> "hall", "image" -> "Interior of a small rock hall, seen from its doorway.")
+      ))
+    .render()
+
+  test("the art director writes a picture brief for each location, from the whole outline in one call") {
+    val llm = ScriptedLLMClient.respondingTo { case _ => Reply.text(briefs) }
+    val directed = ArtDirector.direct(cavern)(using llm).toOption.get
+
+    directed.keyLocations.map(_.image) shouldBe List(
+      Some("Exterior of a cave mouth seen from the scree below it."),
+      Some("Interior of a small rock hall, seen from its doorway."))
+    ArtDirector.isDirected(cavern) shouldBe false
+    ArtDirector.isDirected(directed) shouldBe true
+    // Nothing else of the outline is touched
+    directed.copy(keyLocations = directed.keyLocations.map(_.copy(image = None))) shouldBe cavern
+
+    llm.calls should have size 1
+    val asked = llm.lastCall.get.messages.map(_.content).mkString("\n")
+    asked should (include("cavern_entrance") and include("A small hall. The way back is south."))
+  }
+
+  test("a location the art director leaves out keeps its description as what it is drawn from") {
+    val onlyTheHall =
+      ujson.Obj("locations" -> ujson.Arr(ujson.Obj("id" -> "hall", "image" -> "Interior of a hall."))).render()
+    val directed =
+      ArtDirector
+        .direct(cavern)(using ScriptedLLMClient.respondingTo { case _ => Reply.text(onlyTheHall) })
+        .toOption
+        .get
+    directed.keyLocations.map(SceneMedia.outlineImage) shouldBe List(
+      "Cavern Entrance. A cold cave mouth. A passage leads north.",
+      "Interior of a hall.")
+    ArtDirector.isDirected(directed) shouldBe false
+  }
+
+  test("pictures are drawn from the briefs, which are kept with the adventure") {
+    val library = newLibrary()
+    val kept = library.keep(cavern, theme, pixel).toOption.get
+    val directed = ArtDirector.direct(cavern)(using ScriptedLLMClient.respondingTo { case _ => Reply.text(briefs) })
+    val saved = library.update(kept.id, directed.toOption.get).toOption.get
+    library.load(kept.id).get.outline shouldBe saved.outline
+    library.update("no-such-adventure", cavern).isLeft shouldBe true
+
+    val images = new RecordingImages
+    BakeAdventure.images(library, saved, None, images).made should have size 2
+    val prompts = images.prompts.toArray.mkString("\n")
+    prompts should (include("Exterior of a cave mouth") and include("Interior of a small rock hall"))
+    prompts should not include "A passage leads north"
   }
 
   // ============= In a game =============

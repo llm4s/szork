@@ -62,7 +62,8 @@ object DungeonMasterOutput {
     .withProperty(Schema.property(
       "narrationText",
       Schema.string(
-        "What the player reads and hears: terse classic text-adventure prose, mentioning every exit for a scene " +
+        "What the player reads and hears: vivid, flowing second-person prose in whole sentences (never a list of " +
+          "fragments), mentioning every exit for a scene by its own direction " +
           s"(at most $MaxSceneNarrationChars characters for a fullScene, $MaxSimpleNarrationChars for a simple " +
           "response)")
     ))

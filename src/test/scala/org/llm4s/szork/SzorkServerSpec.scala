@@ -204,7 +204,7 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     served.headers("content-type").head shouldBe "image/png"
     served.headers("cache-control").head should include("immutable")
     requests.get(s"$http/api/library/adventures/the-lamp-room/adventure.json", check = false).statusCode shouldBe 404
-    requests.get(s"$http/api/library/adventures/the-lamp-room/images/nope.png", check = false).statusCode shouldBe 404
+    requests.get(s"$http/api/library/adventures/the-lamp-room/images/nope.jpg", check = false).statusCode shouldBe 404
 
     val c = new Client
     c.connectBlocking(5, TimeUnit.SECONDS) shouldBe true

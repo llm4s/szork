@@ -12,7 +12,7 @@ Everything lives under `adventures/` (`SZORK_ADVENTURES_DIR`), as plain files:
 adventures/
   the-drowned-archive/
     adventure.json                     the outline, its theme and its art style
-    images/<location>.<style>.png      one picture per location and art style
+    images/<location>.<style>.jpg      one picture per location and art style
   _music/<mood>.mp3                    one track per music mood, shared by every game
 ```
 
@@ -32,14 +32,21 @@ Over the API: `GET /api/adventures` lists them, `POST /api/adventures` (`{outlin
 
 A place is drawn once and keeps that picture:
 
-- **A library adventure's location** is drawn from the outline's description, in the adventure's art style, and the
-  file is kept in the library. Every later visit, and every later game of that adventure, shows the same file.
+- **A library adventure's location** is drawn from its picture brief, in the adventure's art style, and the file is
+  kept in the library. The brief is written by the art director, a third agent that reads the whole outline once and
+  says for each location what a picture of it shows: inside or outside, where the viewer stands, the few things that
+  matter, the light. (The description written for the player draws badly: it never says the player is indoors, and
+  it lists the exits.) Briefs are written when an adventure is kept or baked, and saved in `adventure.json`. Every later visit, and every later game of that adventure, shows the same file.
 - **Any other location** (a game with no library adventure, or a place the Dungeon Master made up) is drawn from the
   scene's own `imageDescription` the first time the player arrives, and that picture is the game's for that place.
 - **The Dungeon Master decides when a place needs a new picture.** Its answer has an `imageUpdate` field, null on
   almost every turn. When something visibly and lastingly changes how the place looks (a wall brought down, a fire
   lit, a character gone for good) it describes the new look there, on any kind of turn, and a new picture is drawn for
   that game. That game shows the new picture from then on; the library's picture is not replaced.
+
+Pictures are kept and sent as JPEGs up to 1024 pixels across (`SZORK_IMAGE_PIXELS`); the game shows them small and
+at full size when clicked. GPT Image models draw no smaller than 1024 pixels, so what a picture costs in time and
+money is set by `SZORK_IMAGE_QUALITY` (default `low`), not by its size.
 
 ## Music: once per mood
 
@@ -60,7 +67,8 @@ sbt "runMain org.llm4s.szork.adventures.BakeAdventure --music"                 #
 sbt 'runMain org.llm4s.szork.adventures.BakeAdventure --new --theme "a haunted lighthouse" --style painting'
 ```
 
-`--new` designs an adventure with the configured model, keeps it and bakes it. Pictures need `SZORK_IMAGE_PROVIDER` and
+`--new` designs an adventure with the configured model, keeps it and bakes it. `--art` has the art director write an
+adventure's picture briefs again (delete its pictures to have them redrawn from the new briefs). Pictures need `SZORK_IMAGE_PROVIDER` and
 its key; music needs `REPLICATE_API_KEY`. What already exists is kept: delete a file to have it made again.
 
 ## How the browser gets it

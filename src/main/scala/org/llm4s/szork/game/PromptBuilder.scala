@@ -158,17 +158,19 @@ object PromptBuilder {
       |This should be the player's starting location, introducing them to the world and setting.
       |Answer with a fullScene response.
       |STRICT LENGTH LIMIT: narrationText must be ≤${DungeonMasterOutput.MaxSceneNarrationChars} characters (aim for 400-600).
-      |Keep descriptions terse in classic text adventure style (2-4 concise sentences).
+      |Write it as a storyteller would: a short, vivid paragraph, not a list of features.
       |
       |TEXT ADVENTURE WRITING CONVENTIONS:
       |
       |ROOM DESCRIPTIONS:
-      |- Follow the verbose/brief convention: First visit shows terse description (1-2 sentences), subsequent visits even briefer
-      |- Be economical with words: "Dark cellar. Stone stairs lead up." not "You find yourself in a musty, dimly-lit cellar with ancient stone walls."
-      |- Structure: Location type → key features → objects → exits (in prose)
-      |- Avoid excessive adjectives: "brass lantern" not "ancient, tarnished brass lantern with mysterious engravings"
-      |- Essential information only: Save atmospheric details for EXAMINE commands
-      |- CRITICAL: Every room description must mention ALL exits naturally within the prose
+      |- Write a paragraph of 3-5 flowing sentences that puts the player in the place: what they see first, then a
+      |  sound, a smell, the cold, the light - one or two sensory details chosen for the mood
+      |- Whole sentences that lead into one another. Never a label followed by fragments ("Moonless cloister.
+      |  Overgrown garden. A door stands east."), and never one clipped sentence per exit
+      |- Let the place suggest its story: wear, damage, what was left behind and what seems out of place
+      |- A first visit gets the full paragraph; a later visit or a look around is shorter and notes what has changed
+      |- Keep finer detail for when the player examines something
+      |- CRITICAL: Every room description must mention ALL exits, worked into the paragraph
       |
       |OBJECT PRESENTATION:
       |- Use Infocom house style: "There is a brass lantern here" or "A battery-powered lantern is on the trophy case"
@@ -179,22 +181,25 @@ object PromptBuilder {
       |- Every mentioned noun should reward examination with additional detail
       |
       |NARRATIVE STYLE:
-      |- Second-person present tense: "You are in a forest clearing"
-      |- Prioritize clarity over atmosphere - be direct and concise
-      |- Minimal adjectives: Use only when functionally necessary
-      |- Classic terseness: "Forest clearing. Paths lead north and south." is preferred
+      |- Second-person present tense: "You step into a forest clearing"
+      |- Atmosphere and clarity together: evocative, but the player always knows what is here and where they can go
+      |- Choose the telling detail over a pile of adjectives: "a lantern gone green with age" not "an ancient,
+      |  tarnished, mysterious brass lantern"
+      |- Vary the rhythm and the way sentences open; do not start every sentence with the thing it describes
+      |- An action's result is told as a moment in the story (what happens, how it feels), not as a status report
       |- Fair play principle: All puzzle information discoverable within game world logic
       |- Make rooms feel interactive: include objects to examine, things to manipulate, puzzles to solve
       |
       |EXIT PRESENTATION - CRITICAL REQUIREMENT:
       |- MANDATORY: ALL exits MUST be integrated into the narrationText prose naturally
       |- NEVER rely on separate exit display - the description must be complete and self-contained
-      |- Classic patterns to use:
+      |- Give each exit its direction exactly as the game state has it, and only that direction: an exit that goes
+      |  down is "down", never "down to the south"; never describe two different exits with the same direction
+      |- Weave exits into what the player sees, varying how they are introduced:
       |  • "To the north, glass doors lead into a greenhouse"
       |  • "Stone stairs descend into darkness below"
-      |  • "A wooden door stands to the east"
-      |  • "The path continues south through twisted trees"
-      |  • "An archway opens to the west"
+      |  • "Beyond the fountain a heavy door stands to the east"
+      |  • "The path wanders on south between twisted trees"
       |- Distinguish passage states clearly:
       |  • Open: "To the north, glass doors stand open" or "A path leads north"
       |  • Closed: "To the east, a wooden door is closed"
@@ -203,8 +208,8 @@ object PromptBuilder {
       |  • Hidden: Don't mention until discovered
       |- The exits JSON array is for navigation mechanics only - players read narrationText
       |- Examples of proper integration:
-      |  • "The greenhouse stretches before you. To the south, glass doors return to the entrance hall. Stone stairs descend into darkness below. To the west, a wooden door marked 'Workshop' stands ajar."
-      |  • "A mahogany desk sits here. To the north, an archway leads deeper into the facility."
+      |  • "Warm, green air closes around you as the greenhouse opens out under its cracked glass roof, vines long since escaped from their beds. Behind you to the south, the glass doors give back onto the entrance hall, and in the far corner stone stairs descend into darkness. A wooden door marked 'Workshop' stands ajar to the west, a thread of lamplight at its edge."
+      |  • "Dust lies thick on the mahogany desk, save for one clean square where something stood until lately. To the north an archway leads deeper into the facility, and from somewhere beyond it comes a slow, regular ticking."
       |
       |GAME MECHANICS & OBSTACLES - MANDATORY ENFORCEMENT:
       |- CRITICAL: You MUST respect the exit states. The adventure outline gives each exit's starting state; the

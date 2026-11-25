@@ -3,7 +3,7 @@ package org.llm4s.szork.adventures
 import org.llm4s.szork.adapters.DefaultMusicClient
 import org.llm4s.szork.api.{ArtStyle, GameTheme, SzorkConfig}
 import org.llm4s.szork.error.ErrorHandling._
-import org.llm4s.szork.game.{AdventureGenerator, DungeonMasterOutput, PromptBuilder, SceneMedia}
+import org.llm4s.szork.game.{AdventureGenerator, ArtDirector, DungeonMasterOutput, PromptBuilder, SceneMedia}
 import org.llm4s.szork.media.{MediaPlanner, SceneImages}
 import org.llm4s.szork.spi.{ImageClient, MusicClient}
 
@@ -24,6 +24,9 @@ import scala.concurrent.{Await, ExecutionContext, Future}
   * sbt 'runMain org.llm4s.szork.adventures.BakeAdventure --new --theme "a haunted lighthouse" --style painting'
   * sbt "runMain org.llm4s.szork.adventures.BakeAdventure --music"                  # only the mood tracks
   * }}}
+  *
+  * Before an adventure's pictures are made, the [[org.llm4s.szork.game.ArtDirector]] writes a brief for each location
+  * that has none (`--art` has it write them all again), and the briefs are saved in the adventure.
   *
   * What already exists is kept: delete a file to have it made again.
   */
@@ -98,11 +101,12 @@ object BakeAdventure {
     designNew: Boolean = false,
     style: Option[String] = None,
     images: Boolean = true,
+    art: Boolean = false,
     music: Boolean = true)
 
   private val Usage =
     """Usage: BakeAdventure [<adventure-id>... | --all | --new --theme <theme> [--theme-name <name>] | --list | --music]
-      |                     [--style <art-style-id>] [--no-images] [--no-music]""".stripMargin
+      |                     [--style <art-style-id>] [--art] [--no-images] [--no-music]""".stripMargin
 
   private def parse(args: List[String], options: Options = Options()): Either[String, Options] = args match {
     case Nil => Right(options)
@@ -111,6 +115,7 @@ object BakeAdventure {
     case "--new" :: rest => parse(rest, options.copy(designNew = true))
     case "--music" :: rest => parse(rest, options.copy(images = false))
     case "--no-images" :: rest => parse(rest, options.copy(images = false))
+    case "--art" :: rest => parse(rest, options.copy(art = true))
     case "--no-music" :: rest => parse(rest, options.copy(music = false))
     case "--theme" :: theme :: rest => parse(rest, options.copy(newTheme = Some(theme)))
     case "--theme-name" :: name :: rest => parse(rest, options.copy(themeName = Some(name)))
@@ -155,8 +160,9 @@ object BakeAdventure {
           case Some(client) =>
             adventures
               .map { adventure =>
-                println(s"Pictures for '${adventure.outline.title}':")
-                images(library, adventure, options.style, client)
+                val directed = artDirected(config, library, adventure, again = options.art)
+                println(s"Pictures for '${directed.outline.title}':")
+                images(library, directed, options.style, client)
               }
               .foldLeft(Report.empty)(_ ++ _)
         }
@@ -181,6 +187,31 @@ object BakeAdventure {
     println(s"\nBaked: ${report.summary}")
     sys.exit(if (report.failed.isEmpty) 0 else 1)
   }
+
+  /** `adventure` with a picture brief for every location: as it is if it has them (and `again` is not asked for),
+    * otherwise briefed by the [[ArtDirector]] on the configured model and saved. If that cannot be done the adventure
+    * is baked as it is, its pictures drawn from the locations' descriptions.
+    */
+  private def artDirected(
+    config: SzorkConfig,
+    library: AdventureLibrary,
+    adventure: Adventure,
+    again: Boolean): Adventure =
+    if (ArtDirector.isDirected(adventure.outline) && !again) adventure
+    else {
+      println(s"Briefing the pictures for '${adventure.outline.title}' ...")
+      val directed = for {
+        client <- SzorkConfig.getLLMClient(config)
+        outline <- ArtDirector.direct(adventure.outline, None, config.reasoningEffort)(using client).left.map(_.message)
+        saved <- library.update(adventure.id, outline).left.map(_.message)
+      } yield saved
+      directed match {
+        case Right(saved) => saved
+        case Left(problem) =>
+          println(s"  no briefs ($problem): pictures are drawn from the locations' descriptions")
+          adventure
+      }
+    }
 
   /** Designs an adventure for the options' theme with the configured model, and keeps it. */
   private def design(config: SzorkConfig, library: AdventureLibrary, options: Options): Option[Adventure] = {

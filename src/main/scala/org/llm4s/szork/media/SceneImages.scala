@@ -31,8 +31,27 @@ import org.slf4j.LoggerFactory
 object SceneImages {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
-  /** What Szork asks for: 512x512 PNG, good quality at a reasonable size. */
+  /** What Szork asks for: the provider's smallest square (512 pixels where it draws that small; OpenAI's GPT Image
+    * models draw no smaller than 1024).
+    */
   val Options: ImageGenerationOptions = ImageGenerationOptions(size = ImageSize.Square512, format = MediaType.Png)
+
+  /** The longer side, in pixels, pictures are kept and sent at unless SZORK_IMAGE_PIXELS says otherwise: the size GPT
+    * Image models draw at, which the game shows when a picture is clicked. Kept as JPEG, that is still a fraction of
+    * the PNG a model answers with.
+    */
+  val DefaultPictureSide = 1024
+
+  /** The quality GPT Image models draw at unless SZORK_IMAGE_QUALITY says otherwise. A picture costs by how much the
+    * model draws, and "low" is a small fraction of "medium" in cost and time; shown at the size the game shows it, the
+    * difference is hard to see.
+    */
+  val DefaultQuality = "low"
+
+  /** The options for `szork`'s provider: [[Options]], with the quality setting for the provider that has one. */
+  def options(szork: SzorkConfig): ImageGenerationOptions =
+    if (szork.imageProvider == ImageProvider.OpenAIGptImage) Options.copy(quality = Some(szork.imageQuality))
+    else Options
 
   /** The llm4s configuration for the server's image provider, or why scene images are unavailable: switched off, no
     * provider chosen, or the provider's credentials missing.
@@ -86,7 +105,7 @@ object SceneImages {
   def fromConfig(szork: SzorkConfig, tracing: Option[Tracing], env: ConfigReader = EnvLoader): Option[ImageClient] =
     config(szork, env).toOption.flatMap { c =>
       llm4sClient(c, tracing) match {
-        case Right(client) => Some(new SceneImageClient(client, cacheTag(c)))
+        case Right(client) => Some(new SceneImageClient(client, cacheTag(c), options(szork), szork.imagePixels))
         case Left(error) =>
           logger.warn(s"Scene images unavailable: the llm4s image client could not be created: $error")
           None
@@ -104,7 +123,12 @@ object SceneImages {
   * @param cacheTag
   *   the provider and model, part of each cache key
   */
-final class SceneImageClient(client: ImageGenerationClient, cacheTag: String) extends ImageClient {
+final class SceneImageClient(
+  client: ImageGenerationClient,
+  cacheTag: String,
+  options: ImageGenerationOptions = SceneImages.Options,
+  pictureSide: Int = SceneImages.DefaultPictureSide)
+    extends ImageClient {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   /** The image for `prompt`, which already carries the art style; `style` (the art style id) only keys the cache. With
@@ -124,14 +148,17 @@ final class SceneImageClient(client: ImageGenerationClient, cacheTag: String) ex
         Right(cached)
       case None =>
         val start = System.currentTimeMillis()
-        client.generateImage(prompt, SceneImages.Options) match {
+        client.generateImage(prompt, options) match {
           case Right(image) =>
+            // Kept and sent at the size the game shows it, not the size the model drew it
+            val picture = PictureFiles.shrink(image.data, pictureSide)
             logger.info(
-              s"Image generated in ${System.currentTimeMillis() - start}ms (${image.data.length} chars base64)")
+              s"Image generated in ${System.currentTimeMillis() - start}ms (${image.data.length} chars base64, " +
+                s"${picture.length} as kept)")
             place.foreach { case (game, location) =>
-              MediaCache.cacheImage(game, location, prompt, style, image.data, cacheTag)
+              MediaCache.cacheImage(game, location, prompt, style, picture, cacheTag)
             }
-            Right(image.data)
+            Right(picture)
           case Left(error) =>
             logger.error(s"Image generation failed after ${System.currentTimeMillis() - start}ms: ${error.message}")
             Left(ImageGenerationError(s"Image generation error: ${error.message}", retryable = error.isRetryable))

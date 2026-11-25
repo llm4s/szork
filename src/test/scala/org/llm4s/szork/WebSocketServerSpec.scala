@@ -207,7 +207,7 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     val picture = c.await("imageReady")("data")
     picture.obj.get("image") shouldBe None
     picture("url").str should startWith(
-      s"/api/library/adventures/${cavernAdventure.id}/images/cavern_entrance.pixel.png")
+      s"/api/library/adventures/${cavernAdventure.id}/images/cavern_entrance.pixel.jpg")
     library.list.head.images shouldBe 1
 
     val session = sessions.getSession(started("sessionId").str).get

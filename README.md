@@ -167,6 +167,7 @@ Set in `.env` (see `.env.example`) or the environment:
 | `SZORK_SESSION_TTL_MINUTES` | `30` | How long a game's session lives with no connection: a client that reconnects within it carries on, after it the game is loaded from its save |
 | `SZORK_ALLOWED_ORIGINS` | the dev frontend and this server | Browser origins allowed to open the WebSocket (comma-separated) |
 | `SZORK_IMAGE_GENERATION_ENABLED`, `SZORK_IMAGE_PROVIDER`, `SZORK_IMAGE_MODEL` | `true`, `none`, the provider's default | Scene images through the llm4s image client (`openai` for GPT Image, default model `gpt-image-1-mini`; `dalle3`, `dalle2`, `huggingface`, `huggingface-sdxl`, `local`); `SZORK_IMAGE_MODEL` picks another of the provider's models; traced with the Dungeon Master when `TRACING_MODE` is set |
+| `SZORK_IMAGE_QUALITY`, `SZORK_IMAGE_PIXELS` | `low`, `1024` | How well GPT Image models draw (`low`, `medium`, `high`, `auto`: cost and time rise steeply), and the longer side in pixels pictures are kept and sent at (as JPEG; click a picture in the game to see it full size) |
 | `HUGGINGFACE_API_KEY` (or `HF_API_KEY`, `HUGGINGFACE_TOKEN`) | – | Key for the `huggingface` image providers (the OpenAI ones use `OPENAI_API_KEY`) |
 | `STABLE_DIFFUSION_URL` (or `SD_URL`), `STABLE_DIFFUSION_API_KEY` (or `SD_API_KEY`) | `http://localhost:7860`, – | The `local` Stable Diffusion server |
 | `SZORK_TTS_ENABLED`, `SZORK_TTS_VOICE`, `SZORK_TTS_MODEL` | `true`, `nova`, `tts-1` | Narration |

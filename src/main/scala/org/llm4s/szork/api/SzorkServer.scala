@@ -361,7 +361,9 @@ final class SzorkRoutes(
         AdventureGenerator.withSoundMap(
           AdventureGenerator.outlineFromJson(ujson.read(request.text())("outline")))).toEither.left
         .map(_ => "Request must have an \"outline\" that is an adventure outline")
-      adventure <- library.keep(outline, choice._1, choice._2).left.map(_.message)
+      // The art director briefs each location's picture; without its briefs pictures are drawn from the descriptions
+      directed = ArtDirector.direct(outline, tracing, config.reasoningEffort)(using llmClient).getOrElse(outline)
+      adventure <- library.keep(directed, choice._1, choice._2).left.map(_.message)
     } yield adventure
     kept match {
       case Right(adventure) => ujson.Obj("status" -> "success", "id" -> adventure.id)

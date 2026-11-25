@@ -127,7 +127,8 @@ to be played again, each location's picture per art style, and one music track p
 expires; its media goes to the browser as a URL (`MediaRef.Stored`, served by `/api/library/...`). `BakeAdventure` is
 the command that makes an adventure's media ahead of play. A game of a library adventure (`newGame` with
 `adventureId`; `GameEngine.playAdventure`, saved as `GameState.adventureId`) skips the designer. **game/SceneMedia.scala**
-holds the media rules: a place is drawn once (a library adventure's location from its outline, into the library; any
+holds the media rules: a place is drawn once (a library adventure's location from its picture brief - written by
+**game/ArtDirector.scala**, a third llm4s agent, when the adventure is kept or baked - into the library; any
 other from the scene's `imageDescription`, into the per-game `MediaCache`) and drawn again only when the Dungeon
 Master's answer gives `imageUpdate`; music is the mood's one track. `docs/ADVENTURES.md` describes it all.
 

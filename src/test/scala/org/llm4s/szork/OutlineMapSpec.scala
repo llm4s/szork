@@ -39,6 +39,40 @@ class OutlineMapSpec extends AnyFunSuite with Matchers {
     OutlineMap.repair(sound) shouldBe (sound, Nil)
   }
 
+  test("a way back given as 'back' becomes the opposite of the way there, and is not a problem") {
+    def place(id: String, exits: (String, String)*) =
+      LocationOutline(
+        id,
+        id,
+        s"The $id",
+        "",
+        exits = exits.map { case (d, to) => ExitOutline(d, to, "", "open") }.toList)
+    val abbey = outline(
+      place("gatehouse", "north" -> "cloister"),
+      // North leads here from the gatehouse, so "back" to it is south
+      place("cloister", "back" -> "gatehouse", "down" -> "crypt", "up" -> "tower"),
+      place("crypt", "up" -> "cloister"),
+      place("tower", "back" -> "cloister", "forward" -> "crypt")
+    )
+    val (repaired, notes) = OutlineMap.repair(abbey)
+    def exits(id: String) = repaired.keyLocations.find(_.id == id).get.exits.map(e => e.direction -> e.targetId)
+
+    exits("cloister") shouldBe List("south" -> "gatehouse", "down" -> "crypt", "up" -> "tower")
+    // The tower is up from the cloister, so its way back is down; nothing fixed leads from the crypt to the tower
+    exits("tower") shouldBe List("down" -> "cloister", "forward" -> "crypt")
+    notes should have size 2
+    notes.head should (include("cloister") and include("now south"))
+    OutlineMap.problems(abbey) shouldBe empty
+
+    // Fixed directions are never changed, even when a pair does not line up (a passage may bend), and a direction
+    // the location already uses is not taken twice
+    val bent = outline(
+      place("hall", "north" -> "yard", "east" -> "store"),
+      place("yard", "west" -> "hall"),
+      place("store", "west" -> "yard", "back" -> "hall"))
+    OutlineMap.repair(bent) shouldBe (bent, Nil)
+  }
+
   test("an exit to a location that is not in the outline is reported and dropped") {
     val broken = outline(
       location("hall", exit("north", "study"), exit("west", "smugglers_gap")),

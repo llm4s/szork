@@ -8,15 +8,16 @@ import org.llm4s.speech.AudioFormat
 import org.llm4s.speech.config.TTSConfig
 import org.llm4s.szork.api.SpeechConfig
 import org.llm4s.speech.tts.TTSOptions
-import org.llm4s.speech.tts.provider.OpenAITTSClient
+import org.llm4s.speech.SpeechProviderSelector
+import org.llm4s.speech.tts.{TextToSpeech => TtsClient}
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 
-/** Narration via llm4s-speech's OpenAI text-to-speech client.
+/** Narration via llm4s-speech's text-to-speech client (OpenAI), chosen by `SpeechProviderSelector`.
   *
   * Configured by OPENAI_API_KEY and the [[SpeechConfig]] model and voice.
   */
-final class TextToSpeech private (client: OpenAITTSClient, val defaultVoice: String) {
+final class TextToSpeech private (client: TtsClient, val defaultVoice: String) {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   /** Speaks `text` as MP3. */
@@ -37,7 +38,7 @@ object TextToSpeech {
 
   /** A client for `speech`'s model and voice, or a ConfigurationError if OPENAI_API_KEY is not set in `reader`. */
   def create(speech: SpeechConfig, reader: ConfigReader = EnvLoader): SzorkResult[TextToSpeech] =
-    reader.get("OPENAI_API_KEY").filter(_.nonEmpty).toRight(ConfigurationError("OPENAI_API_KEY is not set")).map {
+    reader.get("OPENAI_API_KEY").filter(_.nonEmpty).toRight(ConfigurationError("OPENAI_API_KEY is not set")).flatMap {
       key =>
         val config = TTSConfig(
           provider = "openai",
@@ -46,6 +47,10 @@ object TextToSpeech {
           apiKey = Secret(key),
           baseUrl = TTSConfig.DEFAULT_OPENAI_BASE_URL
         )
-        new TextToSpeech(new OpenAITTSClient(config), speech.ttsVoice)
+        SpeechProviderSelector
+          .getTTSClient(config)
+          .left
+          .map(error => ConfigurationError(s"Text-to-speech unavailable: ${error.message}"))
+          .map(new TextToSpeech(_, speech.ttsVoice))
     }
 }

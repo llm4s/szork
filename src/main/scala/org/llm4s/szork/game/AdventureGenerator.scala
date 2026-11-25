@@ -1,12 +1,11 @@
 package org.llm4s.szork.game
 
-import org.llm4s.agent.{Agent, AgentStatus}
 import org.llm4s.llmconnect.LLMClient
-import org.llm4s.llmconnect.model.{CompletionOptions, ReasoningEffort}
+import org.llm4s.llmconnect.model.ReasoningEffort
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.trace.Tracing
-import org.slf4j.{Logger, LoggerFactory}
+import org.slf4j.LoggerFactory
 import upickle.default.ReadWriter
 import upickle.implicits.serializeDefaults
 
@@ -76,13 +75,13 @@ case class CharacterOutline(
   * correction of an invalid answer.
   */
 object AdventureGenerator {
-  private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   /** The id of the adventure designer agent. */
   val AgentId: String = "szork-adventure-designer"
 
   /** Model calls for one outline: the answer (llm4s's one correction is part of the same step). */
-  val MaxModelCalls: Int = 1
+  val MaxModelCalls: Int = StructuredAgent.MaxModelCalls
 
   /** The most tokens the designer may answer with. An outline is several thousand tokens, and a model that thinks
     * spends its thinking from the same allowance; llm4s's Anthropic default (2048) cuts the outline short.
@@ -231,23 +230,16 @@ object AdventureGenerator {
     tracing: Option[Tracing] = None,
     reasoning: Option[ReasoningEffort] = None)(using client: LLMClient): SzorkResult[AdventureOutline] = {
     logger.info(s"Generating adventure outline for theme: $theme")
-    val builder = Agent
-      .builder(AgentId, client)
-      .withSystemPrompt(DesignerPrompt)
-      .withMaxSteps(MaxModelCalls)
-      .withCompletionOptions(CompletionOptions().withMaxTokens(MaxOutputTokens).withReasoning(reasoning))
-      .withOutput(AdventureOutlineSchema.schema)
-    val outline = for {
-      agent <- tracing.fold(builder)(builder.withTracing).build()
-      result <- agent.run(designBrief(theme))
-      _ = logger.info(s"Outline designer finished ${result.status.productPrefix}: ${result.runUsage}")
-      _ = agent.forget(result.threadId)
-      outline <- result.status match {
-        // llm4s does not decode an answer the model's output limit cut short
-        case AgentStatus.Truncated(_) => Right(None)
-        case _ => result.decodeOutput[AdventureOutline].map(Some(_))
-      }
-    } yield outline.map(withSoundMap)
+    val outline = StructuredAgent
+      .ask(
+        AgentId,
+        DesignerPrompt,
+        AdventureOutlineSchema.schema,
+        designBrief(theme),
+        MaxOutputTokens,
+        tracing,
+        reasoning)
+      .map(_.map(withSoundMap))
     outline match {
       case Right(Some(o)) =>
         logger.info(s"Generated adventure outline: ${o.title} (${o.keyLocations.size} locations)")
@@ -277,7 +269,6 @@ object AdventureGenerator {
     import org.llm4s.agent.graph.GraphError
     import org.llm4s.error._
     error match {
-      // llm4s reports a failed model call as the graph node that failed, with the provider's own error as its cause
       case GraphError.NodeFailed(_, _, cause) => failureReason(cause)
       case GraphError.ToolFailed(_, _, cause) => failureReason(cause)
       case _: GraphError.OutputInvalid =>
@@ -386,7 +377,18 @@ object AdventureGenerator {
     (s"- ${loc.name} (${loc.id}): ${loc.description} - ${loc.significance}" :: details).mkString("\n")
   }
 
-  /** Reads an outline written by [[outlineToJson]] (also the format the frontend sends back); throws if it is not one.
+  /** Reads an outline written by [[outlineToJson]] (also the format the frontend sends back), or says why it is not
+    * one. It is only decoded: [[withSoundMap]] repairs its map and [[OutlineMap.problems]] says what else is wrong.
+    */
+  def parseOutline(json: ujson.Value): SzorkResult[AdventureOutline] =
+    scala.util
+      .Try(upickle.default.read[AdventureOutline](json))
+      .toEither
+      .left
+      .map(e => ParseError(s"Not an adventure outline: ${e.getMessage}", Some(e)))
+
+  /** Reads an outline as [[parseOutline]] does, but throws if it is not one: for readers that report a failure by
+    * throwing (a saved game's codec).
     */
   def outlineFromJson(json: ujson.Value): AdventureOutline = upickle.default.read[AdventureOutline](json)
 

@@ -302,9 +302,10 @@ final class SzorkRoutes(
         "title" -> metadata.adventureTitle,
         "theme" -> metadata.theme,
         "artStyle" -> metadata.artStyle,
-        "createdAt" -> metadata.createdAt,
-        "lastPlayed" -> metadata.lastPlayed,
-        "totalPlayTime" -> metadata.totalPlayTime
+        // As numbers: ujson writes a Long as a string, which the browser cannot read as a date
+        "createdAt" -> ujson.Num(metadata.createdAt.toDouble),
+        "lastPlayed" -> ujson.Num(metadata.lastPlayed.toDouble),
+        "totalPlayTime" -> ujson.Num(metadata.totalPlayTime.toDouble)
       )
     }
     ujson.Obj(

@@ -226,6 +226,8 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     games("status").str shouldBe "success"
     games("games").arr.map(_("gameId").str) should contain(gameId)
     games("games").arr.map(_("gameId").str) should not contain "not-a-game"
+    // Times are numbers, which is what the browser makes a date from
+    games("games").arr.find(_("gameId").str == gameId).get("createdAt").num should be > 0.0
     c.close()
   }
 

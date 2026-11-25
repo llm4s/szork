@@ -305,13 +305,14 @@ export default defineComponent({
   width: 100%;
   min-height: 100vh;
   display: flex;
-  align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #0d0d0d 0%, #1a1a2e 100%);
   padding: 2rem;
 }
 
 .selection-content {
+  /* Centred when it fits; when it is taller than the window it starts at the top, so nothing is cut off above */
+  margin: auto;
   width: 100%;
   max-width: 1200px;
   display: flex;

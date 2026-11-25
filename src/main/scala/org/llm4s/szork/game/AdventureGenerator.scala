@@ -142,6 +142,8 @@ object AdventureGenerator {
       |- Create 3-5 memorable characters with distinct personalities
       |- Design 2-3 clever puzzles with multiple solutions
       |- Include environmental storytelling in every location
+      |- Everything in a location is made of what its world is made of: a space station has no stone benches, a
+      |  medieval abbey no steel hatches. A thing from elsewhere is there for a reason the location states
       |- Add at least one "wow moment" that surprises players
       |- Hide 2-3 easter eggs or secrets for observant players
       |

@@ -47,12 +47,12 @@
         ],
         "puzzles": null,
         "secrets": "Examining the pod reveals its log: you were scheduled to wake 40 years ago, not today. Someone delayed your waking on purpose.",
-        "image": "Interior of a curved white chamber, viewer standing at the foot of a frosted cryo pod in the foreground center. A clipboard-sized datapad lies on the floor beside it. A dimly glowing wall console on the left curve, and a speaker grille above. A wide open arch in the right wall, and a shut blast door under a red light at the back. Pulsing pale emergency light, cold and lonely."
+        "image": "Interior of a curved white cryogenic chamber aboard a derelict space station, viewer standing beside the pod. Foreground left: a frosted cryo pod with a tagged lid. Floor beside it: a small datapad. Back wall: a dimly glowing crew roster console and a speaker grille. Right: a wide open corridor arch; far wall: a shut blast door under a red light. Pulsing pale emergency light, cold lonely mood."
       },
       {
         "id": "garden_ring",
         "name": "Hydroponics Garden Ring",
-        "description": "A curved corridor of glass walls opens onto a tangled garden lit by violet grow-lamps, where vines drape over railings and the air smells of wet soil. Three brass wind chimes hang over a stone bench, each tarnished and silent. To the west, the arch returns to the cryo bay, to the north a rusted gantry stairs rise toward a spire, and to the east a sliding hatch stands closed beside a mossy workbench. Something small glints in the soil of a toppled planter.",
+        "description": "A curved corridor of glass walls opens onto a tangled garden lit by violet grow-lamps, where vines drape over railings and the air smells of wet soil. Three brass wind chimes hang over a bench of moulded deck plating, each tarnished and silent. To the west, the arch returns to the cryo bay, to the north a rusted gantry stairs rise toward a spire, and to the east a sliding hatch stands closed beside a mossy workbench. Something small glints in the soil of a toppled planter.",
         "significance": "Hub with the first obstacle-clearing items. Introduces the lullaby as a puzzle key (rule of three: datapad, chimes, moss). The ring starts the Pip fetch quest.",
         "exits": [
           {
@@ -85,7 +85,7 @@
         ],
         "puzzles": "The chimes must be struck in the lullaby's order (low, middle, high, middle) to make the glass-moss bloom, dropping a conductive seed. Alternatively, playing the datapad's lullaby near the moss causes the same bloom. The keycard under the seed tray opens the maintenance door.",
         "secrets": "Pip's wedding ring is engraved 'To Tomas, keep singing.' A tiny hidden tag on the workbench reads 'Tomas Reyes, Engineer'.",
-        "image": "Interior of a curved glass-walled corridor opening into a tangled garden, viewer standing at the arch. Violet grow-lamps light vines draped over railings. Three tarnished brass wind chimes hang above a stone bench at center. A toppled planter in the foreground with a gold ring glinting in its soil, a mossy workbench with a seed tray beside a closed sliding hatch at right, rusted gantry stairs rising at left, grey crystalline moss patch on the floor. Damp, eerie, tender mood."
+        "image": "Interior of a hydroponics garden ring aboard a derelict space station, viewer standing in a curved glass-walled corridor. Centre: a bench of moulded deck plating with three tarnished brass wind chimes hanging above it. Foreground: a toppled planter with a glinting gold ring in spilled soil. Right: a mossy workbench with a seed tray and a closed sliding hatch. Left: rusted gantry stairs rising; grey crystalline moss patch. Violet grow-lamp light, overgrown vines, hushed mood."
       },
       {
         "id": "maintenance_bay",
@@ -116,7 +116,7 @@
         ],
         "puzzles": "The toolbox code is 407, the date of the last crew's departure (April 07), shown on the torn work schedule and the shrine's photograph. Inside is a spanner. Placing the wedding ring in the shrine slot moves Pip to give you the override key.",
         "secrets": "Under the shrine's photograph is a note: 'Tomas never left. He is the Beacon's voice.'",
-        "image": "Interior of a cramped steel workshop, viewer standing just inside the door. A small repair drone with a cracked lens sits in a humming charging cradle at center. A shelf at right holds a tiny memorial shrine of photographs and screws, with a ring-shaped empty slot. Tool racks with a torn schedule pinned on the left wall, a locked toolbox under the workbench, and a dark narrow tunnel opening at the back. Warm cluttered pools of light, solemn mood."
+        "image": "Interior of a cramped steel maintenance workshop aboard a derelict space station, viewer standing inside the doorway. Centre: a humming charging cradle holding a small repair drone with a cracked lens. Left: tool racks with a torn schedule pinned and cable spools. Right: a shelf with a tiny shrine of photographs and screws around an empty ring-shaped slot. Under the workbench: a locked toolbox. A dark narrow tunnel in the far wall. Warm cluttered lamplight, tender mood."
       },
       {
         "id": "reactor_core",
@@ -147,7 +147,7 @@
         ],
         "puzzles": "Use the spanner on the valve wheel and turn it exactly three turns, as the placard says. Fewer leaves the hatch hot; more triggers a harmless but loud alarm and a reset.",
         "secrets": "Behind the console, a faded crew photo shows Tomas and Captain Varga holding hands.",
-        "image": "Interior of a vast cathedral-like reactor hall, viewer standing on the floor looking at a slowly turning containment sphere glowing blue at the center. A stiff coolant valve wheel on the wall at left, a scorched console blinking warning lights at right, and a small warning placard beside the wheel. A ladder rises into a glass shaft overhead. Humming blue light, warm haze, tense and awe-filled."
+        "image": "Interior of a vast reactor hall aboard a derelict space station, viewer standing on a steel gantry floor. Centre: a slowly turning containment sphere glowing blue, towering like a cathedral. Left wall: a stiff coolant valve wheel and a scorched console blinking warning lights, with a placard beside it. Right: a ladder rising into a glass shaft. Humming blue light, trembling heat haze, tense awe-filled mood."
       },
       {
         "id": "comms_loft",
@@ -171,7 +171,7 @@
         ],
         "puzzles": "The safe opens with 1988... no, with 0881, the radio dial reading reversed, hinted by a note taped under the chair arm. Inside is the Beacon crystal and Varga's last log. Playing the cassette reveals her explanation.",
         "secrets": "Under the chair cushion is a child's drawing of the station with a singing sun.",
-        "image": "Interior of a dusty loft crowded with dead antennae, viewer standing at the top of the stairs. A huge antique radio console with grey-furred dials at center, a small bolted wall safe beside it, and a cassette recorder on the desk in the foreground. A worn captain's chair at right sits in warm light falling through a viewing window. Dusty, golden, melancholy mood."
+        "image": "Interior of a dusty communications loft aboard a derelict space station, viewer standing near the stairwell. Centre: a huge antique radio console with dials furred with grey dust. Foreground right: a worn captain's chair in warm light from a viewing window. Beside the radio: a small bolted wall safe. On the desk: a cassette recorder. Dead antennae crowd the walls. Warm dim golden light, melancholy mood."
       },
       {
         "id": "observation_dome",
@@ -195,7 +195,7 @@
         ],
         "puzzles": null,
         "secrets": "Looking through the telescope at the right moment shows Orrin's surface drawing the lullaby's notes in light.",
-        "image": "Interior of a vast glass dome, viewer standing on the floor near the entrance hatch. Swirling indigo clouds of a planet fill the dome overhead, with slow auroras. A cracked telescope aims at the glass at left, an unstrung glass harp stands at center, a small dedication plaque on a pedestal at right, and a shimmering figure of light drifts near the glass. Cool, quiet, luminous, wondrous mood."
+        "image": "Interior of a vast glass observation dome aboard a derelict space station, viewer standing on the floor looking up and out. Background: swirling indigo clouds of an alien planet lit by pulsing auroras. Left: a cracked telescope aimed at the planet. Right: an unstrung glass harp and a dedication plaque on a pedestal. Near the glass: a drifting figure of shimmering light. Cool blue-violet glow, serene, wondrous mood."
       },
       {
         "id": "beacon_spire",
@@ -219,7 +219,7 @@
         ],
         "puzzles": "Place the Beacon crystal and the conductive seed in the lectern, then sing or play the lullaby to relight the Beacon.",
         "secrets": "Tomas's coat has a pocket letter that explains the twist.",
-        "image": "Interior of a slender chamber of glass ribs at the top of a station, viewer standing at the ladder hatch. A dark hollow crystal throne sits at center with a small socket on its arm and a heavy coat hanging on it. A control lectern with three slots stands at the front right. Shimmering starlight washes through the ribs. Dim, hushed, expectant mood."
+        "image": "Interior of a slender glass-ribbed spire chamber atop a derelict space station, viewer standing at the ladder opening. Centre: a dark hollow crystal throne with a small socket on its arm and a worn coat hanging on it. Beside it: a control lectern with three slots. Glass ribs around shimmer with starlight winds. Cold starlit light, hushed expectant mood."
       }
     ],
     "importantItems": [

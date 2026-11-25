@@ -1,8 +1,7 @@
 package org.llm4s.szork.game
 
-import org.llm4s.agent.Agent
 import org.llm4s.llmconnect.LLMClient
-import org.llm4s.llmconnect.model.{CompletionOptions, ReasoningEffort}
+import org.llm4s.llmconnect.model.ReasoningEffort
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.toolapi.{ObjectSchema, Schema}
@@ -33,10 +32,10 @@ object ArtDirector {
 
   val AgentId = "szork-art-director"
 
-  // The briefs for a whole adventure are a few thousand tokens; this leaves room for a model that reasons first
-  private val MaxOutputTokens = 8000
-  // One call, and one more if llm4s has to ask for a corrected answer
-  private val MaxModelCalls = 2
+  /** The most tokens the art director may answer with: the briefs for a whole adventure are a few thousand tokens, and
+    * this leaves room for a model that reasons first.
+    */
+  val MaxOutputTokens: Int = 8000
 
   private val location: ObjectSchema[LocationArt] = Schema
     .`object`[LocationArt]("The picture of one location")
@@ -92,30 +91,23 @@ object ArtDirector {
     * had), written by the art director agent on `client`.
     */
   def direct(outline: AdventureOutline, tracing: Option[Tracing] = None, reasoning: Option[ReasoningEffort] = None)(
-    using client: LLMClient): SzorkResult[AdventureOutline] = {
-    val builder = Agent
-      .builder(AgentId, client)
-      .withSystemPrompt(SystemPrompt)
-      .withMaxSteps(MaxModelCalls)
-      .withCompletionOptions(CompletionOptions().withMaxTokens(MaxOutputTokens).withReasoning(reasoning))
-      .withOutput(schema)
-    val direction = for {
-      agent <- tracing.fold(builder)(builder.withTracing).build()
-      result <- agent.run(request(outline))
-      _ = logger.info(s"Art director finished ${result.status.productPrefix}: ${result.runUsage}")
-      _ = agent.forget(result.threadId)
-      direction <- result.decodeOutput[ArtDirection]
-    } yield direction
-    direction match {
-      case Right(art) =>
-        val briefs = art.locations.map(l => l.id -> l.image.trim).filter(_._2.nonEmpty).toMap
+    using client: LLMClient): SzorkResult[AdventureOutline] =
+    StructuredAgent.ask(AgentId, SystemPrompt, schema, request(outline), MaxOutputTokens, tracing, reasoning) match {
+      case Right(Some(art)) =>
+        val ids = outline.keyLocations.map(_.id).toSet
+        val (known, unknown) = art.locations.partition(l => ids(l.id))
+        if (unknown.nonEmpty)
+          logger.warn(s"Art direction for '${outline.title}' briefed unknown ids: ${unknown.map(_.id).mkString(", ")}")
+        val briefs = known.map(l => l.id -> l.image.trim).filter(_._2.nonEmpty).toMap
         logger.info(s"Art direction for '${outline.title}': ${briefs.size} of ${outline.keyLocations.size} locations")
         Right(withBriefs(outline, briefs))
+      case Right(None) =>
+        logger.error(s"Art direction for '${outline.title}' was cut off at the output limit of $MaxOutputTokens tokens")
+        Left(AIError("The art director's briefs were cut off at the model's output limit"))
       case Left(error) =>
         logger.error(s"Art direction for '${outline.title}' failed: ${error.message}")
         Left(AIError(s"The art director could not brief the pictures: ${error.message}", llmError = Some(error)))
     }
-  }
 
   /** `outline` with `briefs` (by location id) as its locations' picture briefs. */
   def withBriefs(outline: AdventureOutline, briefs: Map[String, String]): AdventureOutline =

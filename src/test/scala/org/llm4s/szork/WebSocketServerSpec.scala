@@ -12,9 +12,11 @@ import org.llm4s.szork.api._
 import org.llm4s.szork.error.ErrorHandling.SzorkResult
 import org.llm4s.szork.error.ImageGenerationError
 import org.llm4s.szork.spi.{ImageClient, STTClient}
-import org.llm4s.szork.game.{GameEngine, PlayerInputGuardrail}
+import java.nio.file.Files
+import org.llm4s.szork.adventures.AdventureLibrary
+import org.llm4s.szork.game.{AdventureOutline, ExitOutline, GameEngine, LocationOutline, PlayerInputGuardrail}
 import org.llm4s.llmconnect.model.Conversation
-import org.llm4s.szork.stubs.{FakeImageClient, ScriptedDm}
+import org.llm4s.szork.stubs.{DmAnswers, FakeImageClient, ScriptedDm}
 import org.llm4s.testkit.Reply
 import org.llm4s.szork.websocket.TypedWebSocketServer
 import org.llm4s.szork.websocket.protocol._
@@ -36,19 +38,66 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     Reply.toolCall("update_quest_progress", """{"quest": "main", "status": "completed", "note": null}""")
   }
 
+  // "light the brazier" changes how the entrance looks: the Dungeon Master asks for a new picture
+  private val relightsTheBrazier: PartialFunction[Conversation, Reply] = {
+    case ScriptedDm.Command("light the brazier") =>
+      Reply.text(
+        DmAnswers.simple("Flames leap up.", "cavern_entrance", "use", imageUpdate = Some("The cave mouth, firelit")))
+  }
+
+  // The adventure library, holding the cavern as a ready-made adventure
+  private val library = new AdventureLibrary(Files.createTempDirectory("szork-ws-adventures"))
+  private val cavernAdventure = library
+    .keep(
+      AdventureOutline(
+        title = "The Echoing Cavern",
+        mainQuest = "Find the lantern",
+        subQuests = Nil,
+        keyLocations = List(
+          LocationOutline(
+            "cavern_entrance",
+            "Cavern Entrance",
+            "A cold cave mouth. A passage leads north.",
+            "The start",
+            exits = List(ExitOutline("north", "hall", "A passage leads north", "open"))
+          ),
+          LocationOutline(
+            "hall",
+            "Small Hall",
+            "A small hall. The way back is south.",
+            "The end",
+            exits = List(ExitOutline("south", "cavern_entrance", "The way back", "open")))
+        ),
+        importantItems = Nil,
+        keyCharacters = Nil,
+        adventureArc = "In, and out again"
+      ),
+      Some(GameTheme("caves", "Caves", "an underground realm")),
+      Some(ArtStyle("pixel", "Pixel Art"))
+    )
+    .toOption
+    .get
+
   // Games with the theme "no-images" have an image provider that always fails
   private val failingImages: ImageClient = (_, _, _, _) => Left(ImageGenerationError("provider down"))
+
+  // The library keeps what it is given as a file, so pictures for its adventure are real Base64
+  private val libraryImages: ImageClient = (_, _, _, _) =>
+    Right(java.util.Base64.getEncoder.encodeToString("png".getBytes))
 
   private val engineFactory: EngineFactory = (sessionId, theme, artStyle, outline, features) =>
     Right(
       GameEngine.create(
-        ScriptedDm(winsTheGame),
+        ScriptedDm(winsTheGame.orElse(relightsTheBrazier)),
         sessionId,
         theme,
         artStyle,
         outline,
-        imageClient =
-          Option.when(features.image)(if (theme.contains("no-images")) failingImages else new FakeImageClient())
+        imageClient = Option.when(features.image)(
+          if (theme.contains("no-images")) failingImages
+          else if (theme.contains("an underground realm")) libraryImages
+          else new FakeImageClient()),
+        library = Some(library)
       ))
 
   // Every recording says "go north", which moves the player to a new scene
@@ -65,7 +114,8 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     workPool = workPool,
     mediaEC = ExecutionContext.fromExecutor(mediaPool),
     musicEC = ExecutionContext.fromExecutor(mediaPool),
-    autoSave = false
+    autoSave = false,
+    library = Some(library)
   )
 
   override def beforeAll(): Unit = {
@@ -129,6 +179,48 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     val complete = c.await("streamComplete")("data")
     complete("scene")("locationName").str shouldBe "Small Hall"
     complete("scene")("items").arr shouldBe empty // empty lists are sent too
+    c.close()
+  }
+
+  test("a place is pictured again only when the Dungeon Master says it looks different") {
+    val c = connect()
+    startGame(c)
+    c.await("imageReady")
+
+    c.sendJson("type" -> "command", "command" -> "examine wall")
+    c.await("commandResponse")("data")("hasImage").bool shouldBe false
+
+    c.sendJson("type" -> "command", "command" -> "light the brazier")
+    val changed = c.await("commandResponse")("data")
+    changed("hasImage").bool shouldBe true
+    val picture = c.await("imageReady")("data")
+    picture("messageIndex").num shouldBe changed("messageIndex").num
+    picture("image").str shouldBe "FAKE_IMAGE_BASE64"
+    c.close()
+  }
+
+  test("a game of a library adventure plays its outline and shows the library's pictures by URL") {
+    val c = connect()
+    c.sendJson("type" -> "newGame", "adventureId" -> cavernAdventure.id, "image" -> true)
+    val started = c.await("gameStarted")("data")
+    started("hasImage").bool shouldBe true
+    val picture = c.await("imageReady")("data")
+    picture.obj.get("image") shouldBe None
+    picture("url").str should startWith(
+      s"/api/library/adventures/${cavernAdventure.id}/images/cavern_entrance.pixel.png")
+    library.list.head.images shouldBe 1
+
+    val session = sessions.getSession(started("sessionId").str).get
+    session.engine.adventure shouldBe Some(cavernAdventure.id)
+    session.artStyle.map(_.id) shouldBe Some("pixel")
+    session.theme.map(_.name) shouldBe Some("Caves")
+    c.close()
+  }
+
+  test("a new game of an adventure the library does not have is refused") {
+    val c = connect()
+    c.sendJson("type" -> "newGame", "adventureId" -> "no-such-adventure")
+    c.await("error")("data")("details").str should include("no-such-adventure")
     c.close()
   }
 

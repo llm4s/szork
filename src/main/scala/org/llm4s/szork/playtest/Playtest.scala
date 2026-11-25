@@ -3,7 +3,9 @@ package org.llm4s.szork.playtest
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{Conversation, ReasoningEffort, SystemMessage, UserMessage}
 import org.llm4s.szork.api.{AgentTracing, SzorkConfig}
+import org.llm4s.szork.adventures.AdventureLibrary
 import org.llm4s.szork.error.ErrorHandling.SzorkResult
+import org.llm4s.szork.error.NotFoundError
 import org.llm4s.szork.game.{AdventureGenerator, AdventureOutline, ExitState, GameEngine, GameScene, IdGenerator}
 import org.llm4s.trace.Tracing
 
@@ -271,7 +273,12 @@ object Playtest {
       tracing = tracing,
       reasoning = config.reasoning)
 
-  private final case class Arguments(theme: String, turns: Int, report: Option[String], probe: Boolean)
+  private final case class Arguments(
+    theme: String,
+    turns: Int,
+    report: Option[String],
+    probe: Boolean,
+    adventure: Option[String] = None)
 
   private def parse(args: List[String], parsed: Arguments): Either[String, Arguments] = args match {
     case Nil => Right(parsed)
@@ -282,11 +289,12 @@ object Playtest {
       }
     case "--report" :: path :: rest => parse(rest, parsed.copy(report = Some(path)))
     case "--no-probes" :: rest => parse(rest, parsed.copy(probe = false))
+    case "--adventure" :: id :: rest => parse(rest, parsed.copy(adventure = Some(id)))
     case other :: _ => Left(s"unknown argument '$other'")
   }
 
   private val Usage =
-    "Usage: Playtest [--theme <text>] [--turns <n>] [--report <file.json>] [--no-probes]"
+    "Usage: Playtest [--theme <text> | --adventure <library-id>] [--turns <n>] [--report <file.json>] [--no-probes]"
 
   def main(args: Array[String]): Unit = {
     val status =
@@ -308,7 +316,16 @@ object Playtest {
               println(
                 s"Playtest on $model, reasoning effort ${config.reasoning.fold("default")(_.name)}: ${config.theme} " +
                   s"(up to ${config.turns} turns)")
-              val result = run(config, llm, Player.model(llm), model, tracing, println)
+              // A library adventure is the same outline every run, so runs on different models compare like for like
+              val result = arguments.adventure match {
+                case None => run(config, llm, Player.model(llm), model, tracing, println)
+                case Some(id) =>
+                  AdventureLibrary.at(SzorkConfig.instance).load(id) match {
+                    case Some(adventure) =>
+                      play(config, adventure.outline, llm, Player.model(llm), model, tracing, println)
+                    case None => Left(NotFoundError(s"No adventure '$id' in the adventure library"))
+                  }
+              }
               tracing.foreach(_.close())
               result match {
                 case Left(error) =>

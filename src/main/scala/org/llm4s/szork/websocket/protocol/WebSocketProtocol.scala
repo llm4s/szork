@@ -50,6 +50,7 @@ case class NewGameRequest(
   theme: Option[String] = None,
   artStyle: Option[String] = None,
   adventureOutline: Option[ujson.Value] = None, // Adventure outline as JSON
+  adventureId: Option[String] = None, // A library adventure to play (its outline, theme and art style are used)
   tts: Option[Boolean] = None,
   stt: Option[Boolean] = None,
   music: Option[Boolean] = None,
@@ -243,18 +244,22 @@ object TranscriptionMessage {
   implicit val rw: ReadWriter[TranscriptionMessage] = macroRW
 }
 
+/** A message's picture: `image` (Base64 PNG, made for this game) or `url` (the adventure library's, to fetch). */
 case class ImageReadyMessage(
   messageIndex: Int,
-  image: String // Base64 encoded image
+  image: Option[String] = None,
+  url: Option[String] = None
 ) extends ServerMessage
 object ImageReadyMessage {
   implicit val rw: ReadWriter[ImageReadyMessage] = macroRW
 }
 
+/** Background music: `music` (Base64 MP3, made for this game) or `url` (the adventure library's mood track). */
 case class MusicReadyMessage(
   messageIndex: Int,
-  music: String, // Base64 encoded audio
-  mood: String
+  mood: String,
+  music: Option[String] = None,
+  url: Option[String] = None
 ) extends ServerMessage
 object MusicReadyMessage {
   implicit val rw: ReadWriter[MusicReadyMessage] = macroRW

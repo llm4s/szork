@@ -20,6 +20,19 @@ class MediaCacheSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
 
   private def b64(s: String) = Base64.getEncoder.encodeToString(s.getBytes)
 
+  test("a location's latest picture in an art style is how the place looks now") {
+    val game = IdGenerator.gameId()
+    MediaCache.latestImage(game, "hall", "pixel") shouldBe None
+    MediaCache.cacheImage(game, "hall", "a quiet hall", "pixel", b64("first"))
+    MediaCache.cacheImage(game, "hall", "a quiet hall", "painting", b64("painted"))
+    MediaCache.latestImage(game, "hall", "pixel") shouldBe Some(b64("first"))
+    Thread.sleep(5)
+    MediaCache.cacheImage(game, "hall", "the hall, its roof fallen in", "pixel", b64("ruined"))
+    MediaCache.latestImage(game, "hall", "pixel") shouldBe Some(b64("ruined"))
+    MediaCache.latestImage(game, "hall", "painting") shouldBe Some(b64("painted"))
+    MediaCache.latestImage(game, "cellar", "pixel") shouldBe None
+  }
+
   test("concurrent image and music writes for one game keep every entry") {
     val game = IdGenerator.gameId()
     val pool = Executors.newFixedThreadPool(8)

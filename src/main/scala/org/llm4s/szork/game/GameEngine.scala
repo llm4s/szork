@@ -17,7 +17,8 @@ import org.llm4s.szork.spi.{Clock, SystemClock, TTSClient, ImageClient, MusicCli
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.szork.api.{GameTheme, ArtStyle, SpeechConfig}
-import org.llm4s.szork.media.MediaPlanner
+import org.llm4s.szork.adventures.AdventureLibrary
+import org.llm4s.szork.media.MediaRef
 import org.llm4s.szork.persistence.{GameState, SceneResponse, StepData, StepMetadata, ToolCallInfo}
 import org.llm4s.szork.streaming.StreamingJsonParser
 
@@ -56,6 +57,9 @@ import org.llm4s.szork.streaming.StreamingJsonParser
   * @param reasoning
   *   How hard the Dungeon Master and its subagents reason before they answer, on models that reason (None: the model's
   *   default); see [[GameEngine.completionOptions]]
+  * @param library
+  *   The adventure library, which keeps the pictures of a library adventure's locations and one music track per mood
+  *   (None: every picture and track is made for this game alone); see [[SceneMedia]]
   * @param llmClient
   *   LLM client for AI narrative generation (implicit)
   */
@@ -73,7 +77,8 @@ class GameEngine(
   contextWindow: Option[ContextWindowConfig] = Some(GameEngine.DefaultContextWindow),
   inputGuardrails: Seq[InputGuardrail] = PlayerInputGuardrail.default,
   subagents: SubagentSettings = SubagentSettings.default,
-  reasoning: Option[ReasoningEffort] = None
+  reasoning: Option[ReasoningEffort] = None,
+  library: Option[AdventureLibrary] = None
 )(implicit llmClient: LLMClient) {
   private implicit val logger: org.slf4j.Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
@@ -84,8 +89,21 @@ class GameEngine(
   @volatile private var outline: Option[AdventureOutline] = adventureOutline
   private var systemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, outline, subagents)
 
-  private val media =
-    new SceneMedia(sessionId, artStyle, artStyleDescription, ttsClient, narrationVoice, imageClient, musicClient)
+  // The library adventure this game plays, if it plays one: its locations' pictures are the library's
+  @volatile private var adventureId: Option[String] = None
+
+  private val media = new SceneMedia(
+    sessionId,
+    artStyle,
+    artStyleDescription,
+    ttsClient,
+    narrationVoice,
+    imageClient,
+    musicClient,
+    library,
+    () => adventureId,
+    id => outline.flatMap(_.keyLocations.find(_.id == id))
+  )
 
   // This game's inventory and world state, read and changed by the agent's tools. The world state outlives the
   // context window: what happened in turns the model is no longer sent is still there.
@@ -116,6 +134,8 @@ class GameEngine(
   // Whether the last turn moved the player to a new location (or opened the first scene);
   // scene images and location music are generated only then
   @volatile private var lastTurnChangedLocation: Boolean = false
+  // How the player's location looks now, when the last turn's answer said its picture is out of date
+  @volatile private var lastTurnImageUpdate: Option[String] = None
   private val createdAt: Long = clock.now()
   private var sessionStartTime: Long = clock.now()
   private var totalPlayTime: Long = 0L // Accumulated play time from previous sessions
@@ -180,6 +200,7 @@ class GameEngine(
         // An input guardrail refused the command before the model saw it: the game is as it was, and the Dungeon
         // Master answers in character
         lastTurnChangedLocation = false
+        lastTurnImageUpdate = None
         lastValidationIssues = None
         val audio = if (generateAudio) media.narrate(PlayerInputGuardrail.Refusal) else None
         Right(GameResponse(PlayerInputGuardrail.Refusal, audio, coreState.currentScene, refused = true))
@@ -285,6 +306,7 @@ class GameEngine(
       if (lying != current.items) coreState = coreState.copy(currentScene = Some(current.copy(items = lying)))
     }
     lastTurnChangedLocation = scene.exists(s => !previousLocation.contains(s.locationId))
+    lastTurnImageUpdate = interpreted.imageUpdate.filter(_ => shut.isEmpty)
 
     TurnOutcome(shut.fold(interpreted.narration)(ExitGuard.shutNarration), scene.flatMap(_ => coreState.currentScene))
   }
@@ -292,14 +314,30 @@ class GameEngine(
   /** Narrates `text` with the configured text-to-speech client, if there is one. */
   def narrate(text: String): Option[String] = media.narrate(text)
 
-  /** The image for `scene` (generated, or from the cache), Base64-encoded; None without an image client or when
-    * generation fails. Reads no mutable engine state, so it can run while the next turn is in progress.
+  /** The picture of `scene`'s location: the one it was first shown with, or with `update` (how the place looks now,
+    * from [[imageUpdateLastTurn]]) a new one. None when there is no picture and none can be made. It can run while the
+    * next turn is in progress. See [[SceneMedia.image]].
     */
-  def generateSceneImage(scene: GameScene, gameId: Option[String]): Option[String] = media.image(scene, gameId)
+  def generateSceneImage(scene: GameScene, gameId: Option[String], update: Option[String] = None): Option[MediaRef] =
+    media.image(scene, gameId, update)
 
-  /** Background music for `scene` (generated, or from the cache) and its mood. Reads no mutable engine state. */
-  def generateBackgroundMusic(scene: GameScene, gameId: Option[String]): Option[(String, String)] =
+  /** Whether [[generateSceneImage]] can be expected to produce a picture. */
+  def canPicture(scene: GameScene, update: Option[String] = None): Boolean = media.canPicture(scene, update)
+
+  /** Background music for `scene` (the track for its mood) and its mood. It can run while the next turn is in progress.
+    */
+  def generateBackgroundMusic(scene: GameScene, gameId: Option[String]): Option[(MediaRef, String)] =
     media.music(scene, gameId)
+
+  /** Whether [[generateBackgroundMusic]] can be expected to produce a track. */
+  def canPlayMusic(scene: GameScene): Boolean = media.canPlay(scene)
+
+  /** Says this game plays the library adventure `id`: its locations' pictures are kept in, and come from, the library.
+    */
+  def playAdventure(id: String): Unit = adventureId = Some(id)
+
+  /** The library adventure this game plays, if it plays one. */
+  def adventure: Option[String] = adventureId
 
   /** Returns the current count of messages in the conversation history. */
   def getMessageCount: Int = conversation.history.length
@@ -406,6 +444,9 @@ class GameEngine(
   /** Whether the last turn moved the player to a new location (or opened the first scene). */
   def locationChangedLastTurn: Boolean = lastTurnChangedLocation
 
+  /** How the player's location looks now, when the Dungeon Master's last answer said its picture is out of date. */
+  def imageUpdateLastTurn: Option[String] = lastTurnImageUpdate
+
   def getCurrentScene: Option[GameScene] = coreState.currentScene
 
   /** Extracts complete game state for persistence.
@@ -439,6 +480,7 @@ class GameEngine(
       lastPlayed = clock.now(),
       totalPlayTime = totalPlayTime + currentSessionTime,
       adventureTitle = adventureTitle,
+      adventureId = adventureId,
       // The full thread: pruning applies only to what a model call is sent, so a restored game
       // prunes again from the whole conversation
       agentMessages = conversation.history.toList
@@ -463,6 +505,7 @@ class GameEngine(
     totalPlayTime = state.totalPlayTime
     sessionStartTime = clock.now() // Reset session timer when restoring
     adventureTitle = state.adventureTitle
+    adventureId = state.adventureId
     // Note: currentStepNumber should be restored from GameMetadata by the caller
 
     // The Dungeon Master's prompt is rebuilt from the saved outline, and the saved conversation
@@ -654,7 +697,8 @@ object GameEngine {
     contextWindow: Option[ContextWindowConfig] = Some(DefaultContextWindow),
     inputGuardrails: Seq[InputGuardrail] = PlayerInputGuardrail.default,
     subagents: SubagentSettings = SubagentSettings.default,
-    reasoning: Option[ReasoningEffort] = None
+    reasoning: Option[ReasoningEffort] = None,
+    library: Option[AdventureLibrary] = None
   ): GameEngine =
     new GameEngine(
       sessionId,
@@ -670,6 +714,7 @@ object GameEngine {
       contextWindow,
       inputGuardrails,
       subagents,
-      reasoning
+      reasoning,
+      library
     )(using llmClient)
 }

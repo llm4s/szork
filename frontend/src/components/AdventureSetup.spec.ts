@@ -74,6 +74,30 @@ describe("AdventureSetup", () => {
     expect(config.sessionFeatures).toEqual({ image: true, music: false, tts: false, stt: true });
   });
 
+  it("keeps the adventure in the library when asked, and plays it from there", async () => {
+    vi.mocked(axios.post).mockImplementation(async (url: string) =>
+      url === "/api/adventures"
+        ? { data: { status: "success", id: "the-lost-mine" } }
+        : { data: { status: "success", outline } }
+    );
+    const wrapper = await mountSetup();
+    await wrapper.findAll(".theme-card")[0].trigger("click");
+    await wrapper.find(".continue-btn").trigger("click");
+    await wrapper.findAll(".style-card")[1].trigger("click");
+    await wrapper.find(".keep-adventure input").setValue(true);
+    await wrapper.find(".begin-adventure-btn").trigger("click");
+    await flushPromises();
+    await vi.runAllTimersAsync();
+
+    expect(axios.post).toHaveBeenCalledWith("/api/adventures", {
+      outline,
+      theme: expect.objectContaining({ id: "underground" }),
+      artStyle: { id: "illustration", name: "Pencil Art" },
+    });
+    const [[config]] = wrapper.emitted("adventure-ready") as [[AdventureConfig]];
+    expect(config.adventureId).toBe("the-lost-mine");
+  });
+
   it("validates a custom theme and uses the enhanced description", async () => {
     vi.mocked(axios.post).mockImplementation(async (url: string) =>
       url === "/api/game/validate-theme"

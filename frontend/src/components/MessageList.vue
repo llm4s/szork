@@ -8,12 +8,7 @@
         :class="message.isUser ? 'user' : 'game'"
       >
         <div v-if="message.image || message.imageLoading" class="scene-image-container">
-          <img
-            v-if="message.image"
-            :src="'data:image/png;base64,' + message.image"
-            alt="Scene visualization"
-            class="scene-image"
-          />
+          <img v-if="message.image" :src="message.image" alt="Scene visualization" class="scene-image" />
           <div v-else-if="message.imageLoading" class="image-loading">
             <v-progress-circular indeterminate color="primary" size="40" width="3"></v-progress-circular>
           </div>

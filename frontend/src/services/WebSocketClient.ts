@@ -215,9 +215,12 @@ export class WebSocketClient {
     theme?: string,
     artStyle?: string,
     adventureOutline?: AdventureOutline | null,
-    features?: FeatureRequest
+    features?: FeatureRequest,
+    adventureId?: string
   ): void {
-    this.send({ type: "newGame", theme, artStyle, adventureOutline, ...features });
+    // A library adventure is played from the server's copy of its outline
+    if (adventureId) this.send({ type: "newGame", theme, artStyle, adventureId, ...features });
+    else this.send({ type: "newGame", theme, artStyle, adventureOutline, ...features });
   }
 
   loadGame(gameId: string, features?: FeatureRequest): void {

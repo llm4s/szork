@@ -18,6 +18,7 @@ case class GameState(
   lastPlayed: Long,
   totalPlayTime: Long, // Total play time in milliseconds
   adventureTitle: Option[String] = None,
+  adventureId: Option[String] = None, // The library adventure the game plays, if it plays one
   // The Dungeon Master's conversation (llm4s thread history); the player's transcript is derived from it
   agentMessages: List[Message] = Nil,
   worldState: WorldSnapshot = WorldSnapshot.empty // Exits, location facts, characters met, quest progress

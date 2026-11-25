@@ -1,0 +1,282 @@
+{
+  "theme": {
+    "id": "custom",
+    "name": "Nautical Depths",
+    "prompt": "underwater exploration in sunken cities, submarine adventures, oceanic treasures, and deep sea mysteries"
+  },
+  "artStyle": {
+    "id": "pixel",
+    "name": "Pixel"
+  },
+  "createdAt": 1795596516117,
+  "outline": {
+    "title": "The Bells of Thalassa Vey",
+    "tagline": "The city drowned forty years ago. Someone is still winding its clocks.",
+    "mainQuest": "Dive into the sunken city of Thalassa Vey and recover the Charter of the Free Tide from the Mayor's Vault before your air and your employer's patience run out. The more you learn about why the city drowned, the less the job looks like salvage.",
+    "subQuests": [
+      "Win the trust of Gideon, the hoarding octopus of the Lamplighters' Arcade, by returning something precious that he did not know he wanted.",
+      "Wind Sexton Bell, the clockwork archivist, and honor his forty-year-old overdue notice by returning the Drain Wheel to the Pumphouse.",
+      "Find the sealed Evacuation Roll in the Archive and the Dome, and learn that the city was emptied before it was flooded.",
+      "Collect the three 'Last Words' of the city: the plaza clock, the Arcade ledger, and the Dome constellation. Together they spell out the 4-1-7 secret and unlock the epilogue.",
+      "Find the old brass lantern in the Pumphouse and learn who 'GUE' was."
+    ],
+    "keyLocations": [
+      {
+        "id": "lantern_eel",
+        "name": "Cabin of the Lantern Eel",
+        "description": "The Lantern Eel's cabin is a brass-and-rivet cocoon that smells of wet wool and machine oil. A round porthole glows green with the lights of a drowned city, and a radio crackles on the bulkhead beside a damp logbook. A dive lamp sits in a bracket by the hatch, and the hatch leads out to the silt-white Plaza of Bells below.",
+        "significance": "The tutorial room. The player learns to take, examine and leave, and meets Odile Marrow by radio. Odile's slips (she knows the Archive's layout and the bells' tune) foreshadow the twist.",
+        "exits": [
+          {
+            "direction": "out",
+            "targetId": "plaza_of_bells",
+            "description": "The round hatch stands open, and the cold green water of the plaza lies beyond it.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "Radio (Odile's voice crackles from it; it gives hints if you ask about a place or object)",
+          "Porthole (shows the clock tower, stopped, and a pale shape that moves in the market)",
+          "Dive lamp bracket (scratched with tally marks, one mark for each dive Odile's father made)",
+          "Logbook (damp; the last entry reads 'Dive 41: Thalassa Vey. Do not ring the Heartbell.')"
+        ],
+        "puzzles": null,
+        "secrets": "Examining the bracket shows a tiny engraved 'A.V.' under the tally marks. The initials are Ansel Voss's, and the first clue that Odile is not a stranger to this city. The radio plays a faint tune when the lamp is removed. It is the plaza bells' melody, a hint for the Dome."
+      },
+      {
+        "id": "plaza_of_bells",
+        "name": "Plaza of Bells",
+        "description": "Silt drifts across a wide plaza ringed with bell-shaped streetlamps, and a stopped clock tower rises above a dry-boned fountain. Anemones cling to a bronze statue of a woman holding a comb. To the east, a striped awning marks the Lamplighters' Arcade. North, a grand door with a keyhole shaped like a tide-wave guards the Archive. A hatch in the paving leads down. The hatch of the Lantern Eel is behind you.",
+        "significance": "The hub. It establishes the 4:17 motif and the city's melancholy, and it offers a first lesson in the rule of three: the clock, the ledger and the Dome all repeat 4-1-7.",
+        "exits": [
+          {
+            "direction": "in",
+            "targetId": "lantern_eel",
+            "description": "The Lantern Eel's hatch glows faintly behind you.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "east",
+            "targetId": "lamplighters_arcade",
+            "description": "A striped, barnacled awning marks the Lamplighters' Arcade to the east.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "north",
+            "targetId": "drowned_archive",
+            "description": "A tall bronze door, set with a wave-shaped keyhole, leads north into the Archive.",
+            "state": "locked",
+            "obstacle": "A wave-shaped lock; the Tide-Key opens it. The key is in the Arcade, either won from Gideon or taken from the safe."
+          },
+          {
+            "direction": "down",
+            "targetId": "pumphouse",
+            "description": "A round iron hatch in the paving leads down to the Pumphouse.",
+            "state": "closed",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "Clock tower (stopped at 4:17; the hands are scoured clean of growth, as if something polishes them)",
+          "Fountain (the empty basin holds a glint of mother-of-pearl)",
+          "Bronze statue (the Lamplighter's Widow; its plaque says 'She lit the way home')",
+          "Bell lamps (each rings a different note when tapped, and the tune matches the radio)"
+        ],
+        "puzzles": "The stopped clock reads 4:17, the combination for the Arcade safe and the Vault dial (4-1-7). Examining the hands shows they were stopped on purpose: a wedge is jammed in the gears.",
+        "secrets": "Searching the fountain basin yields the Pearl Comb. The statue holds an identical comb, and the matching pair is a hint that the one in the basin belongs to someone beloved. Tapping the lamps in descending note order opens a niche in the statue's base containing a message in a bottle: 'If you read this, I got them out. - A.V.' (Easter egg and early hint at the twist.)"
+      },
+      {
+        "id": "lamplighters_arcade",
+        "name": "Lamplighters' Arcade",
+        "description": "A crooked row of shopfronts leans together under a rotting awning, their windows full of fish and drifting paper. Behind a counter stands a heavy iron safe, its dial furred with algae, and a drawer beside it stands ajar. A large, pale octopus has made a nest of spoons, buttons and bottle caps on the counter and is sorting them by color. The only way out is west, back to the plaza.",
+        "significance": "The first puzzle chain: see the clock, read the ledger, and either trade with Gideon or open the safe. It lets players feel clever for using the Pearl Comb, and it introduces Gideon, whose charm carries the lighter half of the game.",
+        "exits": [
+          {
+            "direction": "west",
+            "targetId": "plaza_of_bells",
+            "description": "The awning opens west to the Plaza of Bells.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "Iron safe (a three-digit dial)",
+          "Counter drawer (stuck but unlocked; it holds a ledger and the Winding Crank)",
+          "Ledger (closing time recorded as '4:17, shop closed early by order')",
+          "Gideon's nest (sorted by color; a conspicuous gap in the 'pearly' pile)"
+        ],
+        "puzzles": "The Tide-Key can be obtained in two ways. Offer the Pearl Comb to Gideon, who has been hoarding the key. His 'pearly' pile has an empty space the exact shape of a comb. Or open the safe with 4-1-7, which holds a spare Tide-Key. The drawer holds the Winding Crank, which fits the Archive's Sexton Bell.",
+        "secrets": "Gideon wears a tiny lamplighter's cap, a quirk revealed when you examine him closely. A page in the ledger records that 'the Mayor paid all debts in advance, every one', a clue that the city was evacuated deliberately."
+      },
+      {
+        "id": "drowned_archive",
+        "name": "The Drowned Archive",
+        "description": "Beyond the bronze door lies an air-filled hall where shelves of salt-crusted books rise to a vaulted ceiling. A bubble of dry air holds under the dome, and your helmet clicks open for the first time. A clockwork figure in a librarian's smock sits at the lending desk, rusted and silent. A card catalog stands against a wall, and a door to the plaza lies south. A ladder-shaped brass stair on the wall is out of reach without something to climb.",
+        "significance": "The emotional center. Sexton Bell has waited forty years, and the Archive's dry air lets the player rest. It holds the pumphouse hint and the hidden stair to the Dome.",
+        "exits": [
+          {
+            "direction": "south",
+            "targetId": "plaza_of_bells",
+            "description": "The bronze door leads south to the Plaza of Bells.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "up",
+            "targetId": "observatory_dome",
+            "description": "A hidden spiral stair winds up behind the shelves to the Observatory Dome.",
+            "state": "hidden",
+            "obstacle": "Revealed by pulling the book 'Tides of Thalassa' on the third shelf; its spine is worn bright by forty years of rewinding."
+          }
+        ],
+        "interactables": [
+          "Sexton Bell (clockwork archivist, wound down; he has a winding hole in his back)",
+          "Lending desk (due-date stamp and an overdue notice)",
+          "Card catalog (drawers filled with cards; one drawer is locked)",
+          "Shelf of tide tables (the third shelf's book 'Tides of Thalassa' is curiously bright)"
+        ],
+        "puzzles": "Winding Sexton Bell with the Winding Crank wakes him. He lends you the Drain Wheel, overdue to the Pumphouse by forty years, if you promise to return it. The card catalog's locked drawer holds the 'Pumphouse Maintenance Card' (the lever order: SEAL, then SIPHON, then SLUICE), opened with the Tide-Key.",
+        "secrets": "Sexton's overdue notice lists 'Borrower: A. Voss, Mayor' and says the book was returned in person with a small girl on his shoulders. The card catalog's last card is stamped '4:17' and reads 'Evacuation Roll: 3,112 names, see the Dome.'"
+      },
+      {
+        "id": "pumphouse",
+        "name": "The Pumphouse",
+        "description": "Pipes as thick as whales coil across the walls of this flooded engine room, and every surface is slick with rust-colored algae. A shaft in the floor yawns toward the Vault below. Three brass levers stand in a row beside a spindle without a handle. The hatch to the plaza lies above. A battered brass lantern has been wedged behind a pipe, the sort of thing a traveler might have left here long ago.",
+        "significance": "The mechanical puzzle room: the fetch quest pays off (Sexton's Drain Wheel finally returns home) and the lever sequence drains the shaft to the Vault.",
+        "exits": [
+          {
+            "direction": "up",
+            "targetId": "plaza_of_bells",
+            "description": "The iron hatch leads up to the plaza.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "down",
+            "targetId": "mayors_vault",
+            "description": "A drain shaft drops into the dark toward the Mayor's Vault.",
+            "state": "sealed",
+            "obstacle": "The shaft is flooded and the Vault door is under pressure. Fit the Drain Wheel to the spindle, pull the levers in order (SEAL, SIPHON, SLUICE), then turn the wheel to drain the shaft."
+          }
+        ],
+        "interactables": [
+          "Spindle (missing its Drain Wheel)",
+          "Three brass levers (labeled SEAL, SIPHON, SLUICE)",
+          "Worn plaque (stenciled: 'SEAL before SIPHON; SLUICE last', but the paint is badly worn)",
+          "Pressure gauge (needle stuck in the red)"
+        ],
+        "puzzles": "Fetch quest: return the Drain Wheel to the spindle (due forty years ago). The levers must be pulled in order SEAL, SIPHON, SLUICE. The plaque and the Archive's maintenance card agree, and Odile can read the order off the plaque if you describe it. A wrong order just gurgles and resets, so it is safe to try.",
+        "secrets": "Behind the pipe sits a battered brass lantern engraved 'GUE: Great Underground Explorers, Est. 1977'. It is an Easter egg: when lit, it gives off a faint grue-hating glow. Examining the gauge shows it has been stuck at 4:17 PM pressure."
+      },
+      {
+        "id": "mayors_vault",
+        "name": "The Mayor's Vault",
+        "description": "The drained shaft opens into a round vault whose walls are lined with copper and old maps of the seabed. A broad desk stands at its center with a locked strongbox on top, a three-digit dial set into its lid. A portrait of a stern man, hand on a small girl's shoulder, hangs on the far wall. The shaft you came down leads back up to the Pumphouse.",
+        "significance": "The goal room and the revelation. The Charter of the Free Tide lies here with Voss's letter, and the room turns the quest from salvage into inheritance.",
+        "exits": [
+          {
+            "direction": "up",
+            "targetId": "pumphouse",
+            "description": "The drain shaft climbs back up to the Pumphouse.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "Strongbox (dial lock)",
+          "Mayor's desk (a drawer holds Voss's pen and a half-finished letter)",
+          "Portrait of Ansel Voss and a child (the girl wears a mother-of-pearl comb)",
+          "Seabed maps (marked with a dotted line labeled 'Admiralty Bore: do not let them reach the gold-coral')"
+        ],
+        "puzzles": "The strongbox's dial opens with 4-1-7 (the clock, the ledger and the Arcade safe all agree). Sexton Bell also knows the code if asked after being wound, and the letter on the desk contains the phrase 'the hour I did it'.",
+        "secrets": "The comb the girl wears in the portrait matches the Pearl Comb. If you have it, examining the portrait causes a pearl-inlaid panel to click; behind it is Voss's last letter to his daughter. The letter reveals the twist."
+      },
+      {
+        "id": "observatory_dome",
+        "name": "Observatory Dome",
+        "description": "A great glass dome opens above you, and the sea beyond it is black and star-flecked with drifting light. A brass orrery of the city's tides stands at the center, a bell-shaped control lever beside it. A narrow stair leads down to the Archive. On the wall hangs a plaque listing 3,112 names, and the final line is blank.",
+        "significance": "The wow moment. When the Heartbell rings, a pod of whales glides over the glass and the whole city lights up with bioluminescence as if it were breathing. It rewards players who explored thoroughly and delivers the emotional catharsis.",
+        "exits": [
+          {
+            "direction": "down",
+            "targetId": "drowned_archive",
+            "description": "The spiral stair winds back down to the Archive.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "Orrery (turns when the bell lever is pulled)",
+          "Plaque of 3,112 names (the Evacuation Roll)",
+          "Bell lever (the city's Heartbell control; the logbook warned against it)",
+          "Glass dome (look up with your lamp off)"
+        ],
+        "puzzles": "Optional: turning off the dive lamp and pulling the bell lever makes the dome's bioluminescence answer. Tapping the bell notes from the plaza lamps in the right order (the tune from the radio) triggers the wow moment.",
+        "secrets": "The plaque's blank last line is the name of the final evacuee, Ansel Voss, who stayed behind and is not on the roll. The orrery's innermost ring is stamped '4:17'. This is the third repetition of the clock code."
+      }
+    ],
+    "importantItems": [
+      {
+        "name": "Dive Lamp",
+        "description": "A dive lamp sits in a bracket by the hatch, its brass casing dented and scratched with tally marks.",
+        "purpose": "Lights dark areas of the sunken city and shows hidden details (the stair marks in the Archive, the carvings in the vault). It is turned off to trigger the Dome's wow moment."
+      },
+      {
+        "name": "Pearl Comb",
+        "description": "A mother-of-pearl comb glints in the dry bones of the fountain basin.",
+        "purpose": "Trades with Gideon for the Tide-Key, and unlocks the hidden panel behind the Vault portrait with Voss's letter."
+      },
+      {
+        "name": "Tide-Key",
+        "description": "A heavy brass key shaped like a breaking wave, either in Gideon's nest or in the Arcade safe.",
+        "purpose": "Opens the Archive door and the locked card-catalog drawer."
+      },
+      {
+        "name": "Winding Crank",
+        "description": "A small steel crank lies in the stuck drawer of the Arcade counter, wrapped in oilcloth.",
+        "purpose": "Winds Sexton Bell so he can speak, lend the Drain Wheel and give hints."
+      },
+      {
+        "name": "Drain Wheel",
+        "description": "A cast-iron wheel with a stamped library label hangs from Sexton Bell's desk hook.",
+        "purpose": "Fits the Pumphouse spindle and drains the shaft to the Vault. It must be returned there, completing the fetch quest."
+      },
+      {
+        "name": "Charter of the Free Tide",
+        "description": "A sealed scroll in a brass tube lies in the strongbox beside Voss's letter.",
+        "purpose": "The main objective. It proves the city's legal claim to the seabed, and it can be handed to Odile at the ending."
+      }
+    ],
+    "keyCharacters": [
+      {
+        "name": "Odile Marrow",
+        "role": "Employer and mentor (radio voice); also the twist",
+        "description": "A gruff, dry-witted salvage captain aboard the tender Gannet, who talks to you through the radio. She is 49 and was 9 when the city fell. She slips by knowing too much and hides her real name. She is Voss's daughter, though she introduces herself as an ordinary salvager.",
+        "location": "lantern_eel"
+      },
+      {
+        "name": "Gideon",
+        "role": "Trickster and comic relief",
+        "description": "A large, pale octopus who collects shiny things and sorts them by color. He wears a tiny lamplighter's cap and lunges at anything he wants. He hides the Tide-Key out of habit, not malice, and trades gladly for the comb.",
+        "location": "lamplighters_arcade"
+      },
+      {
+        "name": "Sexton Bell",
+        "role": "Guardian and keeper of memory",
+        "description": "A rusted clockwork librarian, formal and courtly, who has run down after forty years of waiting. Once wound, he speaks in the stiff cadence of old library rules and quietly cries oil when he talks about the evacuation.",
+        "location": "drowned_archive"
+      },
+      {
+        "name": "Ansel Voss",
+        "role": "Absent mayor, author of the hidden truth",
+        "description": "A stern but loving man who flooded his own city to save its people. He is known only through his letters, bottle message, desk and portrait. He stayed behind forty years ago, on the day of the flood.",
+        "location": null
+      }
+    ],
+    "adventureArc": "Act 1: Odile hires you by radio to retrieve the Charter from the drowned city of Thalassa Vey, which sank forty years ago at 4:17 one afternoon. You explore the Plaza of Bells, find the stopped clock, the pearl comb and Gideon's nest, and learn the first hint of the code. Act 2: The Archive opens and Sexton Bell awakens, revealing that the city was evacuated before it flooded: 3,112 people were lifted out over six hours, and the flood was a decoy to keep the Admiralty from drilling the gold-coral. The overdue Drain Wheel sends you to the Pumphouse, where you solve the lever order and drain the shaft. The hidden stair leads to the Dome with its blank name. Act 3: In the Vault you open the strongbox with 4-1-7 and find the Charter and Voss's letter to his daughter. The twist is that Odile is that daughter, the girl in the portrait, and the Charter is her inheritance. Back on the radio, she admits it. You choose whether to give her the Charter (the city is reclaimed and its bells ring again) or to leave it, and in either case the Heartbell is rung and the whales come. The emotional journey runs from salvage cynicism to wonder, grief and homecoming.",
+    "specialMechanics": "Air supply: the dive suit has a limited air reserve (about 40 turns outside dry rooms), with warnings at half and quarter. The cabin and the Archive and Dome air pockets refill it, so it creates mild tension without punishing exploration. Rule of three: the code 4-1-7 appears three times (the clock, the ledger, the Dome's orrery) before it is needed. Radio hints: Odile gives contextual hints in character when asked, and the quality of her hints reveals her secret. Easter eggs: the GUE brass lantern in the Pumphouse, the bottle message in the plaza statue, and Gideon's lamplighter cap. State-aware elements: the Archive's lights come on after Sexton is wound, Gideon's nest rearranges once you trade, and the Dome's glass fills with whales when the Heartbell is rung. Multiple solutions: Tide-Key by trade or safe, vault code by clock or by Sexton, lever order by plaque, maintenance card or Odile."
+  }
+}

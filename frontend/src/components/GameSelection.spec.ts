@@ -4,7 +4,7 @@ import { flushPromises } from "@vue/test-utils";
 import axios from "axios";
 import GameSelection from "./GameSelection.vue";
 import { mountWithVuetify } from "@/test/mountWithVuetify";
-import type { FeatureFlags, SavedGameSummary } from "@/types/api";
+import type { AdventureSummary, FeatureFlags, SavedGameSummary } from "@/types/api";
 
 vi.mock("axios");
 
@@ -26,9 +26,24 @@ const game = (gameId: string, title: string): SavedGameSummary => ({
   totalPlayTime: 0,
 });
 
-async function mountSelection(games: SavedGameSummary[]) {
+const lostMine: AdventureSummary = {
+  id: "the-lost-mine",
+  title: "The Lost Mine",
+  tagline: "Something stirs below",
+  mainQuest: "Find the mine",
+  theme: "Underground Realm",
+  artStyle: "pixel",
+  locations: 8,
+  images: 3,
+};
+
+async function mountSelection(games: SavedGameSummary[], adventures: AdventureSummary[] = []) {
   vi.mocked(axios.get).mockImplementation(async (url: string) =>
-    url === "/api/games" ? { data: { status: "success", games } } : { data: flags }
+    url === "/api/games"
+      ? { data: { status: "success", games } }
+      : url === "/api/adventures"
+        ? { data: { status: "success", adventures } }
+        : { data: flags }
   );
   const wrapper = mountWithVuetify(GameSelection);
   await flushPromises();
@@ -51,6 +66,22 @@ describe("GameSelection", () => {
       "The Lost Mine",
       "Untitled Adventure",
     ]);
+  });
+
+  it("offers the library's ready-made adventures, and plays the one chosen", async () => {
+    const wrapper = await mountSelection([], [lostMine]);
+    const card = wrapper.find(".adventure-card");
+    expect(card.find(".game-title").text()).toBe("The Lost Mine");
+    expect(card.text()).toContain("8 locations");
+    expect(card.text()).toContain("3/8 pictured");
+
+    await card.trigger("click");
+    expect(wrapper.emitted("play-adventure")).toEqual([[lostMine]]);
+  });
+
+  it("shows no ready-made section when the library is empty", async () => {
+    const wrapper = await mountSelection([]);
+    expect(wrapper.find(".ready-made-section").exists()).toBe(false);
   });
 
   it("shows the server's capabilities", async () => {

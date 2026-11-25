@@ -2,6 +2,7 @@ package org.llm4s.szork.api
 
 import org.llm4s.agent.guardrails.InputGuardrail
 import org.llm4s.llmconnect.LLMClient
+import org.llm4s.szork.adventures.AdventureLibrary
 import org.llm4s.szork.adapters.{DefaultMusicClient, DefaultTTSClient}
 import org.llm4s.szork.game.{AdventureOutline, GameEngine, PlayerInputGuardrail, SubagentSettings}
 import org.llm4s.szork.spi.{ImageClient, SystemClock}
@@ -25,17 +26,18 @@ trait EngineFactory {
 
 object EngineFactory {
 
-  /** Engines sharing the server's `llmClient`, `tracing` and scene `imageClient` (None: no images), with the default
-    * speech and music clients set up by `config`, and its Dungeon Master context window. With
-    * `config.inputGuardrailEnabled`, engines check player commands with the [[PlayerInputGuardrail]] (it is stateless,
-    * so they share it). Engines offer the Dungeon Master the subagents `config.subagents` turns on (see
-    * [[subagentSettings]]).
+  /** Engines sharing the server's `llmClient`, `tracing`, scene `imageClient` (None: no images made) and adventure
+    * `library` (which keeps pictures and mood tracks once made), with the default speech and music clients set up by
+    * `config`, and its Dungeon Master context window. With `config.inputGuardrailEnabled`, engines check player
+    * commands with the [[PlayerInputGuardrail]] (it is stateless, so they share it). Engines offer the Dungeon Master
+    * the subagents `config.subagents` turns on (see [[subagentSettings]]).
     */
   def default(
     llmClient: LLMClient,
     tracing: Option[Tracing],
     config: SzorkConfig,
-    imageClient: Option[ImageClient]
+    imageClient: Option[ImageClient],
+    library: Option[AdventureLibrary] = None
   ): EngineFactory = {
     val guardrails: Seq[InputGuardrail] = if (config.inputGuardrailEnabled) PlayerInputGuardrail.default else Nil
     val subagents = subagentSettings(config, llmClientFor = SzorkConfig.getLLMClient(_))
@@ -55,7 +57,8 @@ object EngineFactory {
           contextWindow = config.dmContextWindow,
           inputGuardrails = guardrails,
           subagents = subagents,
-          reasoning = config.reasoningEffort
+          reasoning = config.reasoningEffort,
+          library = library
         )(using llmClient))
   }
 

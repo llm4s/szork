@@ -74,13 +74,15 @@ keep `frontend/src/types/WebSocketProtocol.ts` in sync.
 one agent thread; streaming and blocking agents share one `GraphRuntime`. The middleware trims only what each model call
 is sent (`SZORK_DM_CONTEXT_MAX_TOKENS`/`_MESSAGES`); the thread, and so `GameState.agentMessages`, keeps the whole
 conversation. Restoring a save seeds a new thread with the saved conversation. **game/DmConversation.scala** owns the
-thread, its history and per-turn usage (`runTurn`); **game/SceneMedia.scala** the narration, image and music calls. A `GuardrailMiddleware` runs
+thread, its history and per-turn usage (`runTurn`); **game/SceneMedia.scala** the narration, image and music calls
+(see **adventures/** below). A `GuardrailMiddleware` runs
 **game/PlayerInputGuardrail.scala** (llm4s's `PromptInjectionDetector` with adventure-safe patterns,
 `SZORK_INPUT_GUARDRAIL`) on each command: a blocked turn (`AgentStatus.Blocked`) never reaches the model and is answered
 in character with a `refused` `GameResponse` that changes nothing and is not saved.
 
 **game/DungeonMasterOutput.scala** - The structured output schema every turn answers with (narration first, then the
-scene or simple response). A simple response may give `items`/`npcs` when the action changed what is here; the engine
+scene or simple response); `imageUpdate` is how the Dungeon Master asks for a new picture of a place that now looks
+different. A simple response may give `items`/`npcs` when the action changed what is here; the engine
 keeps the current scene (sent with every response) up to date with them. **game/PromptBuilder.scala** builds the system prompt; **game/WorldStateMiddleware.scala**
 adds the current game state (location, exits, inventory, active quests) to every model call as an llm4s prompt section,
 never stored in the thread; **game/GameTools.scala** builds the
@@ -120,6 +122,15 @@ interactables, puzzles and secrets; items; characters, each with the location wh
 llm4s agent, built with
 `withOutput(AdventureOutlineSchema.schema)` and no tools; the outline goes into the Dungeon Master's system prompt.
 
+**adventures/** - `AdventureLibrary`: adventures kept on disk (`adventures/<id>/adventure.json`, SZORK_ADVENTURES_DIR)
+to be played again, each location's picture per art style, and one music track per mood (`_music/`). Nothing in it
+expires; its media goes to the browser as a URL (`MediaRef.Stored`, served by `/api/library/...`). `BakeAdventure` is
+the command that makes an adventure's media ahead of play. A game of a library adventure (`newGame` with
+`adventureId`; `GameEngine.playAdventure`, saved as `GameState.adventureId`) skips the designer. **game/SceneMedia.scala**
+holds the media rules: a place is drawn once (a library adventure's location from its outline, into the library; any
+other from the scene's `imageDescription`, into the per-game `MediaCache`) and drawn again only when the Dungeon
+Master's answer gives `imageUpdate`; music is the mood's one track. `docs/ADVENTURES.md` describes it all.
+
 **persistence/** - Step-based saves under `szork-saves/<game-id>/step-NNNN/`; `GameDirs` validates game ids before they
 reach the filesystem. **media/** - image, music, speech and the media cache; `SceneImages` builds the server's one
 llm4s image client (traced with the Dungeon Master) and the cached `ImageClient` over it.
@@ -156,6 +167,7 @@ sbt test                                  # All backend tests (fake LLM, no netw
 sbt "testOnly *GameEngineAgentSpec"       # One suite
 sbt "testOnly * -- -z inventory"          # Tests whose name matches
 sbt "runMain org.llm4s.szork.playtest.Playtest"   # Design and play a whole adventure on the configured model
+sbt "runMain org.llm4s.szork.adventures.BakeAdventure --list"   # The adventure library; see docs/ADVENTURES.md
 RUN_INTEGRATION=true sbt "testOnly *AdventureIntegrationSpec"  # The same playtest as a test
 cd frontend && npm test                   # Frontend tests
 ```

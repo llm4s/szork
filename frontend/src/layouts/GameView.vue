@@ -16,6 +16,7 @@
       v-else-if="selectionStarted && !setupStarted && !gameStarted"
       @start-new-game="startNewGame"
       @load-game="loadSelectedGame"
+      @play-adventure="playAdventure"
     />
 
     <!-- Adventure Setup Screen -->
@@ -144,7 +145,7 @@ import MessageList from "@/components/MessageList.vue";
 import { useWebSocketGame } from "@/composables/useWebSocketGame";
 import { useAudioPlayback } from "@/composables/useAudioPlayback";
 import { blobToBase64, useVoiceRecorder } from "@/composables/useVoiceRecorder";
-import type { AdventureConfig, AdventureOutline, StyleChoice, ThemeChoice } from "@/types/api";
+import type { AdventureConfig, AdventureOutline, AdventureSummary, StyleChoice, ThemeChoice } from "@/types/api";
 
 export default defineComponent({
   name: "GameView",
@@ -213,6 +214,8 @@ export default defineComponent({
     const adventureTheme = ref<ThemeChoice | null>(null);
     const artStyle = ref<StyleChoice | null>(null);
     const adventureOutline = ref<AdventureOutline | null>(null);
+    // The library adventure being started, if the game is of one
+    const adventureId = ref<string | undefined>(undefined);
     const adventureTitle = ref<string>("Generative Adventuring");
     const imageGenerationEnabled = ref(true);
     const speechInputRequested = ref(true);
@@ -273,6 +276,7 @@ export default defineComponent({
       adventureTheme.value = config.theme;
       artStyle.value = config.style;
       adventureOutline.value = config.outline;
+      adventureId.value = config.adventureId;
       imageGenerationEnabled.value = config.sessionFeatures.image;
       backgroundMusicEnabled.value = config.sessionFeatures.music;
       narrationEnabled.value = config.sessionFeatures.tts;
@@ -283,6 +287,21 @@ export default defineComponent({
       }
       gameStarted.value = true;
       setupStarted.value = false;
+      nextTick(() => {
+        startGame();
+      });
+    };
+
+    /** Start a game of a ready-made adventure: the server has its outline, theme and art style. */
+    const playAdventure = (adventure: AdventureSummary) => {
+      adventureTheme.value = null;
+      artStyle.value = null;
+      adventureOutline.value = null;
+      adventureId.value = adventure.id;
+      adventureTitle.value = adventure.title;
+      gameStarted.value = true;
+      setupStarted.value = false;
+      selectionStarted.value = false;
       nextTick(() => {
         startGame();
       });
@@ -353,7 +372,8 @@ export default defineComponent({
             tts: narrationEnabled.value,
             music: backgroundMusicEnabled.value,
             stt: speechInputRequested.value,
-          }
+          },
+          adventureId.value
         );
 
         // Set the adventure title from the outline if available
@@ -468,6 +488,7 @@ export default defineComponent({
       beginSelection,
       startNewGame,
       loadSelectedGame,
+      playAdventure,
       backToSelection,
       goBackToSelection,
       onAdventureReady,

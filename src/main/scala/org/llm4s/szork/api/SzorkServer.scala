@@ -18,6 +18,7 @@ import org.llm4s.szork.persistence.GamePersistence
 import org.llm4s.szork.error.PersistenceError
 import org.llm4s.szork.media.{MediaCache, SceneImages}
 import org.llm4s.szork.spi.STTClient
+import org.llm4s.szork.adventures.AdventureLibrary
 
 /** Game theme configuration with prompt text.
   *
@@ -57,13 +58,17 @@ final class SzorkApp(
   val capabilities: Capabilities,
   engineFactory: EngineFactory,
   sttClient: Option[STTClient],
-  tracing: Option[Tracing]
+  tracing: Option[Tracing],
+  adventures: Option[AdventureLibrary] = None
 ) {
   import SzorkConfig.ConfigOps
 
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   config.useStorage()
+
+  /** The adventure library: the one the engines were given, or the one at `config.adventuresDirectory`. */
+  val library: AdventureLibrary = adventures.getOrElse(AdventureLibrary.at(config))
 
   private def daemonPool(name: String, threads: Int): ExecutorService = Executors.newFixedThreadPool(
     threads,
@@ -90,10 +95,11 @@ final class SzorkApp(
     musicEC = ExecutionContext.fromExecutor(musicPool),
     autoSave = config.autoSaveEnabled,
     sessionTtlMillis = config.sessionTtlMillis,
-    allowedOrigins = Some(config.allowedOrigins)
+    allowedOrigins = Some(config.allowedOrigins),
+    library = Some(library)
   )
 
-  val routes: SzorkRoutes = new SzorkRoutes(config, capabilities, llmClient, tracing, wsServer)
+  val routes: SzorkRoutes = new SzorkRoutes(config, capabilities, llmClient, tracing, wsServer, library)
 
   private val caskMain = new cask.Main {
     override def allRoutes: Seq[cask.Routes] = Seq(routes)
@@ -108,6 +114,7 @@ final class SzorkApp(
     wsServer.start()
     http.start()
     SzorkApp.logFeatures(logger, config, capabilities)
+    logger.info(s"Adventure Library: ${library.list.size} adventures in ${config.adventuresDirectory}")
     logger.info("=== Network Endpoints ===")
     logger.info(s"HTTP        : http://${config.host}:${config.port}")
     logger.info(s"WebSocket   : ws://${config.host}:${config.wsPort}")
@@ -140,12 +147,18 @@ object SzorkApp {
       val tracing = AgentTracing.fromEnvironment
       // One llm4s image client for every game's scene images, traced with the Dungeon Master (None: no scene images)
       val sceneImages = SceneImages.fromConfig(config, tracing)
-      val capabilities = Capabilities.from(config).copy(image = sceneImages.isDefined)
+      // The library's pictures and mood tracks play with no provider at all
+      val library = AdventureLibrary.at(config)
+      val provided = Capabilities.from(config)
+      val capabilities = provided.copy(
+        image = sceneImages.isDefined || (config.imageGenerationEnabled && library.hasImages),
+        music = provided.music || (config.musicEnabled && library.hasMusic)
+      )
       new SzorkApp(
         config,
         llmClient,
         capabilities,
-        EngineFactory.default(llmClient, tracing, config, sceneImages),
+        EngineFactory.default(llmClient, tracing, config, sceneImages, Some(library)),
         Option.when(capabilities.stt)(new DefaultSTTClient(config.speech)),
         tracing
       )
@@ -176,7 +189,8 @@ final class SzorkRoutes(
   capabilities: Capabilities,
   llmClient: LLMClient,
   tracing: Option[Tracing],
-  wsServer: TypedWebSocketServer
+  wsServer: TypedWebSocketServer,
+  library: AdventureLibrary
 ) extends cask.Routes {
 
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
@@ -330,6 +344,50 @@ final class SzorkRoutes(
         )
     }
   }
+
+  // ============= The adventure library =============
+
+  @get("/api/adventures")
+  def adventures(): ujson.Value =
+    ujson.Obj("status" -> "success", "adventures" -> library.list.map(AdventureLibrary.summaryJson))
+
+  /** Keeps a designed adventure in the library, to be played again: `{outline, theme?, artStyle?}`. */
+  @post("/api/adventures")
+  def keepAdventure(request: Request): ujson.Value = {
+    if (!isJson(request)) return notJson
+    val kept = for {
+      choice <- AdventureRequest.parse(request.text())
+      outline <- Try(
+        AdventureGenerator.withSoundMap(
+          AdventureGenerator.outlineFromJson(ujson.read(request.text())("outline")))).toEither.left
+        .map(_ => "Request must have an \"outline\" that is an adventure outline")
+      adventure <- library.keep(outline, choice._1, choice._2).left.map(_.message)
+    } yield adventure
+    kept match {
+      case Right(adventure) => ujson.Obj("status" -> "success", "id" -> adventure.id)
+      case Left(message) =>
+        logger.warn(s"Could not keep an adventure: $message")
+        ujson.Obj("status" -> "error", "message" -> message)
+    }
+  }
+
+  @delete("/api/adventures/:adventureId")
+  def deleteAdventure(adventureId: String): ujson.Value =
+    if (library.delete(adventureId)) ujson.Obj("status" -> "success")
+    else ujson.Obj("status" -> "error", "message" -> s"No adventure '${adventureId.take(60)}'")
+
+  /** The library's pictures and mood tracks, by the URLs it gives out ([[org.llm4s.szork.media.MediaRef.Stored]]). Each
+    * URL carries its file's version (`v`, which only makes the URL new), so browsers may keep what they fetch.
+    */
+  @get(AdventureLibrary.UrlPrefix, subpath = true)
+  def libraryMedia(request: Request, v: String = ""): Response[Array[Byte]] =
+    library.resolve(request.remainingPathSegments) match {
+      case Some((file, contentType)) =>
+        Response(
+          java.nio.file.Files.readAllBytes(file),
+          headers = Seq("Content-Type" -> contentType, "Cache-Control" -> "public, max-age=31536000, immutable"))
+      case None => Response(Array.emptyByteArray, statusCode = 404)
+    }
 
   @get("/")
   def serveApp(): String =

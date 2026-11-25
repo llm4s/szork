@@ -1,27 +1,29 @@
 <template>
   <div class="game-output-wrapper">
-    <div class="game-output" ref="output">
+    <div class="game-output" ref="output" role="log" aria-live="polite" aria-label="Story" @scroll="onScroll">
       <div
-        v-for="(message, index) in messages"
+        v-for="(message, index) in shown"
         :key="index"
         class="game-message"
         :class="message.isUser ? 'user' : 'game'"
       >
         <div v-if="message.image || message.imageLoading" class="scene-image-container">
-          <img
+          <button
             v-if="message.image"
-            :src="message.image"
-            alt="Scene visualization"
-            class="scene-image"
+            type="button"
+            class="scene-image-button"
             title="Click to enlarge"
-            @click="enlarged = message.image"
-          />
+            aria-label="Enlarge the picture"
+            @click="enlarged = message"
+          >
+            <img :src="message.image" :alt="pictureAlt(message)" class="scene-image" />
+          </button>
           <div v-else-if="message.imageLoading" class="image-loading">
             <v-progress-circular indeterminate color="primary" size="40" width="3"></v-progress-circular>
           </div>
         </div>
         <div class="message-text">
-          {{ message.isUser ? `> ${message.text}` : message.text }}
+          <span class="narration">{{ message.isUser ? `> ${message.text}` : message.text }}</span>
           <span v-if="message.isStreaming" class="streaming-cursor">▊</span>
           <div v-if="message.scene?.exits?.length" class="exits-info">
             <strong>Exits:</strong>
@@ -37,7 +39,7 @@
         <v-progress-circular indeterminate color="primary" size="20" width="2" class="mr-2"></v-progress-circular>
         <span>{{ opening }}</span>
       </div>
-      <div v-if="loading" class="loading-indicator">
+      <div v-if="thinking" class="loading-indicator">
         <v-progress-circular indeterminate color="primary" size="20" width="2" class="mr-2"></v-progress-circular>
         <span>Thinking...</span>
       </div>
@@ -46,8 +48,9 @@
     <!-- A scene picture at full size; a click anywhere closes it -->
     <v-dialog :model-value="!!enlarged" @update:model-value="enlarged = undefined" max-width="1024">
       <img
-        :src="enlarged"
-        alt="Scene visualization, enlarged"
+        v-if="enlarged"
+        :src="enlarged.image"
+        :alt="pictureAlt(enlarged)"
         class="scene-image-enlarged"
         @click="enlarged = undefined"
       />
@@ -57,10 +60,13 @@
 
 <script setup lang="ts">
 /** The game's transcript: commands, responses with their scene images and exits, and a "Thinking..." line. */
-import { nextTick, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import type { GameMessage } from "@/composables/useWebSocketGame";
 
-defineProps<{
+// How close to the bottom (in pixels) still counts as reading the latest message
+const AT_BOTTOM_SLACK = 48;
+
+const props = defineProps<{
   messages: GameMessage[];
   /** Waiting for a response. */
   loading: boolean;
@@ -69,13 +75,32 @@ defineProps<{
 }>();
 
 const output = ref<HTMLElement>();
-// The picture the player clicked on, shown at full size
-const enlarged = ref<string>();
+// The message whose picture the player clicked on, shown at full size
+const enlarged = ref<GameMessage>();
+// Whether the player is at the latest message (rather than scrolled up to read an earlier one)
+let atBottom = true;
 
-/** Scroll to the latest message once the DOM has updated. */
-const scrollToBottom = async () => {
+// A streamed response is shown once its first words arrive; until then the "Thinking..." line stands for it
+const shown = computed(() => props.messages.filter((m) => !(m.isStreaming && !m.text)));
+const thinking = computed(() => props.loading && !props.messages.some((m) => m.isStreaming && m.text));
+
+const pictureAlt = (message: GameMessage) =>
+  message.scene?.locationName ? `Picture of ${message.scene.locationName}` : "Picture of the scene";
+
+const onScroll = () => {
+  const el = output.value;
+  if (el) atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_SLACK;
+};
+
+/**
+ * Scroll to the latest message once the DOM has updated. Unless `force`d (the player just sent a
+ * command), a player who has scrolled up to read is left where they are.
+ */
+const scrollToBottom = async (force = false) => {
   await nextTick();
-  if (output.value) output.value.scrollTop = output.value.scrollHeight;
+  if (!output.value || (!force && !atBottom)) return;
+  output.value.scrollTop = output.value.scrollHeight;
+  atBottom = true;
 };
 
 defineExpose({ scrollToBottom });
@@ -189,13 +214,27 @@ defineExpose({ scrollToBottom });
   order: -1; /* Places image on the left */
 }
 
+.scene-image-button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+
+.scene-image-button:focus-visible {
+  outline: 2px solid #90caf9;
+  outline-offset: -2px;
+}
+
 .scene-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
   border-radius: 8px;
-  cursor: zoom-in;
 }
 
 .scene-image-enlarged {
@@ -209,6 +248,24 @@ defineExpose({ scrollToBottom });
 
 .message-text {
   flex: 1;
+}
+
+/* Keeps the narration's paragraphs and line breaks */
+.narration {
+  white-space: pre-wrap;
+}
+
+/* On a narrow screen the picture goes above its text, as wide as the transcript */
+@media (max-width: 600px) {
+  .game-message {
+    flex-direction: column;
+  }
+
+  .scene-image-container {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+  }
 }
 
 .image-loading {

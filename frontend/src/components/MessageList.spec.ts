@@ -91,6 +91,48 @@ describe("MessageList", () => {
     expect(wrapper.find(".loading-indicator").exists()).toBe(false);
   });
 
+  it("says Thinking... until a streamed response's first words arrive, then shows the response instead", async () => {
+    const streaming: GameMessage = { text: "", isUser: false, timestamp: at, isStreaming: true };
+    const wrapper = mountList([streaming], true);
+    expect(wrapper.find(".loading-indicator").exists()).toBe(true);
+    expect(wrapper.findAll(".game-message")).toHaveLength(0);
+
+    await wrapper.setProps({ messages: [{ ...streaming, text: "You go" }] });
+    expect(wrapper.find(".loading-indicator").exists()).toBe(false);
+    expect(wrapper.find(".game-message").text()).toContain("You go");
+  });
+
+  it("is a live log, and names each picture by its place", () => {
+    const wrapper = mountList([
+      {
+        text: "A hall",
+        isUser: false,
+        timestamp: at,
+        image: "/pictures/hall.jpg",
+        scene: { locationName: "Great Hall", exits: [], items: [], npcs: [] },
+      },
+    ]);
+    const output = wrapper.find(".game-output");
+    expect(output.attributes("role")).toBe("log");
+    expect(output.attributes("aria-live")).toBe("polite");
+    expect(wrapper.find("button.scene-image-button img").attributes("alt")).toBe("Picture of Great Hall");
+  });
+
+  it("leaves a player who has scrolled up where they are, unless told to follow", async () => {
+    const wrapper = mountList([{ text: "One", isUser: false, timestamp: at }]);
+    const output = wrapper.find(".game-output").element as HTMLElement;
+    Object.defineProperty(output, "scrollHeight", { value: 1000 });
+    Object.defineProperty(output, "clientHeight", { value: 200 });
+    output.scrollTop = 100;
+    await wrapper.find(".game-output").trigger("scroll");
+
+    const list = wrapper.vm as unknown as { scrollToBottom: (force?: boolean) => Promise<void> };
+    await list.scrollToBottom();
+    expect(output.scrollTop).toBe(100);
+    await list.scrollToBottom(true);
+    expect(output.scrollTop).toBe(1000);
+  });
+
   it("scrolls to the latest message", async () => {
     const wrapper = mountList([{ text: "One", isUser: false, timestamp: at }]);
     const output = wrapper.find(".game-output").element as HTMLElement;

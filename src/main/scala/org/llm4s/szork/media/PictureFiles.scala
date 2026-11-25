@@ -6,7 +6,7 @@ import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.util.Base64
 import javax.imageio.{IIOImage, ImageIO, ImageWriteParam}
 import javax.imageio.stream.MemoryCacheImageOutputStream
-import scala.util.Try
+import scala.util.{Try, Using}
 
 /** Scene pictures as they are kept and sent: small JPEGs.
   *
@@ -31,23 +31,32 @@ object PictureFiles {
       // JPEG has no transparency: the picture is drawn onto an opaque canvas
       val target = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
       val graphics = target.createGraphics()
-      graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
-      graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
-      graphics.drawImage(source.getScaledInstance(width, height, java.awt.Image.SCALE_SMOOTH), 0, 0, null)
-      graphics.dispose()
+      try {
+        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+        graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+        // Scaled by drawing it: the hints above apply to this, not to Image.getScaledInstance
+        graphics.drawImage(source, 0, 0, width, height, null)
+      } finally graphics.dispose()
+      Base64.getEncoder.encodeToString(jpeg(target))
+    }.getOrElse(base64)
 
-      val writer = ImageIO.getImageWritersByFormatName("jpeg").next()
+  private def jpeg(image: BufferedImage): Array[Byte] = {
+    val writer = ImageIO.getImageWritersByFormatName("jpeg").next()
+    try {
       val settings = writer.getDefaultWriteParam
       settings.setCompressionMode(ImageWriteParam.MODE_EXPLICIT)
       settings.setCompressionQuality(JpegQuality)
       val bytes = new ByteArrayOutputStream()
-      val out = new MemoryCacheImageOutputStream(bytes)
-      writer.setOutput(out)
-      writer.write(null, new IIOImage(target, null, null), settings)
-      out.close()
-      writer.dispose()
-      Base64.getEncoder.encodeToString(bytes.toByteArray)
-    }.getOrElse(base64)
+      Using.resource(new MemoryCacheImageOutputStream(bytes)) { out =>
+        writer.setOutput(out)
+        writer.write(null, new IIOImage(image, null, null), settings)
+      }
+      bytes.toByteArray
+    } finally writer.dispose()
+  }
+
+  /** The file extension for an image file's `bytes`: `jpg` or `png` (the default). */
+  def extension(bytes: Array[Byte]): String = if (mediaType(bytes) == "image/jpeg") "jpg" else "png"
 
   /** The media type of an image file from its first bytes: JPEG or PNG (the default). */
   def mediaType(bytes: Array[Byte]): String =

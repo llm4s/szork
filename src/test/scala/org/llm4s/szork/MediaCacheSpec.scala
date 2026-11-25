@@ -33,15 +33,14 @@ class MediaCacheSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     MediaCache.latestImage(game, "cellar", "pixel") shouldBe None
   }
 
-  test("concurrent image and music writes for one game keep every entry") {
+  test("concurrent writes for one game keep every entry") {
     val game = IdGenerator.gameId()
     val pool = Executors.newFixedThreadPool(8)
     val start = new CountDownLatch(1)
     (1 to 20).foreach { i =>
       pool.execute { () =>
         start.await()
-        if (i % 2 == 0) MediaCache.cacheImage(game, s"loc$i", s"image $i", "pixel", b64(s"img$i"))
-        else MediaCache.cacheMusic(game, s"loc$i", s"music $i", "exploration", b64(s"mus$i"))
+        MediaCache.cacheImage(game, s"loc$i", s"image $i", "pixel", b64(s"img$i"))
       }
     }
     start.countDown()
@@ -49,10 +48,7 @@ class MediaCacheSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     pool.awaitTermination(30, TimeUnit.SECONDS) shouldBe true
 
     (1 to 20).foreach { i =>
-      val cached =
-        if (i % 2 == 0) MediaCache.getCachedImage(game, s"loc$i", s"image $i", "pixel")
-        else MediaCache.getCachedMusic(game, s"loc$i", s"music $i", "exploration")
-      withClue(s"loc$i")(cached shouldBe Some(b64(if (i % 2 == 0) s"img$i" else s"mus$i")))
+      withClue(s"loc$i")(MediaCache.getCachedImage(game, s"loc$i", s"image $i", "pixel") shouldBe Some(b64(s"img$i")))
     }
   }
 
@@ -67,9 +63,8 @@ class MediaCacheSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     MediaCache.cacheImage(game, "a", "first", "pixel", b64("one"))
     MediaCache.clearGameCache(game) shouldBe Right(())
 
-    // An image or music job still running when the game was deleted
+    // A picture job still running when the game was deleted
     MediaCache.cacheImage(game, "b", "second", "pixel", b64("two"))
-    MediaCache.cacheMusic(game, "b", "tune", "exploration", b64("three"))
     Files.exists(root.resolve(game)) shouldBe false
   }
 
@@ -101,5 +96,53 @@ class MediaCacheSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     MediaCache.prune(now = System.currentTimeMillis() + 10000, ttlMs = 1000, maxBytes = Long.MaxValue)
     MediaCache.getCachedImage(g1, "old", "old", "pixel") shouldBe None
     MediaCache.getCachedImage(g1, "new", "new", "pixel") shouldBe None
+  }
+
+  private def png: String = {
+    val out = new java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(
+      new java.awt.image.BufferedImage(4, 4, java.awt.image.BufferedImage.TYPE_INT_RGB),
+      "png",
+      out)
+    Base64.getEncoder.encodeToString(out.toByteArray)
+  }
+
+  test("a picture is stored under the extension of what it is") {
+    val game = IdGenerator.gameId()
+    val jpeg = org.llm4s.szork.media.PictureFiles.shrink(png, 4)
+    MediaCache.cacheImage(game, "a", "jpeg", "pixel", jpeg)
+    MediaCache.cacheImage(game, "b", "png", "pixel", png)
+    val names = Files.list(root.resolve(game).resolve("images")).iterator().asScala.map(_.getFileName.toString).toList
+    names.filter(_.startsWith("a_")).foreach(_ should endWith(".jpg"))
+    names.filter(_.startsWith("b_")).foreach(_ should endWith(".png"))
+    names should have size 2
+    MediaCache.getCachedImage(game, "a", "jpeg", "pixel") shouldBe Some(jpeg)
+  }
+
+  test("pruning leaves files being written alone, and removes a game left with no media") {
+    val game = IdGenerator.gameId()
+    MediaCache.cacheImage(game, "a", "first", "pixel", b64("one"))
+    val images = root.resolve(game).resolve("images")
+    val inFlight = Files.createFile(images.resolve(".b_1234.png123.tmp"))
+
+    // Nothing is expired: the file being written is not counted or deleted, the picture stays
+    MediaCache.prune(ttlMs = Long.MaxValue, maxBytes = Long.MaxValue)
+    Files.exists(inFlight) shouldBe true
+    MediaCache.getCachedImage(game, "a", "first", "pixel") shouldBe defined
+
+    // Everything expired: the game's directory goes, with its index and the stray temporary file
+    MediaCache.prune(now = System.currentTimeMillis() + 10000, ttlMs = 1000, maxBytes = Long.MaxValue)
+    Files.exists(root.resolve(game)) shouldBe false
+    // and the game can cache again
+    MediaCache.cacheImage(game, "a", "again", "pixel", b64("two"))
+    MediaCache.getCachedImage(game, "a", "again", "pixel") shouldBe Some(b64("two"))
+  }
+
+  test("a prune is not run for every picture stored") {
+    val now = System.currentTimeMillis() + 365L * 24 * 3600 * 1000
+    MediaCache.pruneIfDue(now = now, intervalMs = 60000) shouldBe true
+    MediaCache.pruneIfDue(now = now + 1000, intervalMs = 60000) shouldBe false
+    MediaCache.pruneIfDue(now = now + 59999, intervalMs = 60000) shouldBe false
+    MediaCache.pruneIfDue(now = now + 60000, intervalMs = 60000) shouldBe true
   }
 }

@@ -10,20 +10,23 @@ import java.util.Base64
 import org.slf4j.{Logger, LoggerFactory}
 import org.llm4s.szork.api.MediaCacheConfig
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicLong
 import scala.collection.concurrent.TrieMap
 import scala.jdk.CollectionConverters._
 import scala.util.Using
 
-/** On-disk cache of generated images and music, so revisiting a location does not pay to generate it again.
+/** On-disk cache of the pictures made for one game, so revisiting a location does not pay to draw it again.
   *
-  * Layout: `<root>/<gameId>/{images,music}/<file>` plus a `metadata.json` index per game. Each game's index is updated
-  * under that game's lock, and every file is written atomically, so concurrent image and music writes cannot lose each
-  * other's entries or expose half-written files. A cache hit refreshes the file's timestamp, and the cache as a whole
-  * is pruned oldest-first to its maximum size, dropping files unused for longer than its TTL ([[MediaCacheConfig]]).
+  * Layout: `<root>/<gameId>/images/<file>` (JPEG or PNG, by what the picture is) plus a `metadata.json` index per game.
+  * Each game's index is updated under that game's lock, and every file is written atomically, so concurrent writes
+  * cannot lose each other's entries or expose half-written files. A cache hit refreshes the file's timestamp, and the
+  * cache as a whole is pruned oldest-first to its maximum size, dropping files unused for longer than its TTL
+  * ([[MediaCacheConfig]]); a game left with no pictures loses its index and directory too. Music is not cached here:
+  * the adventure library keeps one track per mood.
   *
-  * Clearing a game's cache (when the game is deleted) also stops anything being cached for it afterwards: an image or
-  * music job still running for the deleted game finds it marked deleted and writes nothing. Game ids are never reused,
-  * so the mark is permanent.
+  * Clearing a game's cache (when the game is deleted) also stops anything being cached for it afterwards: a picture job
+  * still running for the deleted game finds it marked deleted and writes nothing. Game ids are never reused, so the
+  * mark is permanent.
   */
 object MediaCache {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
@@ -44,6 +47,9 @@ object MediaCache {
   // Games whose cache was cleared: nothing is cached for them again. Set and checked under the game's lock.
   private val deletedGames = TrieMap[String, Unit]()
   private object PruneLock
+  // When the cache was last pruned, and how long to leave between prunes (a prune scans every game's files)
+  private val lastPruneAt = new AtomicLong(0L)
+  private val PruneIntervalMs = 60000L
 
   private def gameDir(gameId: String): Path = GameDirs.resolve(cacheRoot, gameId)
 
@@ -59,7 +65,6 @@ object MediaCache {
   private def updateLiveIndex(gameId: String)(f: MediaIndex => MediaIndex): Boolean = {
     val dir = gameDir(gameId)
     Files.createDirectories(dir.resolve("images"))
-    Files.createDirectories(dir.resolve("music"))
     val metadataPath = dir.resolve("metadata.json")
     val index = MediaCacheCodec.load(metadataPath).getOrElse {
       logger.warn(s"Unreadable media index for game=$gameId; rebuilding it")
@@ -67,9 +72,7 @@ object MediaCache {
     }
     // Drop entries whose files were pruned
     val live = MediaIndex(index.locations.map { case (loc, e) =>
-      loc -> LocationEntries(
-        e.images.filter(i => Files.exists(dir.resolve(i.path))),
-        e.music.filter(m => Files.exists(dir.resolve(m.path))))
+      loc -> LocationEntries(e.images.filter(i => Files.exists(dir.resolve(i.path))))
     })
     MediaCacheCodec.save(metadataPath, f(live))
     true
@@ -97,24 +100,26 @@ object MediaCache {
           None
       }
 
-  private def store(gameId: String, subDir: String, fileName: String, base64Content: String)(
+  private def store(gameId: String, locationId: String, key: String, base64Content: String)(
     addEntry: (MediaIndex, String) => MediaIndex): Unit =
     if (enabled) try {
+      val bytes = Base64.getDecoder.decode(base64Content)
+      val fileName = s"${locationId}_$key.${PictureFiles.extension(bytes)}"
       val stored = updateIndex(gameId) { index =>
-        val relative = s"$subDir/$fileName"
-        AtomicFiles.write(gameDir(gameId).resolve(relative), Base64.getDecoder.decode(base64Content))
+        val relative = s"images/$fileName"
+        AtomicFiles.write(gameDir(gameId).resolve(relative), bytes)
         addEntry(index, relative)
       }
       if (stored) {
-        logger.info(s"Cached $subDir/$fileName for game=$gameId")
-        prune()
-      } else logger.info(s"Not caching $subDir/$fileName: game=$gameId was deleted")
+        logger.info(s"Cached images/$fileName for game=$gameId")
+        pruneIfDue()
+      } else logger.info(s"Not caching images/$fileName: game=$gameId was deleted")
     } catch {
-      case e: Exception => logger.error(s"Failed to cache $subDir/$fileName for game=$gameId", e)
+      case e: Exception => logger.error(s"Failed to cache a picture of $locationId for game=$gameId", e)
     }
 
   private def entriesAt(index: MediaIndex, locationId: String): LocationEntries =
-    index.locations.getOrElse(locationId, LocationEntries(Nil, Nil))
+    index.locations.getOrElse(locationId, LocationEntries(Nil))
 
   // ============= Images =============
 
@@ -144,32 +149,11 @@ object MediaCache {
     base64Content: String,
     provider: String = ""): Unit = {
     val key = hashKey(s"$provider|$artStyle|$imageDescription")
-    store(gameId, "images", s"${locationId}_$key.png", base64Content) { (index, path) =>
+    store(gameId, locationId, key, base64Content) { (index, path) =>
       val entries = entriesAt(index, locationId)
       val entry = ImageEntry(key, artStyle, provider, imageDescription, path, System.currentTimeMillis())
       MediaIndex(
         index.locations + (locationId -> entries.copy(images = entries.images.filterNot(_.key == key) :+ entry)))
-    }
-  }
-
-  // ============= Music =============
-
-  def getCachedMusic(gameId: String, locationId: String, musicDescription: String, mood: String): Option[String] = {
-    val key = hashKey(s"replicate|$mood|$musicDescription")
-    lookup(gameId)(_.locations.get(locationId).flatMap(_.music.find(_.key == key)).map(_.path))
-  }
-
-  def cacheMusic(
-    gameId: String,
-    locationId: String,
-    musicDescription: String,
-    mood: String,
-    base64Content: String): Unit = {
-    val key = hashKey(s"replicate|$mood|$musicDescription")
-    store(gameId, "music", s"${locationId}_${mood}_$key.mp3", base64Content) { (index, path) =>
-      val entries = entriesAt(index, locationId)
-      val entry = MusicEntry(key, mood, "replicate", musicDescription, path, System.currentTimeMillis())
-      MediaIndex(index.locations + (locationId -> entries.copy(music = entries.music.filterNot(_.key == key) :+ entry)))
     }
   }
 
@@ -193,7 +177,21 @@ object MediaCache {
         Left(CacheError(s"Failed to clear cache: ${e.getMessage}", Some(e)))
     } finally gameLocks.remove(gameId)
 
-  /** Removes cached media unused for longer than the TTL, then the least recently used until the whole cache fits. */
+  /** Prunes unless the cache was pruned within the last minute (or `intervalMs`); whether it did. */
+  private[szork] def pruneIfDue(
+    now: Long = System.currentTimeMillis(),
+    intervalMs: Long = PruneIntervalMs,
+    ttlMs: Long = settings.ttlMs,
+    maxBytes: Long = settings.maxBytes): Boolean = {
+    val last = lastPruneAt.get()
+    val due = now - last >= intervalMs && lastPruneAt.compareAndSet(last, now)
+    if (due) prune(now, ttlMs, maxBytes)
+    due
+  }
+
+  /** Removes cached media unused for longer than the TTL, then the least recently used until the whole cache fits, then
+    * the games left with no media.
+    */
   private[szork] def prune(
     now: Long = System.currentTimeMillis(),
     ttlMs: Long = settings.ttlMs,
@@ -211,20 +209,46 @@ object MediaCache {
           Files.deleteIfExists(p)
           total -= size
         }
+        gameDirs().foreach(removeIfEmpty)
       } catch { case e: Exception => logger.warn(s"Media cache pruning failed: ${e.getMessage}") }
     }
 
+  private def gameDirs(): List[Path] =
+    if (!Files.isDirectory(cacheRoot)) Nil
+    else Using.resource(Files.list(cacheRoot))(_.iterator().asScala.toList).filter(Files.isDirectory(_))
+
+  // A file being written (see AtomicFiles) is a dot file ending in .tmp: it is neither media nor evidence of it
+  private def isMedia(file: Path): Boolean = {
+    val name = file.getFileName.toString
+    !name.startsWith(".") && !name.endsWith(".tmp") && Files.isRegularFile(file)
+  }
+
+  // The directories a game's media may be in (`music` only in a cache an older version made)
+  private def mediaDirs(game: Path): List[Path] =
+    List("images", "music").map(game.resolve).filter(Files.isDirectory(_))
+
+  // Under the game's lock, so a picture being stored for it is not deleted along with its directory
+  private def removeIfEmpty(game: Path): Unit = {
+    val id = game.getFileName.toString
+    gameLocks.getOrElseUpdate(id, new Object).synchronized {
+      val hasMedia =
+        mediaDirs(game).exists(dir => Using.resource(Files.list(dir))(_.iterator().asScala.exists(isMedia)))
+      if (!hasMedia) {
+        deleteRecursively(game)
+        logger.info(s"Removed the empty media cache of game=$id")
+      }
+    }
+  }
+
   /** Every cached media file: path, last used, size. */
   private def mediaFiles(): List[(Path, Long, Long)] =
-    if (!Files.isDirectory(cacheRoot)) Nil
-    else
-      Using.resource(Files.list(cacheRoot))(_.iterator().asScala.toList).filter(Files.isDirectory(_)).flatMap { game =>
-        List("images", "music").map(game.resolve).filter(Files.isDirectory(_)).flatMap { dir =>
-          Using.resource(Files.list(dir))(_.iterator().asScala.toList).filter(Files.isRegularFile(_)).map { p =>
-            (p, Files.getLastModifiedTime(p).toMillis, Files.size(p))
-          }
+    gameDirs().flatMap { game =>
+      mediaDirs(game).flatMap { dir =>
+        Using.resource(Files.list(dir))(_.iterator().asScala.toList).filter(isMedia).map { p =>
+          (p, Files.getLastModifiedTime(p).toMillis, Files.size(p))
         }
       }
+    }
 
   private def deleteRecursively(path: Path): Unit = {
     if (Files.isDirectory(path)) Using.resource(Files.list(path))(_.forEach(deleteRecursively))

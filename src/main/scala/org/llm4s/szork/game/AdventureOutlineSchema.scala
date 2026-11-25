@@ -11,15 +11,20 @@ import org.llm4s.toolapi.{ObjectSchema, Schema}
   */
 object AdventureOutlineSchema {
 
-  /** The states an exit may be in (an enum in the schema). */
-  val ExitStates: Seq[String] = Seq("open", "closed", "locked", "sealed", "hidden")
+  /** The states an exit may be in (an enum in the schema): every state the world state keeps ([[ExitState]]). */
+  val ExitStates: Seq[String] = ExitState.names
+
+  /** The directions an outline's exit may take (an enum in the schema): the compass points, up, down, in and out. The
+    * Dungeon Master's answers may also use directions relative to the player ([[DungeonMasterOutput.Directions]]); a
+    * planned map does not, since "back" from a place depends on how the player came.
+    */
+  val Directions: Seq[String] = Seq("north", "south", "east", "west", "up", "down", "in", "out")
 
   private def nullableString(description: String) = Schema.nullable(Schema.string(description))
 
   private val exit: ObjectSchema[ExitOutline] = Schema
     .`object`[ExitOutline]("An exit from the location")
-    .withProperty(
-      Schema.property("direction", Schema.string("Direction of the exit").withEnum(DungeonMasterOutput.Directions)))
+    .withProperty(Schema.property("direction", Schema.string("Direction of the exit").withEnum(Directions)))
     .withProperty(
       Schema.property("targetId", Schema.string("Id of another location in keyLocations that the exit leads to")))
     .withProperty(Schema.property(
@@ -29,17 +34,18 @@ object AdventureOutlineSchema {
       "state",
       Schema
         .string("open: passable now. closed: shut, but the player can simply open it (unless it has an obstacle). " +
-          "locked or sealed: impassable until its obstacle is overcome. hidden: not shown or usable until the " +
-          "player discovers it")
+          "locked, sealed or blocked: impassable until its obstacle is overcome. hidden: not shown or usable until " +
+          "the player discovers it")
         .withEnum(ExitStates)
     ))
     .withProperty(Schema.property(
       "obstacle",
       nullableString(
-        "open: null. locked or sealed: required - what must be overcome and how (e.g. 'a brass padlock; the brass " +
-          "key opens it', 'rusted shut; needs the crowbar'). hidden: how the player finds it (e.g. 'revealed by " +
-          "pulling the red book'). closed: null for a door the player can simply open, or what keeps it shut " +
-          "until overcome (e.g. 'swollen in its frame; needs oiling')")
+        "open: null. locked, sealed or blocked: required - what must be overcome and how (e.g. 'a brass padlock; " +
+          "the brass key opens it', 'rusted shut; needs the crowbar', 'a fallen beam; lever it aside with the " +
+          "iron bar'). hidden: how the player finds it (e.g. 'revealed by pulling the red book'). closed: null " +
+          "for a door the player can simply open, or what keeps it shut until overcome (e.g. 'swollen in its " +
+          "frame; needs oiling')")
     ))
 
   private val location: ObjectSchema[LocationOutline] = Schema
@@ -84,6 +90,12 @@ object AdventureOutlineSchema {
         "description",
         Schema.string("How it appears in room descriptions, e.g. 'A brass lantern sits on the dusty shelf'")))
     .withProperty(Schema.property("purpose", Schema.string("How it is used to solve puzzles and why it matters")))
+    .withProperty(Schema.property(
+      "location",
+      nullableString(
+        "Id of the location in keyLocations where the player first finds it, or null if they are given it, " +
+          "make it or carry it from the start")
+    ))
 
   private val character: ObjectSchema[CharacterOutline] = Schema
     .`object`[CharacterOutline]("A key character")

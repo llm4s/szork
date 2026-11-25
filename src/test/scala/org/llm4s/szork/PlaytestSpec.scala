@@ -155,4 +155,13 @@ class PlaytestSpec extends AnyFunSuite with Matchers {
     PlaytestChecks.outline(stranded).map(f => (f.check, f.hard)) shouldBe List(("outline-map", true))
     PlaytestChecks.outline(outline) shouldBe Nil
   }
+
+  test("an outline problem's severity is decided by its kind, not by the words in it") {
+    // an open exit with an obstacle is a soft problem, whatever its obstacle says
+    val wordy = outline.copy(keyLocations = outline.keyLocations.map { l =>
+      l.copy(exits = l.exits.map(e => if (e.targetId == "study") e.copy(obstacle = Some("cannot be reached")) else e))
+    })
+    PlaytestChecks.outline(wordy).map(f => (f.hard, f.detail)) shouldBe List(
+      (false, "hall: the north exit to study is open but has an obstacle (cannot be reached)"))
+  }
 }

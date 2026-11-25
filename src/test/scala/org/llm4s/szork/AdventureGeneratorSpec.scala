@@ -127,12 +127,12 @@ class AdventureGeneratorSpec extends AnyFunSuite with Matchers {
     val brief = AdventureGenerator.designBrief("a drowned city")
     brief should include("open = passable now; its obstacle is null")
     brief should include("closed = shut, but the player can simply open it")
-    brief should include("locked or sealed = impassable until its obstacle is overcome; it MUST give the obstacle")
+    brief should include("locked, sealed or blocked = impassable until its obstacle is overcome; it MUST give the")
     brief should include("hidden = not shown and not usable until the player discovers it")
 
     val schema = ujson.write(AdventureOutlineSchema.schema.toJsonSchema(strict = true))
     schema should include("closed: shut, but the player can simply open it (unless it has an obstacle)")
-    schema should include("locked or sealed: required - what must be overcome and how")
+    schema should include("locked, sealed or blocked: required - what must be overcome and how")
     schema should include("hidden: how the player finds it")
   }
 
@@ -146,6 +146,50 @@ class AdventureGeneratorSpec extends AnyFunSuite with Matchers {
     val correction = llm.lastCall.get.messages.last.content
     correction should include("did not match the required JSON Schema")
     correction should include("north-east")
+  }
+
+  test("an exit direction relative to the player, which the brief forbids, is corrected as the schema's") {
+    val llm = ScriptedLLMClient.respondingTo {
+      case c if c.messages.exists(_.content.contains("did not match")) => Reply.text(answer)
+      case _ => Reply.text(answer.replace("\"north\"", "\"back\""))
+    }
+    generate(llm) shouldBe Right(outline)
+    llm.callCount shouldBe 2
+  }
+
+  test("the brief asks for one count of locations and of examinable objects, and for where each item is found") {
+    val brief = AdventureGenerator.designBrief("a drowned city")
+    brief should include("Create 5-7 key locations")
+    brief should not include "exactly 5-7"
+    brief should include("Every location after the first should have 3-5 examinable objects")
+    brief should include("2-3 examinable objects in the starting location")
+    brief should not include "maximum"
+    brief should include("Give every item the id of the location where the player first finds it")
+    ujson.write(AdventureOutlineSchema.schema.toJsonSchema(strict = true)) should include(
+      "where the player first finds it")
+  }
+
+  test("an item's location is kept in the outline's JSON and given to the Dungeon Master") {
+    val placed = outline.copy(importantItems = List(
+      ItemOutline("crown", "A drowned crown glints in the silt", "The goal", Some("vault_door")),
+      ItemOutline("whistle", "A tin whistle", "Calls the diver")))
+    val json = AdventureGenerator.outlineToJson(placed)
+    json("importantItems")(0)("location") shouldBe ujson.Str("vault_door")
+    json("importantItems")(1)("location") shouldBe ujson.Null
+    AdventureGenerator.parseOutline(json) shouldBe Right(placed)
+    val prompt = AdventureGenerator.outlineToSystemPrompt(placed)
+    prompt should include("- crown: A drowned crown glints in the silt (Purpose: The goal; found at vault_door)")
+    prompt should include("- whistle: A tin whistle (Purpose: Calls the diver)")
+
+    // an outline written before items had a location reads as before
+    json("importantItems").arr.foreach(_.obj.remove("location"))
+    AdventureGenerator.parseOutline(json).map(_.importantItems.map(_.location)) shouldBe Right(List(None, None))
+  }
+
+  test("JSON that is not an outline is an error, not an exception") {
+    AdventureGenerator.parseOutline(ujson.Obj("title" -> "half an outline")).left.map(_.message) should matchPattern {
+      case Left(m: String) if m.startsWith("Not an adventure outline") =>
+    }
   }
 
   test("a second invalid answer fails the generation") {
@@ -166,7 +210,8 @@ class AdventureGeneratorSpec extends AnyFunSuite with Matchers {
     system should include("JSON Schema")
     val marker = "Examinable objects beyond takeable items" // the schema's description of `interactables`
     (system + "\n" + brief).sliding(marker.length).count(_ == marker) shouldBe 1
-    DungeonMasterOutput.Directions.foreach(direction => system should include(s"\"$direction\""))
+    AdventureOutlineSchema.Directions.foreach(direction => system should include(s"\"$direction\""))
+    Seq("back", "forward", "left", "right").foreach(direction => system should not include s"\"$direction\"")
     AdventureOutlineSchema.ExitStates.foreach(state => system should include(s"\"$state\""))
     brief should include("a drowned city")
     brief should include("STARTING LOCATION DESIGN")

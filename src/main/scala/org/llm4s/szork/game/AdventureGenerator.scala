@@ -42,8 +42,9 @@ case class LocationOutline(
   image: Option[String] = None
 ) derives ReadWriter
 
-/** An exit from a location: its direction (one of [[DungeonMasterOutput.Directions]]), where it leads, and whether it
-  * is passable (one of [[AdventureOutlineSchema.ExitStates]]) or what blocks it.
+/** An exit from a location: its direction (one of [[AdventureOutlineSchema.Directions]]), where it leads, and whether
+  * it is passable (one of [[AdventureOutlineSchema.ExitStates]]) or what blocks it. An outline a client sends is only
+  * decoded, not held to the schema: [[OutlineMap.problems]] reports a direction or state outside it.
   */
 @serializeDefaults(true)
 case class ExitOutline(
@@ -54,10 +55,15 @@ case class ExitOutline(
   obstacle: Option[String] = None
 ) derives ReadWriter
 
+/** An important item, and the id of the location where the player first finds it (None: given, made or carried from the
+  * start; an outline written before items had a location reads as None).
+  */
+@serializeDefaults(true)
 case class ItemOutline(
   name: String,
   description: String,
-  purpose: String
+  purpose: String,
+  location: Option[String] = None
 ) derives ReadWriter
 
 @serializeDefaults(true)
@@ -136,7 +142,7 @@ object AdventureGenerator {
       |- Side quests interconnect with main story
       |
       |SPECIFIC REQUIREMENTS:
-      |- Create exactly 5-7 key locations forming a cohesive journey
+      |- Create 5-7 key locations forming a cohesive journey
       |- Include 4-6 important items that feel essential to the world
       |- Create 3-5 memorable characters with distinct personalities
       |- Design 2-3 clever puzzles with multiple solutions
@@ -165,15 +171,17 @@ object AdventureGenerator {
       |  • open = passable now; its obstacle is null
       |  • closed = shut, but the player can simply open it and go through (a plain door, a gate on a latch); its
       |    obstacle is null. Give a closed exit an obstacle only if it must stay shut until the obstacle is overcome
-      |  • locked or sealed = impassable until its obstacle is overcome; it MUST give the obstacle: what is in the way
-      |    and what overcomes it (a key among the items, a tool, a puzzle's solution)
+      |  • locked, sealed or blocked = impassable until its obstacle is overcome; it MUST give the obstacle: what is in
+      |    the way and what overcomes it (a key among the items, a tool, a puzzle's solution)
       |  • hidden = not shown and not usable until the player discovers it; its obstacle says how it is found
       |
-      |CHARACTERS AND CONSISTENCY:
+      |CHARACTERS, ITEMS AND CONSISTENCY:
       |- Give every character the player can meet the id of the location where they are first met (location); a
       |  character known only through what they left behind (letters, records) has location null
       |- A character is present in their location from the player's first visit, unless the location's description
       |  says what brings them out
+      |- Give every item the id of the location where the player first finds it (location); an item the player is
+      |  given, makes or carries from the start has location null
       |- Settle the timeline before you write: when each person arrived, left or died, and how long ago. Every date,
       |  age, name and count you then mention - in descriptions, puzzles, secrets, items and the arc - must agree
       |  with it and with each other. A code or answer a puzzle needs must be the same wherever it is given
@@ -183,7 +191,7 @@ object AdventureGenerator {
       |- At least 3-4 containers (chests, drawers, cabinets, safes) that can be opened
       |- At least 2-3 simple mechanical puzzles (levers, buttons, wheels, dials)
       |- At least 1-2 "fetch quest" puzzles (bring item X to location Y)
-      |- Every location should have 3-5 examinable objects beyond takeable items
+      |- Every location after the first should have 3-5 examinable objects beyond takeable items
       |- At least 1 hidden passage or secret compartment discoverable by examination
       |- Clear progression: starting area → obstacles requiring items → goal achievement
       |
@@ -205,7 +213,7 @@ object AdventureGenerator {
       |  • Navigation: clear open passage mentioned in description
       |  • Obstacles: perhaps one locked/closed door to introduce barriers
       |- Keep starting room relatively simple - don't overwhelm with puzzles
-      |  • 2-3 interactable objects maximum in starting location
+      |  • 2-3 examinable objects in the starting location
       |  • Save complex puzzles for later locations
       |  • Focus on teaching "examine everything" and "try obvious things"
       |- Establish tone and atmosphere immediately but prioritize clarity
@@ -312,10 +320,11 @@ object AdventureGenerator {
     * schema.
     */
   def withSoundMap(outline: AdventureOutline): AdventureOutline = {
-    val (repaired, dropped) = OutlineMap.repair(outline)
-    dropped.foreach(what => logger.warn(s"Outline '${outline.title}': repaired - $what"))
-    OutlineMap.problems(repaired).foreach(problem => logger.warn(s"Outline '${outline.title}': $problem"))
-    repaired
+    val review = OutlineMap.review(outline)
+    (review.dropped.map(_.text) ++ review.turned).foreach(what =>
+      logger.warn(s"Outline '${outline.title}': repaired - $what"))
+    review.remaining.foreach(problem => logger.warn(s"Outline '${outline.title}': ${problem.text}"))
+    review.outline
   }
 
   def outlineToSystemPrompt(outline: AdventureOutline): String = {
@@ -323,7 +332,8 @@ object AdventureGenerator {
 
     val itemsStr = outline.importantItems
       .map { item =>
-        s"- ${item.name}: ${item.description} (Purpose: ${item.purpose})"
+        val where = item.location.fold("")(id => s"; found at $id")
+        s"- ${item.name}: ${item.description} (Purpose: ${item.purpose}$where)"
       }
       .mkString("\n")
 
@@ -349,7 +359,7 @@ object AdventureGenerator {
       |KEY LOCATIONS (use these consistently; the first is where the player starts):
       |$locationsStr
       |
-      |IMPORTANT ITEMS (these should appear in appropriate locations):
+      |IMPORTANT ITEMS (each where the outline places it; one with no place appears where the story gives it):
       |$itemsStr
       |
       |KEY CHARACTERS (introduce these NPCs at appropriate moments):

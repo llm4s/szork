@@ -73,7 +73,7 @@ class WorldInvariantsSpec extends AnyFunSuite with Matchers {
   private def play(seed: Long, turns: Int): Unit = withClue(s"seed $seed: ") {
     val random = new Random(seed)
     val outline = randomOutline(random, size = 3 + random.nextInt(5))
-    OutlineMap.problems(outline).filter(_.contains("cannot be reached")) shouldBe Nil
+    OutlineMap.problems(outline).filter(_.kind == OutlineMap.ProblemKind.Unreachable) shouldBe Nil
     val engine = GameEngine.create(randomDm(random, outline), s"random-$seed", adventureOutline = Some(outline))
     engine.initialize().isRight shouldBe true
 

@@ -3,11 +3,12 @@ package org.llm4s.szork.adventures
 import org.llm4s.szork.adapters.DefaultMusicClient
 import org.llm4s.szork.api.{ArtStyle, GameTheme, SzorkConfig}
 import org.llm4s.szork.error.ErrorHandling._
-import org.llm4s.szork.game.{AdventureGenerator, ArtDirector, DungeonMasterOutput, PromptBuilder, SceneMedia}
+import org.llm4s.szork.game.{AdventureGenerator, ArtDirector, DungeonMasterOutput, SceneMedia}
 import org.llm4s.szork.media.{MediaPlanner, SceneImages}
 import org.llm4s.szork.spi.{ImageClient, MusicClient}
 
 import java.util.concurrent.Executors
+import scala.annotation.tailrec
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 
@@ -19,7 +20,7 @@ import scala.concurrent.{Await, ExecutionContext, Future}
   *
   * {{{
   * sbt "runMain org.llm4s.szork.adventures.BakeAdventure --list"
-  * sbt "runMain org.llm4s.szork.adventures.BakeAdventure the-sunken-archive"       # its pictures, and the mood tracks
+  * sbt "runMain org.llm4s.szork.adventures.BakeAdventure the-drowned-archive"     # its pictures, and the mood tracks
   * sbt "runMain org.llm4s.szork.adventures.BakeAdventure --all --style pixel"      # every adventure, in another style
   * sbt 'runMain org.llm4s.szork.adventures.BakeAdventure --new --theme "a haunted lighthouse" --style painting'
   * sbt "runMain org.llm4s.szork.adventures.BakeAdventure --music"                  # only the mood tracks
@@ -28,7 +29,9 @@ import scala.concurrent.{Await, ExecutionContext, Future}
   * Before an adventure's pictures are made, the [[org.llm4s.szork.game.ArtDirector]] writes a brief for each location
   * that has none (`--art` has it write them all again), and the briefs are saved in the adventure.
   *
-  * What already exists is kept: delete a file to have it made again.
+  * What already exists is kept: delete a file to have it made again. With nothing chosen to bake it prints the usage;
+  * the exit code is non-zero if anything asked for could not be made (a design that failed, an adventure that is not in
+  * the library, a picture or track that failed).
   */
 object BakeAdventure {
 
@@ -56,10 +59,7 @@ object BakeAdventure {
       val what = s"${adventure.id}/${place.id} ($style)"
       if (library.image(adventure.id, place.id, style).isDefined) Report(Nil, List(what), Nil)
       else {
-        val prompt = MediaPlanner.styledImagePrompt(
-          styleId,
-          SceneMedia.outlineImage(place),
-          PromptBuilder.artStyleDescription(styleId))
+        val prompt = SceneMedia.outlinePrompt(place, styleId)
         outcome(what, library.imageOr(adventure.id, place.id, style)(client.generateScene(prompt, style, None, None)))
       }
     }
@@ -70,7 +70,7 @@ object BakeAdventure {
     inParallel(DungeonMasterOutput.MusicMoods.toList, parallelism) { mood =>
       val what = s"music/$mood"
       if (library.music(mood).isDefined) Report(Nil, List(what), Nil)
-      else outcome(what, library.musicOr(mood)(client.generate(mood, "", None, None)))
+      else outcome(what, library.musicOr(mood)(client.generate(mood)))
     }
 
   private def outcome(what: String, result: SzorkResult[?]): Report = result match {
@@ -89,10 +89,11 @@ object BakeAdventure {
     finally pool.shutdown()
   }
 
-  /** How many times a bake asks Replicate whether a track is ready (SZORK_MUSIC_POLL_INTERVAL_MS apart). */
+  /** How many polls' worth of time a bake waits for a track (SZORK_MUSIC_POLL_INTERVAL_MS apart). */
   private val BakePollAttempts = 180
 
-  private final case class Options(
+  /** What the command line asks for. */
+  private[szork] final case class Options(
     ids: List[String] = Nil,
     all: Boolean = false,
     list: Boolean = false,
@@ -102,33 +103,73 @@ object BakeAdventure {
     style: Option[String] = None,
     images: Boolean = true,
     art: Boolean = false,
-    music: Boolean = true)
+    music: Boolean = true,
+    musicOnly: Boolean = false) {
 
-  private val Usage =
-    """Usage: BakeAdventure [<adventure-id>... | --all | --new --theme <theme> [--theme-name <name>] | --list | --music]
-      |                     [--style <art-style-id>] [--art] [--no-images] [--no-music]""".stripMargin
-
-  private def parse(args: List[String], options: Options = Options()): Either[String, Options] = args match {
-    case Nil => Right(options)
-    case "--all" :: rest => parse(rest, options.copy(all = true))
-    case "--list" :: rest => parse(rest, options.copy(list = true))
-    case "--new" :: rest => parse(rest, options.copy(designNew = true))
-    case "--music" :: rest => parse(rest, options.copy(images = false))
-    case "--no-images" :: rest => parse(rest, options.copy(images = false))
-    case "--art" :: rest => parse(rest, options.copy(art = true))
-    case "--no-music" :: rest => parse(rest, options.copy(music = false))
-    case "--theme" :: theme :: rest => parse(rest, options.copy(newTheme = Some(theme)))
-    case "--theme-name" :: name :: rest => parse(rest, options.copy(themeName = Some(name)))
-    case "--style" :: style :: rest => parse(rest, options.copy(style = Some(style)))
-    case flag :: _ if flag.startsWith("--") => Left(s"Unknown or incomplete option: $flag")
-    case id :: rest => parse(rest, options.copy(ids = options.ids :+ id))
+    /** Whether the command line chose something to do: an adventure to bake, a new one, the tracks, or the list. */
+    def selectsSomething: Boolean = ids.nonEmpty || all || designNew || list || musicOnly
   }
+
+  private[szork] val Usage =
+    """Usage: BakeAdventure <adventure-id>... | --all | --new [--theme <theme>] [--theme-name <name>] | --music | --list
+      |                     [--style <art-style-id>] [--art] [--no-images] [--no-music]
+      |
+      |  <adventure-id>...   bake these adventures' pictures (and the mood tracks)
+      |  --all               bake every adventure in the library
+      |  --new               design a new adventure with the configured model, keep it and bake it
+      |  --theme <theme>     the new adventure's theme (with --new); --theme-name <name> names it
+      |  --music             bake only the mood tracks
+      |  --list              list the library
+      |  --style <id>        the art style of the pictures: pixel, illustration, painting, comic or fantasy
+      |  --art               have the art director write the picture briefs again
+      |  --no-images         bake no pictures
+      |  --no-music          bake no mood tracks""".stripMargin
+
+  /** The options `args` ask for, or what is wrong with them (the usage follows). */
+  private[szork] def parse(args: List[String]): Either[String, Options] = {
+    @tailrec def go(args: List[String], options: Options): Either[String, Options] = args match {
+      case Nil => Right(options)
+      case "--all" :: rest => go(rest, options.copy(all = true))
+      case "--list" :: rest => go(rest, options.copy(list = true))
+      case "--new" :: rest => go(rest, options.copy(designNew = true))
+      case "--music" :: rest => go(rest, options.copy(images = false, musicOnly = true))
+      case "--no-images" :: rest => go(rest, options.copy(images = false))
+      case "--art" :: rest => go(rest, options.copy(art = true))
+      case "--no-music" :: rest => go(rest, options.copy(music = false))
+      case "--theme" :: theme :: rest => go(rest, options.copy(newTheme = Some(theme)))
+      case "--theme-name" :: name :: rest => go(rest, options.copy(themeName = Some(name)))
+      case "--style" :: style :: rest =>
+        MediaPlanner.normalizeStyle(style) match {
+          case Some(known) => go(rest, options.copy(style = Some(known)))
+          case None =>
+            Left(s"Unknown art style '$style' (the styles are ${MediaPlanner.StyleIds.mkString(", ")}, fantasy)")
+        }
+      case flag :: _ if flag.startsWith("--") => Left(s"Unknown or incomplete option: $flag")
+      case id :: rest => go(rest, options.copy(ids = options.ids :+ id))
+    }
+    go(args, Options()).flatMap { options =>
+      if (!options.selectsSomething) Left("Nothing to bake: name an adventure, or give --all, --new, --music or --list")
+      else if (!options.designNew && (options.newTheme.isDefined || options.themeName.isDefined))
+        Left("--theme and --theme-name only go with --new")
+      else Right(options)
+    }
+  }
+
+  /** The adventures of `library` that `ids` name, and a failure for each that is not there. */
+  private[szork] def lookup(library: AdventureLibrary, ids: List[String]): (List[Adventure], Report) = {
+    val found = ids.map(id => id -> library.load(id))
+    val missing = found.collect { case (id, None) => id -> s"no adventure '$id' in ${library.root}" }
+    found.flatMap(_._2) -> Report(Nil, Nil, missing)
+  }
+
+  /** 0 when the bake made or found everything asked of it, otherwise 1. */
+  private[szork] def exitCode(report: Report): Int = if (report.failed.isEmpty) 0 else 1
 
   def main(args: Array[String]): Unit = {
     val options = parse(args.toList) match {
       case Right(o) => o
       case Left(problem) =>
-        println(s"$problem\n$Usage")
+        println(s"$problem\n\n$Usage")
         sys.exit(2)
     }
     val config = SzorkConfig.instance
@@ -139,16 +180,13 @@ object BakeAdventure {
       library.list.foreach { a =>
         println(f"  ${a.id}%-40s ${a.title} (${a.images}/${a.locations} pictured, ${a.artStyle.getOrElse("no style")})")
       }
-      return
+      sys.exit(0)
     }
 
-    val designed = Option.when(options.designNew)(design(config, library, options)).flatten
-    val adventures =
-      designed.toList ++ (if (options.all) library.list.map(_.id) else options.ids).flatMap { id =>
-        val found = library.load(id)
-        if (found.isEmpty) println(s"No adventure '$id' in ${library.root}")
-        found
-      }
+    val designed = Option.when(options.designNew)(design(config, library, options))
+    val (named, missing) = lookup(library, if (options.all) library.list.map(_.id) else options.ids)
+    val adventures = designed.flatMap(_.toOption).toList ++ named
+    val problems = missing ++ Report(Nil, Nil, designed.flatMap(_.left.toOption).map("design" -> _).toList)
 
     val pictures =
       if (!options.images || adventures.isEmpty) Report.empty
@@ -183,9 +221,9 @@ object BakeAdventure {
         }
       }
 
-    val report = pictures ++ tracks
+    val report = problems ++ pictures ++ tracks
     println(s"\nBaked: ${report.summary}")
-    sys.exit(if (report.failed.isEmpty) 0 else 1)
+    sys.exit(exitCode(report))
   }
 
   /** `adventure` with a picture brief for every location: as it is if it has them (and `again` is not asked for),
@@ -213,8 +251,8 @@ object BakeAdventure {
       }
     }
 
-  /** Designs an adventure for the options' theme with the configured model, and keeps it. */
-  private def design(config: SzorkConfig, library: AdventureLibrary, options: Options): Option[Adventure] = {
+  /** Designs an adventure for the options' theme with the configured model, and keeps it (or says why it could not). */
+  private def design(config: SzorkConfig, library: AdventureLibrary, options: Options): Either[String, Adventure] = {
     val theme = options.newTheme.getOrElse("classic fantasy adventure")
     println(s"Designing an adventure: $theme ...")
     val kept = for {
@@ -231,13 +269,9 @@ object BakeAdventure {
         .left
         .map(_.message)
     } yield adventure
-    kept match {
-      case Right(adventure) =>
-        println(s"Kept '${adventure.outline.title}' as ${adventure.id}")
-        Some(adventure)
-      case Left(problem) =>
-        println(s"Could not design the adventure: $problem")
-        None
+    kept.left.map(problem => s"could not design the adventure: $problem").map { adventure =>
+      println(s"Kept '${adventure.outline.title}' as ${adventure.id}")
+      adventure
     }
   }
 }

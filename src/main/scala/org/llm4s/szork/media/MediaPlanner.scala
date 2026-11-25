@@ -2,6 +2,16 @@ package org.llm4s.szork.media
 
 /** Builds image prompts in the game's art style. */
 object MediaPlanner {
+
+  /** The art styles the setup screen offers, whose pictures this builds prompts for (anything else, `fantasy` too, is
+    * drawn in the default style).
+    */
+  val StyleIds: List[String] = List("pixel", "illustration", "painting", "comic")
+
+  /** `style` as an art style id (trimmed, lower case), if it is one of [[StyleIds]] or the default `fantasy`. */
+  def normalizeStyle(style: String): Option[String] =
+    Some(style.trim.toLowerCase).filter(id => StyleIds.contains(id) || id == "fantasy")
+
   def styledImagePrompt(artStyle: Option[String], baseDescription: String, artStyleDescription: String): String =
     artStyle match {
       case Some("pixel") =>

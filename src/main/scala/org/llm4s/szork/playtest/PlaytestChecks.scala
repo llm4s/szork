@@ -35,11 +35,15 @@ object PlaytestChecks {
   /** A turn that takes more model calls than this is reported: the Dungeon Master is circling. */
   val ManyModelCalls: Long = 6
 
+  /** The kinds of outline problem that are hard findings: part of the adventure (or all of it) cannot be played. */
+  val UnplayableOutline: Set[OutlineMap.ProblemKind] =
+    Set(OutlineMap.ProblemKind.Unreachable, OutlineMap.ProblemKind.NoLocations)
+
   /** What is wrong with the map the game starts from. An unreachable location is a hard finding: part of the adventure
     * cannot be played. The rest (a locked exit with no obstacle, a character placed nowhere) make it poorer.
     */
   def outline(outline: AdventureOutline): List[Finding] =
-    OutlineMap.problems(outline).map(problem => Finding("outline-map", problem.contains("cannot be reached"), problem))
+    OutlineMap.problems(outline).map(problem => Finding("outline-map", UnplayableOutline(problem.kind), problem.text))
 
   /** What is wrong with `turn`, given the turns `earlier` in the game. */
   def turn(turn: PlayedTurn, earlier: Seq[PlayedTurn]): List[Finding] = {

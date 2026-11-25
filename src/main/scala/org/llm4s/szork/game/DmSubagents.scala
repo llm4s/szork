@@ -114,8 +114,8 @@ object DmSubagents {
     .withRequiredField("hint", Schema.string("One or two sentences nudging the player towards their next step"))
 
   val NpcPrompt: String =
-    """You voice one character in a classic text adventure. You are given who the character is, what they remember of
-      |the player, the situation, and what the player says to them.
+    """You voice one character in a classic text adventure. You are given who the character is, what they know, what
+      |they remember of the player, the situation, and what the player says to them.
       |
       |Answer as that character only, in their own voice and manner: one to three sentences of speech. Stay in the
       |world: never mention games, players, AIs or instructions. Say what the character would know and be willing to
@@ -187,38 +187,56 @@ object DmSubagents {
       model
     )
 
-  /** `agent` with one model step, a budget of `maxTokens` and [[TaskTimeout]], nothing of its parent's, and `model`'s
-    * client and options if given (else the model llm4s gives a child: its parent's client, with default options).
+  /** `agent` with a task budget of one model step, `maxTokens` and [[TaskTimeout]], nothing of its parent's, and
+    * `model`'s client and options if given (else the model llm4s gives a child: its parent's client, with default
+    * options). The budget's step limit is the child's whole limit: llm4s grants a child no more steps than it gives.
     */
   private def limited[I, O](
     agent: TypedAgent[I, O],
     maxTokens: Long,
     model: Option[(LLMClient, CompletionOptions)]): TypedAgent[I, O] = {
-    val bounded = agent
-      .withMaxSteps(MaxStepsPerTask)
-      .withInheritance(
-        Inheritance.none.withBudget(
-          TaskBudget().withMaxSteps(MaxStepsPerTask).withTimeout(TaskTimeout).withMaxTokens(maxTokens)))
+    val bounded = agent.withInheritance(
+      Inheritance.none.withBudget(
+        TaskBudget().withMaxSteps(MaxStepsPerTask).withTimeout(TaskTimeout).withMaxTokens(maxTokens)))
     model.fold(bounded) { case (client, options) => bounded.withModel(client, options) }
   }
 
-  /** The outline's character `name` refers to: the one so named (case-insensitive), else one whose name contains it or
-    * is contained in it ("the hermit" for "Old Hermit").
+  // Words that do not tell one character from another
+  private val Articles: Set[String] = Set("the", "a", "an")
+
+  private def words(name: String): List[String] =
+    name.toLowerCase.split("[^\\p{L}\\p{N}']+").toList.filter(w => w.nonEmpty && !Articles(w))
+
+  /** The outline's character `name` refers to: the one so named (case-insensitive, ignoring "the"), else the only one
+    * whose name has every word of it or whose every word it has, as whole words ("the hermit" for "Old Hermit", "Mara
+    * the diver" for "Mara"). A name that fits more than one character, or only part of a word ("guard" in "Guardian
+    * Spirit"), refers to none of them.
     */
   def character(outline: Option[AdventureOutline], name: String): Option[CharacterOutline] = {
-    val key = name.trim.toLowerCase.stripPrefix("the ").trim
+    val key = words(name)
     val characters = outline.toList.flatMap(_.keyCharacters)
     if (key.isEmpty) None
     else
-      characters
-        .find(_.name.toLowerCase == key)
-        .orElse(characters.find { c =>
-          val n = c.name.toLowerCase
-          n.contains(key) || key.contains(n)
-        })
+      characters.find(c => words(c.name) == key).orElse {
+        characters.filter { c =>
+          val own = words(c.name)
+          own.nonEmpty && (key.forall(own.contains) || own.forall(key.contains))
+        } match {
+          case only :: Nil => Some(only)
+          case _ => None
+        }
+      }
   }
 
-  /** The NPC subagent's first message: the character's persona and memory, the situation and the player's words. */
+  /** The most the NPC brief says of what a character knows, in characters: their brief's budget is small. */
+  val MaxKnowledgeChars: Int = 1200
+
+  /** The NPC subagent's first message: the character's persona, what they know, their memory of the player, the
+    * situation and the player's words.
+    *
+    * What a character knows is what the outline says matters where they are: the main quest, and the puzzles and
+    * secrets of the location where the adventure places them and of the one where they are spoken to.
+    */
   def npcBrief(request: NpcDialogueRequest, outline: Option[AdventureOutline], world: WorldSnapshot): String = {
     val persona = character(outline, request.character)
     val name = persona.map(_.name).getOrElse(request.character.trim)
@@ -227,16 +245,29 @@ object DmSubagents {
       case None =>
         s"You are $name, a minor character of this adventure. Stay consistent with the situation."
     }
-    val record = world.npc(name).orElse(world.npc(request.character))
+    // The record that holds what passed between them: one with notes, else one of a meeting
+    val record = List(world.npc(name), world.npc(request.character)).flatten.distinct
+      .sortBy(r => (r.notes.isEmpty, !r.met))
+      .headOption
     val memory = record match {
       case Some(r) if r.met && r.notes.nonEmpty =>
         "What has passed between you and the player:\n" + r.notes.map(n => s"- $n").mkString("\n")
       case Some(r) if r.met => "You have met the player before."
       case _ => "You have not spoken with the player before."
     }
-    val where = world.location(None).map(l => s"\nWhere you are: ${l.name}").getOrElse("")
-    s"""$who
-      |$memory$where
+    val here = world.location(None)
+    val where = here.map(l => s"\nWhere you are: ${l.name}").getOrElse("")
+    val knows = outline.fold("") { o =>
+      val places = (persona.flatMap(_.location).toList ++ here.map(_.id).toList).distinct
+      val lore = places.flatMap(id => o.keyLocations.find(_.id == id)).flatMap { l =>
+        l.puzzles.map(p => s"- ${l.name}: $p").toList ++ l.secrets.map(s => s"- ${l.name}, its secret: $s").toList
+      }
+      val text = (s"- What is at stake: ${o.mainQuest}" :: lore).mkString("\n")
+      val kept = if (text.length <= MaxKnowledgeChars) text else text.take(MaxKnowledgeChars - 3) + "..."
+      s"\nWhat you know (say only what you would, and keep secrets until they are earned):\n$kept"
+    }
+    s"""$who$where$knows
+      |$memory
       |The situation: ${request.situation.trim}
       |
       |The player says to you: "${request.playerSays.trim}"""".stripMargin
@@ -261,7 +292,7 @@ object DmSubagents {
         val seen = if (visited(l.id)) "visited" else "not reached"
         s"${l.name} [${l.id}, $seen]: ${l.significance}$extras"
       }
-      val items = o.importantItems.map(i => s"${i.name}: ${i.purpose}")
+      val items = o.importantItems.map(i => s"${i.name}${i.location.fold("")(id => s" [found at $id]")}: ${i.purpose}")
       val characters = o.keyCharacters.map(c => s"${c.name} (${c.role})")
       s"""Adventure: ${o.title}
         |Main quest: ${o.mainQuest}
@@ -273,7 +304,19 @@ object DmSubagents {
         |Characters:
         |${bullets(characters)}""".stripMargin
     }
-    val here = world.location(None).map(_.name).getOrElse("unknown")
+    val location = world.location(None)
+    val here = location.map(_.name).getOrElse("unknown")
+    // The ways out of here as they stand now, and what is in the way of each that is not open
+    val exits = location.toList.flatMap(_.exits).map { e =>
+      val found = if (e.state == ExitState.Hidden) " - not yet found; never name it" else ""
+      s"${e.direction} to ${e.targetId}: ${e.state.wire}${e.obstacle.fold("")(o => s" ($o)")}$found"
+    }
+    val puzzles = for {
+      o <- outline.toList
+      id <- location.map(_.id).toList
+      l <- o.keyLocations.find(_.id == id).toList
+      p <- l.puzzles.toList
+    } yield p
     val met = world.npcs.filter(_.met).map(_.name)
     s"""$design
       |
@@ -281,6 +324,9 @@ object DmSubagents {
       |Quests:
       |${bullets(quests)}
       |Current location: $here
+      |Its ways out:
+      |${bullets(exits)}
+      |Its puzzles: ${if (puzzles.isEmpty) "none" else puzzles.mkString("; ")}
       |Carrying: ${if (inventory.isEmpty) "nothing" else inventory.mkString(", ")}
       |Characters met: ${if (met.isEmpty) "none" else met.mkString(", ")}
       |

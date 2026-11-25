@@ -143,6 +143,70 @@ class DmSubagentsSpec extends AnyFunSuite with Matchers with LoneElement {
     DmSubagents.character(Some(outline), "  ") shouldBe None
   }
 
+  test("a character is matched by whole words, and only when one character fits") {
+    val guarded = Some(
+      outline.copy(keyCharacters = List(
+        CharacterOutline("Guardian Spirit", "warden", "A pale light"),
+        CharacterOutline("Old Woman", "seer", "Bent and watchful"),
+        CharacterOutline("Old Hermit", "keeper", "Wiry"),
+        CharacterOutline("Mara", "diver", "Cheerful")
+      )))
+    DmSubagents.character(guarded, "the guard") shouldBe None
+    DmSubagents.character(guarded, "man") shouldBe None
+    DmSubagents.character(guarded, "old") shouldBe None // the old woman or the old hermit
+    DmSubagents.character(guarded, "the spirit").map(_.name) shouldBe Some("Guardian Spirit")
+    DmSubagents.character(guarded, "the old woman").map(_.name) shouldBe Some("Old Woman")
+    DmSubagents.character(guarded, "Mara the diver").map(_.name) shouldBe Some("Mara")
+  }
+
+  test("the NPC brief remembers from the record that holds notes, not a seeded one never met") {
+    val seeded = WorldSnapshot.fromOutline(Some(outline))
+    val world = seeded.copy(npcs = seeded.npcs :+ NpcRecord(
+      "hermit",
+      Some("keeper"),
+      met = true,
+      Some("cavern_entrance"),
+      List("owes you a favour")))
+    val brief = DmSubagents.npcBrief(NpcDialogueRequest("hermit", "Well?", "In the cave."), Some(outline), world)
+    brief should include("You are Old Hermit")
+    brief should include("owes you a favour")
+    brief should not include "You have not spoken with the player before."
+  }
+
+  test(
+    "the NPC brief gives what the character would know where they are: the quest, and the place's puzzles and secrets") {
+    val placed = outline.copy(keyCharacters =
+      List(CharacterOutline("Old Hermit", "keeper of the cavern", "Wiry", Some("cavern_entrance"))))
+    val brief = DmSubagents.npcBrief(
+      NpcDialogueRequest("the hermit", "What is behind the waterfall?", "At the cave mouth."),
+      Some(placed),
+      WorldSnapshot.fromOutline(Some(placed)).copy(currentLocation = Some("hall"))
+    )
+    brief should include("What is at stake: Find the lost lantern of the deep")
+    brief should include("Cavern Entrance: The hermit's riddle opens the hidden stair")
+    brief should include("Cavern Entrance, its secret: A hidden stair behind the waterfall")
+    brief should include("Where you are: Small Hall")
+    brief.length should be < 2500
+  }
+
+  test("the hint brief gives the current location's ways out, their states and obstacles, and its puzzles") {
+    val mapped = outline.copy(keyLocations = outline.keyLocations.map {
+      case l if l.id == "cavern_entrance" =>
+        l.copy(exits = List(
+          ExitOutline("north", "hall", "A passage", "open"),
+          ExitOutline("down", "hall", "A stair", "hidden", Some("behind the waterfall")),
+          ExitOutline("east", "hall", "A gate", "locked", Some("a rusted padlock; the iron key opens it"))
+        ))
+      case l => l
+    })
+    val world = WorldSnapshot.fromOutline(Some(mapped)).copy(currentLocation = Some("cavern_entrance"))
+    val brief = DmSubagents.hintBrief(HintRequest("stuck"), Some(mapped), world, Nil)
+    brief should include("- north to hall: open")
+    brief should include("- east to hall: locked (a rusted padlock; the iron key opens it)")
+    brief should include("- down to hall: hidden (behind the waterfall) - not yet found; never name it")
+    brief should include("Its puzzles: The hermit's riddle opens the hidden stair")
+  }
+
   test("asking for a hint delegates to the hint subagent with the outline and the player's progress") {
     val llm = scripted()
     val engine = engineWith(llm)

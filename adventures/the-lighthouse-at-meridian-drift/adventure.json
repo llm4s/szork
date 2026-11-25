@@ -1,0 +1,286 @@
+{
+  "theme": {
+    "id": "custom",
+    "name": "Space Frontier",
+    "prompt": "space station orbiting alien worlds, advanced technology, cosmic mysteries, and alien encounters"
+  },
+  "artStyle": {
+    "id": "comic",
+    "name": "Comic"
+  },
+  "createdAt": 1795607159568,
+  "outline": {
+    "title": "The Lighthouse at Meridian Drift",
+    "tagline": "The station has been broadcasting the same lullaby for forty years. Tonight, someone sang back.",
+    "mainQuest": "Wake from cryosleep aboard Meridian Station and restore the failing Beacon in the observation spire before the alien world below, Orrin, finishes its slow answer. Learn who has been singing to the station.",
+    "subQuests": [
+      "Return the engineer's lost wedding band from the hydroponics garden to the maintenance bay shrine so the repair drone Pip will trust you with its override key.",
+      "Retune the three memory chimes in the garden to the lullaby's notes to coax the glass-moss into blooming, which yields a conductive seed needed for the Beacon.",
+      "Find all of the old crew's recorded logs, which reveal what really happened to Captain Ilse Varga."
+    ],
+    "keyLocations": [
+      {
+        "id": "cryo_bay",
+        "name": "Cryo Bay",
+        "description": "Frost ticks off the lid of your pod as pale emergency light pulses across a curved white chamber. A thin, wavering lullaby hums from the speakers, a little out of tune. A clipboard-sized datapad rests on the floor beside your pod, and a wall console labeled CREW ROSTER glows dimly. To the east, a wide corridor arch stands open toward the sound of dripping water, while to the north a heavy blast door is shut tight beneath a red lock light.",
+        "significance": "Tutorial space. Teaches take, examine and open exits. The datapad holds the lullaby's notes (three tones: low, middle, high), the first hint in the rule of three. The stuttering lullaby and the wrong wake date plant the central mystery.",
+        "exits": [
+          {
+            "direction": "east",
+            "targetId": "garden_ring",
+            "description": "A wide arch opens east into a humid corridor.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "north",
+            "targetId": "maintenance_bay",
+            "description": "A heavy blast door marked MAINTENANCE leads north.",
+            "state": "locked",
+            "obstacle": "Locked by station lockdown; opens when the maintenance keycard from the garden is swiped, or when Pip the drone overrides it."
+          }
+        ],
+        "interactables": [
+          "Your cryo pod (frosted, your name tag reads 'R. Okafor, Relief Technician')",
+          "Crew Roster console (lists six names; five are marked 'Departed', Varga is marked 'Remaining')",
+          "Speaker grille (the lullaby loops with a one-beat stutter)"
+        ],
+        "puzzles": null,
+        "secrets": "Examining the pod reveals its log: you were scheduled to wake 40 years ago, not today. Someone delayed your waking on purpose.",
+        "image": "Interior of a curved white chamber, viewer standing at the foot of a frosted cryo pod in the foreground center. A clipboard-sized datapad lies on the floor beside it. A dimly glowing wall console on the left curve, and a speaker grille above. A wide open arch in the right wall, and a shut blast door under a red light at the back. Pulsing pale emergency light, cold and lonely."
+      },
+      {
+        "id": "garden_ring",
+        "name": "Hydroponics Garden Ring",
+        "description": "A curved corridor of glass walls opens onto a tangled garden lit by violet grow-lamps, where vines drape over railings and the air smells of wet soil. Three brass wind chimes hang over a stone bench, each tarnished and silent. To the west, the arch returns to the cryo bay, to the north a rusted gantry stairs rise toward a spire, and to the east a sliding hatch stands closed beside a mossy workbench. Something small glints in the soil of a toppled planter.",
+        "significance": "Hub with the first obstacle-clearing items. Introduces the lullaby as a puzzle key (rule of three: datapad, chimes, moss). The ring starts the Pip fetch quest.",
+        "exits": [
+          {
+            "direction": "west",
+            "targetId": "cryo_bay",
+            "description": "The arch leads west to the cryo bay.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "east",
+            "targetId": "observation_dome",
+            "description": "A sliding hatch with a viewport leads east.",
+            "state": "closed",
+            "obstacle": null
+          },
+          {
+            "direction": "up",
+            "targetId": "comms_loft",
+            "description": "Rusted gantry stairs climb upward to a loft.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "Three memory chimes (low, middle, high; each engraved with a crew member's initials)",
+          "Toppled planter (a gold wedding band glints inside)",
+          "Mossy workbench (holds a maintenance keycard under a seed tray)",
+          "Glass-moss patch (grey, brittle, and crystalline)"
+        ],
+        "puzzles": "The chimes must be struck in the lullaby's order (low, middle, high, middle) to make the glass-moss bloom, dropping a conductive seed. Alternatively, playing the datapad's lullaby near the moss causes the same bloom. The keycard under the seed tray opens the maintenance door.",
+        "secrets": "Pip's wedding ring is engraved 'To Tomas, keep singing.' A tiny hidden tag on the workbench reads 'Tomas Reyes, Engineer'.",
+        "image": "Interior of a curved glass-walled corridor opening into a tangled garden, viewer standing at the arch. Violet grow-lamps light vines draped over railings. Three tarnished brass wind chimes hang above a stone bench at center. A toppled planter in the foreground with a gold ring glinting in its soil, a mossy workbench with a seed tray beside a closed sliding hatch at right, rusted gantry stairs rising at left, grey crystalline moss patch on the floor. Damp, eerie, tender mood."
+      },
+      {
+        "id": "maintenance_bay",
+        "name": "Maintenance Bay",
+        "description": "Tool racks, cable spools and a humming charging cradle fill this cramped steel workshop, which smells of solder and old oil. A small repair drone named Pip sits in the cradle with a cracked lens, and a tiny memorial shrine of photographs and screws sits on a shelf. To the south, the blast door leads back to the cryo bay, and to the east a narrow service tunnel runs into darkness. A locked toolbox sits beneath the workbench.",
+        "significance": "Fetch-quest payoff and first emotional beat. Pip's dialogue, protective and wry, reveals that Tomas is the missing engineer.",
+        "exits": [
+          {
+            "direction": "south",
+            "targetId": "cryo_bay",
+            "description": "The blast door leads south to the cryo bay.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "east",
+            "targetId": "reactor_core",
+            "description": "A narrow service tunnel descends east toward a faint blue glow.",
+            "state": "locked",
+            "obstacle": "A radiation shutter; Pip's override key, given after the wedding ring is returned, lifts it."
+          }
+        ],
+        "interactables": [
+          "Pip the repair drone (charging, cracked lens)",
+          "Memorial shrine (empty ring-shaped slot at its center)",
+          "Locked toolbox (opens with a three-digit code)",
+          "Tool racks (a torn work schedule is pinned there)"
+        ],
+        "puzzles": "The toolbox code is 407, the date of the last crew's departure (April 07), shown on the torn work schedule and the shrine's photograph. Inside is a spanner. Placing the wedding ring in the shrine slot moves Pip to give you the override key.",
+        "secrets": "Under the shrine's photograph is a note: 'Tomas never left. He is the Beacon's voice.'",
+        "image": "Interior of a cramped steel workshop, viewer standing just inside the door. A small repair drone with a cracked lens sits in a humming charging cradle at center. A shelf at right holds a tiny memorial shrine of photographs and screws, with a ring-shaped empty slot. Tool racks with a torn schedule pinned on the left wall, a locked toolbox under the workbench, and a dark narrow tunnel opening at the back. Warm cluttered pools of light, solemn mood."
+      },
+      {
+        "id": "reactor_core",
+        "name": "Reactor Core",
+        "description": "A cathedral of humming blue light surrounds a slowly turning containment sphere, and the floor trembles with deep bass. Warm air smells of ozone. To the west, the narrow service tunnel returns to the maintenance bay, and to the up direction a ladder rises into a glass shaft. A coolant valve wheel is stiff on the wall, and a scorched console blinks warnings.",
+        "significance": "Mechanical puzzle with a clear in-game hint. The sphere's resonance foreshadows the twist.",
+        "exits": [
+          {
+            "direction": "west",
+            "targetId": "maintenance_bay",
+            "description": "The service tunnel leads west.",
+            "state": "open",
+            "obstacle": null
+          },
+          {
+            "direction": "up",
+            "targetId": "beacon_spire",
+            "description": "A ladder climbs into a glass shaft.",
+            "state": "sealed",
+            "obstacle": "The ladder hatch is sealed by overheated coolant; turning the valve wheel with the spanner vents it."
+          }
+        ],
+        "interactables": [
+          "Containment sphere (hums at the lullaby's pitch)",
+          "Coolant valve wheel (stiff, needs the spanner)",
+          "Scorched console (shows the power curve)",
+          "Warning placard (lists safe pressure as 3 turns)"
+        ],
+        "puzzles": "Use the spanner on the valve wheel and turn it exactly three turns, as the placard says. Fewer leaves the hatch hot; more triggers a harmless but loud alarm and a reset.",
+        "secrets": "Behind the console, a faded crew photo shows Tomas and Captain Varga holding hands.",
+        "image": "Interior of a vast cathedral-like reactor hall, viewer standing on the floor looking at a slowly turning containment sphere glowing blue at the center. A stiff coolant valve wheel on the wall at left, a scorched console blinking warning lights at right, and a small warning placard beside the wheel. A ladder rises into a glass shaft overhead. Humming blue light, warm haze, tense and awe-filled."
+      },
+      {
+        "id": "comms_loft",
+        "name": "Comms Loft",
+        "description": "A dusty loft is crowded with dead antennae and a huge antique radio console, its dials furred with grey. Warm light from the viewing window falls across a captain's chair. To the south... the gantry stairs lead down to the garden. A small safe is bolted beside the radio, and a cassette recorder sits on the desk.",
+        "significance": "Reveals the backstory through Varga's log and holds the Beacon crystal.",
+        "exits": [
+          {
+            "direction": "down",
+            "targetId": "garden_ring",
+            "description": "Gantry stairs lead down to the garden.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "Antique radio console (dial set to 88.1)",
+          "Captain's chair (worn arm, scratched initials I.V.)",
+          "Wall safe (needs four digits)",
+          "Cassette recorder (a tape sits inside)"
+        ],
+        "puzzles": "The safe opens with 1988... no, with 0881, the radio dial reading reversed, hinted by a note taped under the chair arm. Inside is the Beacon crystal and Varga's last log. Playing the cassette reveals her explanation.",
+        "secrets": "Under the chair cushion is a child's drawing of the station with a singing sun.",
+        "image": "Interior of a dusty loft crowded with dead antennae, viewer standing at the top of the stairs. A huge antique radio console with grey-furred dials at center, a small bolted wall safe beside it, and a cassette recorder on the desk in the foreground. A worn captain's chair at right sits in warm light falling through a viewing window. Dusty, golden, melancholy mood."
+      },
+      {
+        "id": "observation_dome",
+        "name": "Observation Dome",
+        "description": "A vast glass dome opens onto the swirling indigo clouds of Orrin, lit by slow auroras that pulse in time with the lullaby. The air is cool and quiet. To the west, the hatch returns to the garden. A cracked telescope points at the planet, and a figure of shimmering light drifts near the glass.",
+        "significance": "Wow moment: the alien Orrin sings back. Meeting the Orrinite lets the player choose how to restore the Beacon.",
+        "exits": [
+          {
+            "direction": "west",
+            "targetId": "garden_ring",
+            "description": "The hatch leads west to the garden.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "Cracked telescope (shows a city of light beneath the clouds)",
+          "Auroras (pulse with the lullaby)",
+          "Lullaby harp (a glass instrument, unstrung)",
+          "Dedication plaque (names the station's founders)"
+        ],
+        "puzzles": null,
+        "secrets": "Looking through the telescope at the right moment shows Orrin's surface drawing the lullaby's notes in light.",
+        "image": "Interior of a vast glass dome, viewer standing on the floor near the entrance hatch. Swirling indigo clouds of a planet fill the dome overhead, with slow auroras. A cracked telescope aims at the glass at left, an unstrung glass harp stands at center, a small dedication plaque on a pedestal at right, and a shimmering figure of light drifts near the glass. Cool, quiet, luminous, wondrous mood."
+      },
+      {
+        "id": "beacon_spire",
+        "name": "Beacon Spire",
+        "description": "A slender chamber of glass ribs crowns the station, and the Beacon, a hollow crystal throne, sits dark in the center. Winds of starlight shimmer through the ribs, and the faint lullaby hums in your teeth. Below, the ladder returns down to the reactor core. A socket waits on the throne's arm.",
+        "significance": "The climax: the Beacon relights, Tomas's consciousness and Orrin's song are reunited.",
+        "exits": [
+          {
+            "direction": "down",
+            "targetId": "reactor_core",
+            "description": "A ladder leads down to the reactor.",
+            "state": "open",
+            "obstacle": null
+          }
+        ],
+        "interactables": [
+          "Crystal throne (socket on the arm)",
+          "Starlight ribs (hum when touched)",
+          "Control lectern (three slots: crystal, seed, voice)",
+          "Tomas's coat (hangs on the throne)"
+        ],
+        "puzzles": "Place the Beacon crystal and the conductive seed in the lectern, then sing or play the lullaby to relight the Beacon.",
+        "secrets": "Tomas's coat has a pocket letter that explains the twist.",
+        "image": "Interior of a slender chamber of glass ribs at the top of a station, viewer standing at the ladder hatch. A dark hollow crystal throne sits at center with a small socket on its arm and a heavy coat hanging on it. A control lectern with three slots stands at the front right. Shimmering starlight washes through the ribs. Dim, hushed, expectant mood."
+      }
+    ],
+    "importantItems": [
+      {
+        "name": "Datapad",
+        "description": "A battered datapad lies on the floor beside your pod.",
+        "purpose": "Holds the lullaby notes and station map; plays the song near glass-moss."
+      },
+      {
+        "name": "Wedding Ring",
+        "description": "A gold ring glints in a toppled planter.",
+        "purpose": "Returned to Pip's shrine to obtain the override key."
+      },
+      {
+        "name": "Maintenance Keycard",
+        "description": "A keycard peeks from under a seed tray.",
+        "purpose": "Opens the maintenance blast door."
+      },
+      {
+        "name": "Spanner",
+        "description": "A heavy spanner rests in the locked toolbox.",
+        "purpose": "Turns the coolant valve."
+      },
+      {
+        "name": "Beacon Crystal",
+        "description": "A pale crystal glows in the wall safe.",
+        "purpose": "Core component of the Beacon."
+      },
+      {
+        "name": "Conductive Seed",
+        "description": "A tiny seed drops from the glass-moss bloom.",
+        "purpose": "Completes the Beacon circuit."
+      }
+    ],
+    "keyCharacters": [
+      {
+        "name": "Pip",
+        "role": "Companion and gatekeeper",
+        "description": "A dented repair drone with a cracked lens and a dry sense of humor. It guards the station's memory of Tomas.",
+        "location": "maintenance_bay"
+      },
+      {
+        "name": "The Orrinite",
+        "role": "Alien presence",
+        "description": "A shimmering figure of light that mimics the lullaby and speaks in chords.",
+        "location": "observation_dome"
+      },
+      {
+        "name": "Captain Ilse Varga",
+        "role": "Absent leader known through logs",
+        "description": "A stern captain who stayed behind to protect the station and delayed your waking.",
+        "location": null
+      },
+      {
+        "name": "Tomas Reyes",
+        "role": "Lost engineer",
+        "description": "Station engineer whose consciousness became the Beacon's voice.",
+        "location": null
+      }
+    ],
+    "adventureArc": "Act 1: You wake to a lullaby and a wrong date, explore the garden, find the datapad's notes and the keycard, and open maintenance. Act 2: Pip's quest, the toolbox and the reactor reveal that the station's crew left decades ago and that Tomas is bound into the Beacon. Varga's log in the loft explains she delayed your waking to protect you from an unstable signal. Act 3: You meet the Orrinite, restore the Beacon and choose to let Tomas finish the song. Twist: the lullaby is Tomas's farewell to Varga, and Orrin has been answering him, not attacking. The ending leaves the station singing in harmony with the planet.",
+    "specialMechanics": "The lullaby's three tones recur as a rule-of-three motif in the datapad, the chimes and the dome. Easter eggs: the child's drawing of the singing sun, the telescope's lullaby in light, and Pip's secret joke tape. Multiple solutions: the moss blooms by chimes or by datapad playback; the maintenance door opens by keycard or by Pip's override."
+  }
+}

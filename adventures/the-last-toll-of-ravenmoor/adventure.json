@@ -41,7 +41,7 @@
         ],
         "puzzles": null,
         "secrets": "Examining the mirror shows a reflection where the portcullis is already raised and a pale nun stands behind you. Reading the ledger shows the last entry dated forty years ago: 'Eleven sisters entered. Twelve bells were counted.'",
-        "image": "Interior of the abbey gatehouse, the viewer standing just inside looking toward the far wall. A warden's table in the centre foreground holds an iron lantern and an open ledger; a cracked mirror hangs on the wall above it, reflecting the dim room. A carved oak door stands in the far wall. A rusted portcullis is seen at the side. Cold lantern glow, rain streaking a small window, gloomy mood."
+        "image": "Interior of a stone gatehouse at a gothic abbey, viewer standing inside near the entrance. A wooden warden's table in the centre holds an iron lantern and an open ledger; a cracked mirror hangs on the stone wall above it. A carved oak door, closed, in the far wall; a rusted iron portcullis at the side. Rain streaks a small window, dim grey light, cold gloomy mood."
       },
       {
         "id": "cloister",
@@ -86,7 +86,7 @@
         ],
         "puzzles": "The dry fountain has a small wheel at its base. Turning it makes the angel statue tilt its jug and drop a tarnished crypt key from its hollow hand into the basin. Alternatively, shaking the statue's loose arm with the crowbar also dislodges the key.",
         "secrets": "The roses grow only on the graves of the eleven sisters. Counting the blooms reveals a twelfth bush with no marker, hinting at the extra soul.",
-        "image": "Exterior of the abbey cloister, the viewer standing at the edge of the garden looking across it. A dry stone fountain with a wheel-shaped mechanism sits at the centre, a weeping angel statue stands among overgrown roses to one side, and crumbling arcades ring the square. A low iron grate is set in the flagstones. Moonless night, faint grey light, damp and eerie."
+        "image": "Exterior of a ruined abbey cloister garden at night, viewer standing in the grass at its edge. A dry stone fountain with a wheel-shaped valve at the centre, a weeping angel statue beside it, overgrown roses tangled round crumbling stone arcades. A heavy chapel door in one arcade, a low iron grate in the flagstones, a spiral stair entrance. Moonless dark sky, faint cold blue light, eerie mood."
       },
       {
         "id": "chapel",
@@ -118,7 +118,7 @@
         ],
         "puzzles": "The confessional ledger is locked in the booth's drawer. The drawer opens with a three-digit dial: the answer is 111 (eleven sisters plus one, tallied on the window as 1-1-1 candle marks). Lighting the lamps needs the lantern's flame. The lamps must be lit in order of the window's candle heights: left, centre, right. If lit wrongly, a cold draft snuffs them and the player can retry.",
         "secrets": "Kneeling in the confessional and listening causes whispers revealing the dial hint: 'Count the faithful, then count the one who was not.' Under a pew cushion is a child's hair ribbon, later matched to the locket.",
-        "image": "Interior of the chapel, the viewer standing at the back of the nave looking toward the altar. Dust-laden sagging pews flank the aisle, an iron crowbar leaning against one. A cracked altar stands ahead with a votive stand of three unlit lamps before it. Behind it a stained glass window of kneeling nuns glows faintly. A confessional booth huddles against the side wall. Cold, hushed, dim mood."
+        "image": "Interior of a ruined abbey chapel, viewer standing at the back looking toward the altar. Dusty sagging wooden pews flank the aisle, an iron crowbar leaning against one. A votive stand with three unlit lamps before a cracked stone altar; a wooden confessional booth against the side wall. Behind the altar a tall stained glass window of kneeling nuns glows faintly. Dim, hushed, spectral mood."
       },
       {
         "id": "sacristy",
@@ -142,7 +142,7 @@
         ],
         "puzzles": "The chest is held by a silver clasp that fits the silver locket's chain. Alternatively, the desk drawer holds the abbess's key, hidden behind a loose board noticed by dust patterns, which also opens it.",
         "secrets": "The wardrobe's back panel holds a child-sized habit stitched with the name 'Odalys'. The abbess's testament reveals that the twelfth soul was a child hidden in the abbey, and that the abbess tolled the bell to cover her death.",
-        "image": "Interior of a narrow vaulted sacristy, the viewer standing at the entrance looking down its length. A tall wardrobe of vestments stands against one wall, an iron-bound chest sits beneath a slit window at the far end, and an abbess's writing desk with papers stands nearby. A thin shaft of pale light falls through the slit onto the chest. Warm candle-wax tones, secretive, still mood."
+        "image": "Interior of a narrow vaulted stone sacristy in a medieval abbey, viewer standing at the entrance end. A tall wooden wardrobe of vestments against one wall, an iron-bound chest beneath a slit window, an abbess's writing desk with papers and a candle. Thin pale light from the slit window, warm candle glow, dusty, secretive, quiet mood."
       },
       {
         "id": "crypt",
@@ -166,7 +166,7 @@
         ],
         "puzzles": "The ghost refuses to speak until the player returns her silver locket to the open twelfth tomb (fetch quest). The locket is found in the belfry stair. Placing the ribbon with it earns the full story and her gift, the Bell Clapper's iron pin.",
         "secrets": "The plaques' initials spell R-E-S-T-I-N-P-E-A-C-E. The twelfth tomb's floor bears a child's chalk drawing of a bell.",
-        "image": "Interior of the crypt, the viewer standing at the foot of the stone steps looking down a damp vault. Eleven stone tombs with carved plaques line both sides; at the far end an open blank tomb awaits, a pale figure in a grey habit standing beside it, hands clasped. An iron candle sconce on a wall gives flickering light. Cold, mournful, green-grey shadows."
+        "image": "Interior of a damp stone crypt vault beneath a medieval abbey, viewer standing at the foot of the steps. Eleven stone tombs with carved name plaques line both sides; at the far end a twelfth tomb lies open and empty, a pale figure in a grey habit with clasped hands beside it. An iron candle sconce on the wall. Cold greenish gloom, flickering light, solemn eerie mood."
       },
       {
         "id": "belfry_stair",
@@ -197,7 +197,7 @@
         ],
         "puzzles": "The trapdoor bolt is above reach. Throwing the hooked rope up catches the bolt ring and pulls it open. A second solution: ring the hand-bell so the bats burst out and knock the bolt loose.",
         "secrets": "Scratches on the wall count eleven strokes, then a twelfth in chalk, a child's tally.",
-        "image": "Interior of a spiral stone stair, the viewer standing on the steps looking upward. Worn steps curl up to a trapdoor overhead. A coil of old rope hangs from a hook on the wall, and a silver locket gleams in a small wall niche beside a hand-bell. Slit windows throw shafts of flickering storm light across the stone. Tense, dim, cold mood."
+        "image": "Interior of a spiral stone staircase in an abbey bell tower, viewer on the steps looking up. Worn stone steps curve upward to a trapdoor overhead. Coiled old rope hangs from a hook, a silver locket gleams in a wall niche, a small hand-bell sits nearby. Narrow slit windows throw shafts of flickering storm light across the stone. Tense, cold, dramatic mood."
       },
       {
         "id": "belfry",
@@ -221,7 +221,7 @@
         ],
         "puzzles": "Fit the iron pin into the clapper, then hoist it with the rope into place. Ring the bell by pulling the rope. Alternatively, striking the bell with the crowbar produces a quieter, partial toll that frees only some spirits, leading to a bittersweet ending.",
         "secrets": "Engraved inside the bell's lip: 'Rung for the unnamed.' Ringing it with the child's ribbon tied to the rope triggers the best ending.",
-        "image": "Interior of the open-arched belfry, the viewer standing by the trapdoor looking at the vast green-bronze Mourning Bell hanging at the centre. Its iron clapper lies on the floor in the foreground, and a rotted bell-rope dangles limply beneath it. Wide stone arches frame a roiling storm sky with lightning. Wind-whipped, dramatic, ominous mood."
+        "image": "Interior of an open stone belfry at the top of an abbey tower, viewer standing on the wooden floor. A vast bronze bell, green with age, hangs at the centre; its iron clapper lies on the floor beneath it, a rotted bell-rope dangling. A trapdoor in the floor. Tall open arches show a wild storm sky, lightning flashes, wind-driven rain, ominous dramatic mood."
       }
     ],
     "importantItems": [

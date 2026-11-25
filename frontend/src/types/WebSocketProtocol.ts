@@ -273,4 +273,7 @@ export interface ExitData {
 export interface ConversationEntry {
   role: string;
   content: string;
+  /** The picture the line was shown with: Base64 (made for this game) or a library URL. */
+  image?: string;
+  url?: string;
 }

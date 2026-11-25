@@ -67,6 +67,17 @@ private[game] final class SceneMedia(
         client.generateScene(prompt, style, gameId, locationId)
     }
 
+  /** The picture `locationId` already has - this game's latest, else the adventure library's - without drawing one. */
+  def pictureOf(locationId: String, gameId: Option[String]): Option[MediaRef] =
+    gameId
+      .flatMap(MediaCache.latestImage(_, locationId, style))
+      .map(MediaRef.Inline(_))
+      .orElse(for {
+        lib <- library
+        adventureId <- adventure()
+        picture <- lib.image(adventureId, locationId, style)
+      } yield picture)
+
   /** The picture of `scene`'s location.
     *
     * A place is drawn once: the first picture made of it is the one shown on every later visit. For a location of a

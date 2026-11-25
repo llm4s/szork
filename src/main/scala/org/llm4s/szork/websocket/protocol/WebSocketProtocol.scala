@@ -327,9 +327,14 @@ object ExitData {
   implicit val rw: ReadWriter[ExitData] = macroRW
 }
 
+/** A line of a loaded game's transcript, with the picture it was shown with if there is one: `image` (Base64, made for
+  * this game) or `url` (the adventure library's, to fetch).
+  */
 case class ConversationEntry(
   role: String,
-  content: String
+  content: String,
+  image: Option[String] = None,
+  url: Option[String] = None
 )
 object ConversationEntry {
   implicit val rw: ReadWriter[ConversationEntry] = macroRW

@@ -321,6 +321,9 @@ class GameEngine(
   def generateSceneImage(scene: GameScene, gameId: Option[String], update: Option[String] = None): Option[MediaRef] =
     media.image(scene, gameId, update)
 
+  /** The picture a location already has, for showing a reloaded game's transcript. See [[SceneMedia.pictureOf]]. */
+  def pictureOf(locationId: String, gameId: Option[String]): Option[MediaRef] = media.pictureOf(locationId, gameId)
+
   /** Whether [[generateSceneImage]] can be expected to produce a picture. */
   def canPicture(scene: GameScene, update: Option[String] = None): Boolean = media.canPicture(scene, update)
 

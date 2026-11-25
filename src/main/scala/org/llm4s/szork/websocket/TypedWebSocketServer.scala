@@ -370,7 +370,7 @@ class TypedWebSocketServer(
                   sessionId = sessionId,
                   gameId = request.gameId,
                   messageIndex = engine.getMessageCount,
-                  conversation = engine.getTranscript.map(e => ConversationEntry(e.role, e.content)),
+                  conversation = transcript(engine, request.gameId, features.image),
                   currentLocation = gameState.currentScene.map(_.locationId),
                   currentScene = gameState.currentScene.map(convertScene),
                   ttsEnabled = features.tts,
@@ -411,7 +411,7 @@ class TypedWebSocketServer(
           sessionId = session.id,
           gameId = session.gameId,
           messageIndex = session.engine.getMessageCount,
-          conversation = session.engine.getTranscript.map(e => ConversationEntry(e.role, e.content)),
+          conversation = transcript(session.engine, session.gameId, session.features.image),
           currentLocation = state.currentScene.map(_.locationId),
           currentScene = state.currentScene.map(convertScene),
           ttsEnabled = session.features.tts,
@@ -511,6 +511,18 @@ class TypedWebSocketServer(
           case Left(error) =>
             sendTo(session, ErrorMessage("Failed to transcribe audio", Some(error)))
         }
+    }
+
+  /** A game's transcript for the browser; with `pictures`, each line that was shown with a picture carries the one its
+    * location has now.
+    */
+  private def transcript(engine: GameEngine, gameId: String, pictures: Boolean): Seq[ConversationEntry] =
+    engine.getTranscript.map { line =>
+      line.pictured.filter(_ => pictures).flatMap(engine.pictureOf(_, Some(gameId))) match {
+        case Some(MediaRef.Inline(image)) => ConversationEntry(line.role, line.content, image = Some(image))
+        case Some(MediaRef.Stored(url)) => ConversationEntry(line.role, line.content, url = Some(url))
+        case None => ConversationEntry(line.role, line.content)
+      }
     }
 
   /** The media a completed turn announces, with the scene it is for, captured when the turn ends. */

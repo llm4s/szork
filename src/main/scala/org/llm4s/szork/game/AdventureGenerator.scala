@@ -2,7 +2,7 @@ package org.llm4s.szork.game
 
 import org.llm4s.agent.Agent
 import org.llm4s.llmconnect.LLMClient
-import org.llm4s.llmconnect.model.CompletionOptions
+import org.llm4s.llmconnect.model.{CompletionOptions, ReasoningEffort}
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.trace.Tracing
@@ -214,19 +214,24 @@ object AdventureGenerator {
       |Remember: You're creating an experience that respects player intelligence while sparking their imagination. Channel the best of classic IF while embracing modern design sensibilities. Make it clever, make it fair, make it memorable!
       |""".stripMargin
 
-  /** Generates an outline for `theme` with the designer agent on `client`, traced with `tracing` when given. */
-  def generateAdventureOutline(theme: String, tracing: Option[Tracing] = None)(using
-    client: LLMClient): SzorkResult[AdventureOutline] = {
+  /** Generates an outline for `theme` with the designer agent on `client`, traced with `tracing` when given, reasoning
+    * with effort `reasoning` on a model that reasons (None: the model's default).
+    */
+  def generateAdventureOutline(
+    theme: String,
+    tracing: Option[Tracing] = None,
+    reasoning: Option[ReasoningEffort] = None)(using client: LLMClient): SzorkResult[AdventureOutline] = {
     logger.info(s"Generating adventure outline for theme: $theme")
     val builder = Agent
       .builder(AgentId, client)
       .withSystemPrompt(DesignerPrompt)
       .withMaxSteps(MaxModelCalls)
-      .withCompletionOptions(CompletionOptions().withMaxTokens(MaxOutputTokens))
+      .withCompletionOptions(CompletionOptions().withMaxTokens(MaxOutputTokens).withReasoning(reasoning))
       .withOutput(AdventureOutlineSchema.schema)
     val outline = for {
       agent <- tracing.fold(builder)(builder.withTracing).build()
       result <- agent.run(designBrief(theme))
+      _ = logger.info(s"Outline designer finished ${result.status.productPrefix}: ${result.runUsage}")
       _ = agent.forget(result.threadId)
       outline <- result.decodeOutput[AdventureOutline]
     } yield withSoundMap(outline)
@@ -236,35 +241,52 @@ object AdventureGenerator {
         Right(o)
       case Left(error) =>
         logger.error(s"Failed to generate adventure outline: ${error.message}")
+        error match {
+          case invalid: org.llm4s.agent.graph.GraphError.OutputInvalid =>
+            invalid.errors.foreach(problem => logger.error(s"  the outline's problem: $problem"))
+          case _ => ()
+        }
         Left(AdventureGenerationError(s"Failed to generate adventure outline: ${error.message}", failureReason(error)))
     }
   }
 
-  /** What to tell the player about a generation that failed with `error`. The agent reports a provider's refusal as a
-    * failed node whose message carries the provider's, so beyond the error types the message is read for the cause.
+  /** What to tell the player about a generation that failed with `error`. llm4s reports a failed model call as the
+    * graph node that failed, with the provider's error as its `cause`, so the cause's type decides; only an error with
+    * no type of its own is read by its text.
     */
   def failureReason(error: org.llm4s.error.LLMError): String = {
-    val text = error.message.toLowerCase
-    def says(words: String*) = words.exists(text.contains)
+    import org.llm4s.agent.graph.GraphError
+    import org.llm4s.error._
     error match {
-      case _: org.llm4s.agent.graph.GraphError.OutputInvalid =>
+      // llm4s reports a failed model call as the graph node that failed, with the provider's own error as its cause
+      case GraphError.NodeFailed(_, _, cause) => failureReason(cause)
+      case GraphError.ToolFailed(_, _, cause) => failureReason(cause)
+      case _: GraphError.OutputInvalid =>
         "The AI's adventure design came back incomplete or malformed. Please try again."
-      case _: org.llm4s.error.AuthenticationError => FailureReasons.Key
-      case _: org.llm4s.error.RateLimitError => FailureReasons.RateLimit
-      case _: org.llm4s.error.TimeoutError | _: org.llm4s.error.NetworkError => FailureReasons.Unreachable
-      case _ if says("401", "403", "authentication", "api key", "api-key", "unauthorized") => FailureReasons.Key
-      case _ if says("429", "rate limit", "overloaded", "529") => FailureReasons.RateLimit
-      case _ if says("invalid request", "400", "not_found_error", "404") =>
-        "The AI service rejected the request; the configured model may not be supported. See the server log."
-      case _ if says("timed out", "timeout", "connection", "unreachable") => FailureReasons.Unreachable
-      case _ => "The adventure could not be generated. See the server log for details."
+      case _: AuthenticationError => FailureReasons.Key
+      case _: RateLimitError => FailureReasons.RateLimit
+      case _: TimeoutError | _: NetworkError => FailureReasons.Unreachable
+      case _: InvalidInputError | _: NotFoundError | _: ValidationError => FailureReasons.Rejected
+      case other => fromText(other.message)
     }
+  }
+
+  /** The reason read from an error's text, for the errors llm4s gives no type of their own. */
+  private def fromText(message: String): String = {
+    val text = message.toLowerCase
+    def says(words: String*) = words.exists(text.contains)
+    if (says("401", "403", "authentication", "api key", "api-key", "unauthorized")) FailureReasons.Key
+    else if (says("429", "rate limit", "overloaded", "529")) FailureReasons.RateLimit
+    else if (says("invalid request", "400", "not_found_error", "404")) FailureReasons.Rejected
+    else if (says("timed out", "timeout", "connection", "unreachable")) FailureReasons.Unreachable
+    else "The adventure could not be generated. See the server log for details."
   }
 
   private object FailureReasons {
     val Key = "The AI service rejected the server's API key. Check the key in the server's .env file."
     val RateLimit = "The AI service is busy or rate-limiting requests. Wait a moment and try again."
     val Unreachable = "The AI service could not be reached. Check the connection and try again."
+    val Rejected = "The AI service rejected the request; the configured model may not be supported. See the server log."
   }
 
   /** `outline` with repeated locations and the exits that lead nowhere dropped ([[OutlineMap.repair]]), and what is

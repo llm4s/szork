@@ -138,18 +138,22 @@ object DmSubagents {
     settings: SubagentSettings,
     outline: () => Option[AdventureOutline],
     world: WorldState,
-    inventory: PlayerInventory
-  ): Vector[TypedAgent[?, ?]] =
+    inventory: PlayerInventory,
+    model: Option[(LLMClient, CompletionOptions)] = None
+  ): Vector[TypedAgent[?, ?]] = {
+    // A subagent model's client, with the Dungeon Master's options; else the Dungeon Master's client and options
+    val own = settings.client.map(_ -> model.fold(CompletionOptions())(_._2)).orElse(model)
     Vector(
-      Option.when(settings.npcDialogue)(npcDialogue(outline, world, settings.client)),
-      Option.when(settings.hints)(hint(outline, world, inventory, settings.client))
+      Option.when(settings.npcDialogue)(npcDialogue(outline, world, own)),
+      Option.when(settings.hints)(hint(outline, world, inventory, own))
     ).flatten
+  }
 
   /** The NPC dialogue subagent. */
   def npcDialogue(
     outline: () => Option[AdventureOutline],
     world: WorldState,
-    client: Option[LLMClient]
+    model: Option[(LLMClient, CompletionOptions)]
   ): TypedAgent[NpcDialogueRequest, NpcLines] =
     limited(
       TypedAgent(
@@ -161,7 +165,7 @@ object DmSubagents {
       ).withSystemPrompt(NpcPrompt)
         .withInputText(request => npcBrief(request, outline(), world.snapshot)),
       NpcMaxTokens,
-      client
+      model
     )
 
   /** The hint subagent. */
@@ -169,7 +173,7 @@ object DmSubagents {
     outline: () => Option[AdventureOutline],
     world: WorldState,
     inventory: PlayerInventory,
-    client: Option[LLMClient]
+    model: Option[(LLMClient, CompletionOptions)]
   ): TypedAgent[HintRequest, Hint] =
     limited(
       TypedAgent(
@@ -180,19 +184,22 @@ object DmSubagents {
       ).withSystemPrompt(HintPrompt)
         .withInputText(request => hintBrief(request, outline(), world.snapshot, inventory.list)),
       HintMaxTokens,
-      client
+      model
     )
 
-  /** `agent` with one model step, a budget of `maxTokens` and [[TaskTimeout]], nothing of its parent's, and `client` if
-    * given (else the Dungeon Master's).
+  /** `agent` with one model step, a budget of `maxTokens` and [[TaskTimeout]], nothing of its parent's, and `model`'s
+    * client and options if given (else the model llm4s gives a child: its parent's client, with default options).
     */
-  private def limited[I, O](agent: TypedAgent[I, O], maxTokens: Long, client: Option[LLMClient]): TypedAgent[I, O] = {
+  private def limited[I, O](
+    agent: TypedAgent[I, O],
+    maxTokens: Long,
+    model: Option[(LLMClient, CompletionOptions)]): TypedAgent[I, O] = {
     val bounded = agent
       .withMaxSteps(MaxStepsPerTask)
       .withInheritance(
         Inheritance.none.withBudget(
           TaskBudget().withMaxSteps(MaxStepsPerTask).withTimeout(TaskTimeout).withMaxTokens(maxTokens)))
-    client.fold(bounded)(c => bounded.withModel(c, CompletionOptions()))
+    model.fold(bounded) { case (client, options) => bounded.withModel(client, options) }
   }
 
   /** The outline's character `name` refers to: the one so named (case-insensitive), else one whose name contains it or

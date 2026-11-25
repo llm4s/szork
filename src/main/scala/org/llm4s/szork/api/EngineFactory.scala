@@ -54,7 +54,8 @@ object EngineFactory {
           tracing = tracing,
           contextWindow = config.dmContextWindow,
           inputGuardrails = guardrails,
-          subagents = subagents
+          subagents = subagents,
+          reasoning = config.reasoningEffort
         )(using llmClient))
   }
 

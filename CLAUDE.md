@@ -47,7 +47,9 @@ npm run format    # Format code
 Copy `.env.example` to `.env` and fill in keys (the README has the full variable table):
 - `OPENAI_API_KEY` - OpenAI models, DALL-E, TTS and Whisper
 - `ANTHROPIC_API_KEY` - Claude models
-- `SZORK_LLM_PROVIDER` / `SZORK_LLM_MODEL` - choose the Dungeon Master's provider and model
+- `SZORK_LLM_PROVIDER` / `SZORK_LLM_MODEL` - choose the Dungeon Master's provider and model (Anthropic default:
+  `claude-sonnet-5-5`); `SZORK_REASONING_EFFORT` (default `low`) - how hard a reasoning model thinks; the Claude 5 models
+  cannot finish an outline at their own default
 
 ## Architecture Overview
 
@@ -71,7 +73,8 @@ keep `frontend/src/types/WebSocketProtocol.ts` in sync.
 `withOutput(DungeonMasterOutput.schema)`, `withMaxSteps`, a `ContextWindowMiddleware`, optional `withTracing`). A game is
 one agent thread; streaming and blocking agents share one `GraphRuntime`. The middleware trims only what each model call
 is sent (`SZORK_DM_CONTEXT_MAX_TOKENS`/`_MESSAGES`); the thread, and so `GameState.agentMessages`, keeps the whole
-conversation. Restoring a save seeds a new thread with the saved conversation. A `GuardrailMiddleware` runs
+conversation. Restoring a save seeds a new thread with the saved conversation. **game/DmConversation.scala** owns the
+thread, its history and per-turn usage (`runTurn`); **game/SceneMedia.scala** the narration, image and music calls. A `GuardrailMiddleware` runs
 **game/PlayerInputGuardrail.scala** (llm4s's `PromptInjectionDetector` with adventure-safe patterns,
 `SZORK_INPUT_GUARDRAIL`) on each command: a blocked turn (`AgentStatus.Blocked`) never reaches the model and is answered
 in character with a `refused` `GameResponse` that changes nothing and is not saved.
@@ -100,6 +103,9 @@ are not moves it judges). `ExitGuardMiddleware` (llm4s `wrapModelCall`) checks e
 the model gives it: a refused answer goes back to the model once with the exit, its state and obstacle (neither is
 stored in the thread); a second refused move is replaced with a simple "the way is shut" answer. `GameEngine.completeTurn`
 checks the rule again before it records a move.
+
+**game/RepeatedToolCalls.scala** - `RepeatedToolCallMiddleware` (llm4s `wrapToolCall`): a tool call the model repeats
+with the same arguments within a turn is not run again, and it is told to answer.
 
 **game/DmSubagents.scala** - The Dungeon Master's llm4s subagents (`TypedAgent`s offered with `withSubagents`, bounded
 by `withDelegation(DmSubagents.Delegation)`): `npc_dialogue` (tool `task_npc_dialogue`, returns `NpcLines`) and `hint`
@@ -149,12 +155,16 @@ llm4s image client (traced with the Dungeon Master) and the cached `ImageClient`
 sbt test                                  # All backend tests (fake LLM, no network)
 sbt "testOnly *GameEngineAgentSpec"       # One suite
 sbt "testOnly * -- -z inventory"          # Tests whose name matches
-RUN_INTEGRATION=true sbt "testOnly *AdventureIntegrationSpec"  # Against a real LLM
+sbt "runMain org.llm4s.szork.playtest.Playtest"   # Design and play a whole adventure on the configured model
+RUN_INTEGRATION=true sbt "testOnly *AdventureIntegrationSpec"  # The same playtest as a test
 cd frontend && npm test                   # Frontend tests
 ```
 
 Tests script the LLM with the llm4s testkit's `ScriptedLLMClient`: `stubs/ScriptedDm` plays a small cavern and takes
-per-test rules, `stubs/DmAnswers` builds structured answers, and `calls`/`lastCall` give the recorded requests. CI
+per-test rules, `stubs/DmAnswers` builds structured answers, and `calls`/`lastCall` give the recorded requests.
+`stubs/FakeAnthropic` is a local Messages API for asserting on what goes on the wire (`WireFormatSpec`);
+`WorldInvariantsSpec` plays seeded random games; **playtest/** (`Playtest`, `PlaytestChecks`) is the live harness, also
+run weekly by `.github/workflows/playtest.yml`. `docs/TESTING.md` describes the layers. CI
 compiles main and test sources with `-Werror` and checks `scalafmtCheckAll`.
 
 ## Code Style

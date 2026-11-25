@@ -99,10 +99,10 @@ object MessageCodec {
     case assistant: AssistantMessage =>
       ujson.Obj(
         "type" -> "assistant",
-        "content" -> assistant.contentOpt.map(ujson.Str(_)).getOrElse(ujson.Null),
+        "content" -> assistant.text.map(ujson.Str(_)).getOrElse(ujson.Null),
         "toolCalls" -> ujson.Arr(assistant.toolCalls.map { tc =>
           ujson.Obj(
-            "id" -> tc.id,
+            "id" -> tc.id.asString,
             "name" -> tc.name,
             "arguments" -> tc.arguments
           )
@@ -118,7 +118,7 @@ object MessageCodec {
     case tool: ToolMessage =>
       ujson.Obj(
         "type" -> "tool",
-        "toolCallId" -> tool.toolCallId,
+        "toolCallId" -> tool.toolCallId.asString,
         "content" -> tool.content
       )
   }
@@ -137,7 +137,7 @@ object MessageCodec {
           case Some(arr) =>
             arr.arr.map { tc =>
               ToolCall(
-                id = tc("id").str,
+                id = ToolCallId(tc("id").str),
                 name = tc("name").str,
                 arguments = tc("arguments")
               )
@@ -150,10 +150,7 @@ object MessageCodec {
         SystemMessage(content = json("content").str)
 
       case "tool" =>
-        ToolMessage(
-          toolCallId = json("toolCallId").str,
-          content = json("content").str
-        )
+        ToolMessage(json("content").str, ToolCallId(json("toolCallId").str))
 
       case other =>
         throw new IllegalArgumentException(s"Unknown message type: $other")

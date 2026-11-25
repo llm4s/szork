@@ -137,7 +137,7 @@ final class ExitGuardMiddleware(world: WorldState) extends AgentMiddleware {
               logger.warn(s"The corrected answer moves the player to ${again.to} again: the move is refused")
               val answer = ExitGuard.shutAnswer(again)
               val completion = second.completion
-              second.withCompletion(completion.withMessage(completion.message.withContent(answer)).withContent(answer))
+              second.withCompletion(completion.withMessage(completion.message.withContent(answer)))
             }
           }
       }

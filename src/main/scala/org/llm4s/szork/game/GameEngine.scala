@@ -7,7 +7,7 @@ import org.llm4s.agent.graph.middleware.{ContextWindowMiddleware, GuardrailMiddl
 import org.llm4s.agent.guardrails.InputGuardrail
 import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.LLMClient
-import org.llm4s.llmconnect.model.{Message, UserMessage, AssistantMessage, SystemMessage, ToolMessage, UsageSummary}
+import org.llm4s.llmconnect.model.{CompletionOptions, Message, ReasoningEffort, UsageSummary}
 import org.llm4s.toolapi.ToolRegistry
 import org.llm4s.trace.Tracing
 import org.llm4s.types.Result
@@ -53,6 +53,9 @@ import org.llm4s.szork.streaming.StreamingJsonParser
   *   answered with [[PlayerInputGuardrail.Refusal]]
   * @param subagents
   *   Which subagents the Dungeon Master may delegate to (NPC dialogue, hints) and their client; see [[DmSubagents]]
+  * @param reasoning
+  *   How hard the Dungeon Master and its subagents reason before they answer, on models that reason (None: the model's
+  *   default); see [[GameEngine.completionOptions]]
   * @param llmClient
   *   LLM client for AI narrative generation (implicit)
   */
@@ -69,7 +72,8 @@ class GameEngine(
   tracing: Option[Tracing] = None,
   contextWindow: Option[ContextWindowConfig] = Some(GameEngine.DefaultContextWindow),
   inputGuardrails: Seq[InputGuardrail] = PlayerInputGuardrail.default,
-  subagents: SubagentSettings = SubagentSettings.default
+  subagents: SubagentSettings = SubagentSettings.default,
+  reasoning: Option[ReasoningEffort] = None
 )(implicit llmClient: LLMClient) {
   private implicit val logger: org.slf4j.Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
@@ -80,13 +84,19 @@ class GameEngine(
   @volatile private var outline: Option[AdventureOutline] = adventureOutline
   private var systemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, outline, subagents)
 
+  private val media =
+    new SceneMedia(sessionId, artStyle, artStyleDescription, ttsClient, narrationVoice, imageClient, musicClient)
+
   // This game's inventory and world state, read and changed by the agent's tools. The world state outlives the
   // context window: what happened in turns the model is no longer sent is still there.
   private val inventory = new PlayerInventory()
   private val world = WorldState.seededFrom(outline)
-  private val toolRegistry = new ToolRegistry(GameTools.forInventory(inventory) ++ GameTools.forWorld(world))
+  private val toolRegistry = ToolRegistry.of(GameTools.forInventory(inventory) ++ GameTools.forWorld(world))
   // The subagents the Dungeon Master delegates to: their briefs read this game's outline, world and inventory
-  private val subagentDefinitions = DmSubagents.forGame(subagents, () => outline, world, inventory)
+  // What every model call of this game asks for besides its messages
+  private val modelOptions = GameEngine.completionOptions(reasoning)
+  private val subagentDefinitions =
+    DmSubagents.forGame(subagents, () => outline, world, inventory, reasoning.map(_ => llmClient -> modelOptions))
 
   // The Dungeon Master is an llm4s Agent; the game's conversation is one of its threads.
   // Two agents are compiled from the same settings - one streaming, one not - over a shared
@@ -98,25 +108,14 @@ class GameEngine(
   modelWindow.foreach(w =>
     logger.debug(s"[$sessionId] Context window: maxTokens=${w.maxTokens}, maxMessages=${w.maxMessages}"))
   private val runtime: GraphRuntime = GraphRuntime.inMemory()
-  private var agents: Result[GameEngine.DungeonMaster] = buildAgents(systemPrompt)
+  // The conversation with the Dungeon Master: its llm4s thread, history and usage
+  private val conversation = new DmConversation(sessionId, buildAgents(systemPrompt))
 
-  // The thread holding the conversation, once a turn has run on it. After a restore (or a
-  // failed turn) it is None, and the next turn starts a new thread seeded with `history`.
-  private var threadId: Option[ThreadId] = None
-  // The thread's usage as of its last turn (llm4s accumulates it over the thread), to tell each turn's own
-  private var threadUsage: UsageSummary = UsageSummary()
-  // The model calls, tokens and time of the last completed turn
-  @volatile private var lastUsage: Option[GameEngine.TurnUsage] = None
-  // The conversation as of the last successful turn: the thread's full history, without the
-  // system prompt (the agent sends that on every model call).
-  @volatile private var history: Vector[Message] = Vector.empty
   private var coreState: CoreState = CoreState()
   private var lastValidationIssues: Option[List[String]] = None
   // Whether the last turn moved the player to a new location (or opened the first scene);
   // scene images and location music are generated only then
   @volatile private var lastTurnChangedLocation: Boolean = false
-  // Index into `history` where the last turn's messages begin
-  private var lastTurnStart: Int = 0
   private val createdAt: Long = clock.now()
   private var sessionStartTime: Long = clock.now()
   private var totalPlayTime: Long = 0L // Accumulated play time from previous sessions
@@ -139,9 +138,9 @@ class GameEngine(
 
     // A new game is a new thread, opened with the init adventure prompt as its first turn
     // (the trigger message is not shown to the user)
-    startNewConversation(Vector.empty)
+    conversation.startOver(Vector.empty)
 
-    runTurn(GameConstants.Prompts.INIT_ADVENTURE, listener = None).flatMap(answered) match {
+    conversation.runTurn(GameConstants.Prompts.INIT_ADVENTURE, listener = None).flatMap(DmConversation.answered) match {
       case Right(result) =>
         val outcome = completeTurn(result)
         logger.info(s"[$sessionId] Game initialized: ${outcome.scene.map(_.locationId).getOrElse("no scene")}")
@@ -176,19 +175,19 @@ class GameEngine(
     logger.debug(s"[$sessionId] Processing command (streaming=${onTextChunk.isDefined}): $command")
 
     val textStartTime = System.currentTimeMillis()
-    runTurn(command, onTextChunk.map(narrationListener)) match {
+    conversation.runTurn(command, onTextChunk.map(narrationListener)) match {
       case Right(result) if result.status.isInstanceOf[AgentStatus.Blocked] =>
         // An input guardrail refused the command before the model saw it: the game is as it was, and the Dungeon
         // Master answers in character
         lastTurnChangedLocation = false
         lastValidationIssues = None
-        val audio = if (generateAudio) synthesize(PlayerInputGuardrail.Refusal) else None
+        val audio = if (generateAudio) media.narrate(PlayerInputGuardrail.Refusal) else None
         Right(GameResponse(PlayerInputGuardrail.Refusal, audio, coreState.currentScene, refused = true))
 
       case Right(result) =>
         logger.debug(s"[$sessionId] Turn completed in ${System.currentTimeMillis() - textStartTime}ms")
         val outcome = completeTurn(result)
-        val audio = if (generateAudio) synthesize(outcome.narration) else None
+        val audio = if (generateAudio) media.narrate(outcome.narration) else None
         Right(GameResponse(outcome.narration, audio, outcome.scene.orElse(coreState.currentScene), refused = false))
 
       case Left(error) =>
@@ -279,29 +278,31 @@ class GameEngine(
         if (updated != current) coreState = coreState.copy(currentScene = Some(updated))
       }
     }
+    // What the player carries is not lying in the scene: a model often lists an item there on the turn it is taken
+    coreState.currentScene.foreach { current =>
+      val carried = inventory.list.map(_.trim.toLowerCase).toSet
+      val lying = current.items.filterNot(item => carried(item.trim.toLowerCase))
+      if (lying != current.items) coreState = coreState.copy(currentScene = Some(current.copy(items = lying)))
+    }
     lastTurnChangedLocation = scene.exists(s => !previousLocation.contains(s.locationId))
 
-    TurnOutcome(shut.fold(interpreted.narration)(ExitGuard.shutNarration), scene)
+    TurnOutcome(shut.fold(interpreted.narration)(ExitGuard.shutNarration), scene.flatMap(_ => coreState.currentScene))
   }
 
   /** Narrates `text` with the configured text-to-speech client, if there is one. */
-  def narrate(text: String): Option[String] = synthesize(text)
+  def narrate(text: String): Option[String] = media.narrate(text)
 
-  private def synthesize(text: String): Option[String] =
-    ttsClient.filter(_ => text.nonEmpty).flatMap { client =>
-      val start = System.currentTimeMillis()
-      client.synthesizeToBase64(text, narrationVoice) match {
-        case Right(audio) =>
-          logger.info(s"[$sessionId] Audio generated in ${System.currentTimeMillis() - start}ms (${text.length} chars)")
-          Some(audio)
-        case Left(error) =>
-          logger.error(s"[$sessionId] Failed to generate audio: ${error.message}")
-          None
-      }
-    }
+  /** The image for `scene` (generated, or from the cache), Base64-encoded; None without an image client or when
+    * generation fails. Reads no mutable engine state, so it can run while the next turn is in progress.
+    */
+  def generateSceneImage(scene: GameScene, gameId: Option[String]): Option[String] = media.image(scene, gameId)
+
+  /** Background music for `scene` (generated, or from the cache) and its mood. Reads no mutable engine state. */
+  def generateBackgroundMusic(scene: GameScene, gameId: Option[String]): Option[(String, String)] =
+    media.music(scene, gameId)
 
   /** Returns the current count of messages in the conversation history. */
-  def getMessageCount: Int = history.length
+  def getMessageCount: Int = conversation.history.length
 
   /** The items the player is carrying. */
   def getInventory: List[String] = inventory.list
@@ -322,10 +323,10 @@ class GameEngine(
     *
     * This is the whole thread, not the pruned part a model call is sent; it is what a save stores.
     */
-  def getMessages: Vector[Message] = history
+  def getMessages: Vector[Message] = conversation.history
 
   /** The transcript shown to the player, derived from the conversation (see [[Transcript]]). */
-  def getTranscript: List[Transcript.Entry] = Transcript.of(history)
+  def getTranscript: List[Transcript.Entry] = Transcript.of(conversation.history)
 
   /** Builds the Dungeon Master agents for `systemPrompt`: one streaming, one not, sharing this engine's runtime.
     *
@@ -346,12 +347,16 @@ class GameEngine(
     * [[DmSubagents.Delegation]]); a task runs on a child thread of the turn's thread, in the same runtime, traced with
     * the Dungeon Master.
     */
-  private def buildAgents(systemPrompt: String): Result[GameEngine.DungeonMaster] = {
+  private def buildAgents(systemPrompt: String): Result[DmConversation.Agents] =
+    toolRegistry.flatMap(registry => buildAgents(systemPrompt, registry))
+
+  private def buildAgents(systemPrompt: String, registry: ToolRegistry): Result[DmConversation.Agents] = {
     val agent = Agent
       .builder(GameEngine.AgentId, llmClient)
-      .withTools(toolRegistry)
+      .withTools(registry)
       .withSystemPrompt(systemPrompt)
       .withMaxSteps(GameEngine.MaxModelCallsPerTurn)
+      .withCompletionOptions(modelOptions)
       .withOutput(DungeonMasterOutput.schema)
       .withRuntime(runtime)
     val base =
@@ -366,7 +371,12 @@ class GameEngine(
     // An answer that would move the player through an exit that is not open goes back to the model once, with what
     // is in the way (wrapModelCall); it wraps the context window, so its corrective request is trimmed like any other
     val stated =
-      guarded.withMiddleware(new WorldStateMiddleware(world, inventory), new ExitGuardMiddleware(world))
+      guarded.withMiddleware(
+        new WorldStateMiddleware(world, inventory),
+        new ExitGuardMiddleware(world),
+        // a tool call the model repeats within a turn is not run again, and it is told to answer
+        new RepeatedToolCallMiddleware
+      )
     val windowed = modelWindow.fold(stated)(window => stated.withMiddleware(new ContextWindowMiddleware(window)))
     val builder = tracing.fold(windowed)(windowed.withTracing)
     for {
@@ -374,94 +384,8 @@ class GameEngine(
       streaming <- builder.withStreaming().build()
     } yield {
       if (subagentDefinitions.nonEmpty) logger.debug(s"[$sessionId] ${blocking.delegation}")
-      GameEngine.DungeonMaster(blocking, streaming)
+      DmConversation.Agents(blocking, streaming)
     }
-  }
-
-  /** Replaces the conversation: forgets the current thread, and seeds the next turn's new thread with `seed`. */
-  private def startNewConversation(seed: Vector[Message]): Unit = {
-    forgetThread()
-    history = seed
-  }
-
-  /** Removes the current thread from the runtime; the next turn starts a new one seeded with `history`. */
-  private def forgetThread(): Unit = {
-    for {
-      id <- threadId
-      dm <- agents.toOption
-    } dm.blocking.forget(id).left.foreach { error =>
-      logger.warn(s"[$sessionId] Could not forget agent thread ${id.value}: ${error.message}")
-    }
-    threadId = None
-  }
-
-  /** Runs one turn of the conversation, streaming events to `listener` when given.
-    *
-    * Continues the current thread, or starts a new one seeded with `history`. A completed turn updates `history` from
-    * the thread. A failed turn leaves `history` as it was and drops the thread (llm4s keeps a failed turn's thread for
-    * recovery, which the game does not use), so the player can simply try the command again. A turn an input guardrail
-    * blocked is returned with its `Blocked` status and leaves `history` as it was; its thread stored nothing of it.
-    */
-  private def runTurn(query: String, listener: Option[StreamEvent => Unit]): Result[AgentResult] =
-    agents.flatMap { dm =>
-      val (turnThread, seed, usageBefore) = threadId match {
-        case Some(id) => (id, Nil, threadUsage)
-        case None => (ThreadId(s"szork-${sessionId}-${java.util.UUID.randomUUID()}"), history, UsageSummary())
-      }
-      val started = System.currentTimeMillis()
-      val outcome = listener match {
-        case None => dm.blocking.run(turnThread, query, RunConfig(), seed)
-        case Some(l) => dm.streaming.stream(turnThread, query, RunConfig(), seed)(l).flatMap(_.await())
-      }
-      outcome match {
-        case Right(result) =>
-          val turnStart = history.length
-          result.status match {
-            case AgentStatus.Suspended(_, _, _, _, _) =>
-              // The game configures no approvals or breakpoints, so a parked turn is unexpected.
-              // Its history is mid-turn, so keep the last good history and drop the thread.
-              threadId = Some(turnThread)
-              forgetThread()
-              Left(GameEngine.TurnNotCompleted("the turn was suspended"))
-            case AgentStatus.Blocked(guardrail, reason) =>
-              // The reason names the patterns that matched, never the command
-              logger.warn(s"[$sessionId] Command refused by guardrail $guardrail: $reason")
-              // A thread this turn opened holds no conversation yet; the next turn opens another, seeded with history
-              if (threadId.isEmpty) {
-                threadId = Some(result.threadId)
-                forgetThread()
-              }
-              Right(result)
-            case status =>
-              // Completed, or ended at a step or token limit: either way the thread can take the next turn
-              threadId = Some(result.threadId)
-              history = result.messages
-              lastTurnStart = turnStart
-              threadUsage = result.usage
-              val usage = GameEngine.TurnUsage(result.usage, usageBefore, System.currentTimeMillis() - started)
-              lastUsage = Some(usage)
-              logger.info(s"[$sessionId] Turn usage: $usage")
-              status match {
-                case AgentStatus.Completed(_) =>
-                  logger.debug(
-                    s"[$sessionId] Turn completed: ${result.messages.length} messages, usage=${result.usage}")
-                  Right(result)
-                case other =>
-                  Left(GameEngine.TurnNotCompleted(s"the turn ended ${other.productPrefix}"))
-              }
-          }
-        case Left(error) =>
-          logger.warn(s"[$sessionId] Turn failed on thread ${turnThread.value}: ${error.message}")
-          threadId = Some(turnThread)
-          forgetThread()
-          Left(error)
-      }
-    }
-
-  /** `result` if the turn was answered; a turn a guardrail blocked is an error. */
-  private def answered(result: AgentResult): Result[AgentResult] = result.status match {
-    case AgentStatus.Blocked(guardrail, _) => Left(GameEngine.TurnNotCompleted(s"guardrail $guardrail refused it"))
-    case _ => Right(result)
   }
 
   /** Retrieves and clears any validation issues from the last response parsing.
@@ -477,44 +401,10 @@ class GameEngine(
 
   /** The model calls, tokens and time the last completed turn took, from the usage llm4s counts on the turn's thread.
     */
-  def lastTurnUsage: Option[GameEngine.TurnUsage] = lastUsage
+  def lastTurnUsage: Option[GameEngine.TurnUsage] = conversation.lastTurnUsage
 
   /** Whether the last turn moved the player to a new location (or opened the first scene). */
   def locationChangedLastTurn: Boolean = lastTurnChangedLocation
-
-  /** Generates (or fetches from cache) the image for `scene`.
-    *
-    * Reads no mutable engine state, so it can run while the next turn is in progress.
-    *
-    * @return
-    *   Base64-encoded image, or None if there is no image client or generation fails
-    */
-  def generateSceneImage(scene: GameScene, gameId: Option[String]): Option[String] =
-    imageClient.flatMap { client =>
-      val styledPrompt = MediaPlanner.styledImagePrompt(artStyle, scene.imageDescription, artStyleDescription)
-      logger.info(s"[$sessionId] Generating scene image for ${scene.locationId}: ${styledPrompt.take(100)}...")
-      client.generateScene(styledPrompt, artStyle.getOrElse("fantasy"), gameId, Some(scene.locationId)) match {
-        case Right(image) => Some(image)
-        case Left(error) =>
-          logger.error(s"[$sessionId] Failed to generate image: ${error.message}")
-          None
-      }
-    }
-
-  /** Generates (or fetches from cache) background music for `scene`; returns the music and its mood.
-    *
-    * Reads no mutable engine state, so it can run while the next turn is in progress.
-    */
-  def generateBackgroundMusic(scene: GameScene, gameId: Option[String]): Option[(String, String)] =
-    musicClient.filter(_.isAvailable).flatMap { client =>
-      logger.info(s"[$sessionId] Generating music for ${scene.locationId}: mood=${scene.musicMood}")
-      client.generate(scene.musicMood, scene.musicDescription, gameId, Some(scene.locationId)) match {
-        case Right(music) => Some((music, scene.musicMood))
-        case Left(error) =>
-          logger.warn(s"[$sessionId] Music generation failed: ${error.message}")
-          None
-      }
-    }
 
   def getCurrentScene: Option[GameScene] = coreState.currentScene
 
@@ -551,7 +441,7 @@ class GameEngine(
       adventureTitle = adventureTitle,
       // The full thread: pruning applies only to what a model call is sent, so a restored game
       // prunes again from the whole conversation
-      agentMessages = history.toList
+      agentMessages = conversation.history.toList
     )
   }
 
@@ -579,26 +469,9 @@ class GameEngine(
     // seeds a new llm4s thread when the next turn runs.
     outline = state.adventureOutline
     systemPrompt = PromptBuilder.fullSystemPrompt(theme, artStyle, outline, subagents)
-    agents = buildAgents(systemPrompt)
-    restoreConversation(state.agentMessages.toVector)
-    logger.info(s"[$sessionId] Game state restored with ${history.size} agent messages")
-  }
-
-  /** Seeds the next turn with restored `messages`.
-    *
-    * llm4s refuses to seed a thread with an invalid conversation - for example one saved mid-turn, ending in a tool
-    * call that has no result - so such a history is cut back to its longest valid prefix.
-    */
-  private def restoreConversation(messages: Vector[Message]): Unit = {
-    val valid = Iterator
-      .iterate(messages)(_.dropRight(1))
-      .takeWhile(_.nonEmpty)
-      .find(prefix => Message.validateConversation(prefix.toList).isRight)
-      .getOrElse(Vector.empty)
-    if (valid.length < messages.length)
-      logger.warn(
-        s"[$sessionId] Dropped ${messages.length - valid.length} trailing messages to restore a valid conversation")
-    startNewConversation(valid)
+    conversation.rebuild(buildAgents(systemPrompt))
+    conversation.restore(state.agentMessages.toVector)
+    logger.info(s"[$sessionId] Game state restored with ${conversation.history.size} agent messages")
   }
 
   // Step tracking methods for persistence
@@ -644,7 +517,7 @@ class GameEngine(
     response: Option[GameResponse],
     executionTimeMs: Long
   ): StepData = {
-    val toolCalls = ToolCallInfo.fromMessages(history.drop(lastTurnStart))
+    val toolCalls = ToolCallInfo.fromMessages(conversation.lastTurnMessages)
 
     val metadata = StepMetadata(
       gameId = gameId,
@@ -653,7 +526,7 @@ class GameEngine(
       userCommand = userCommand,
       responseLength = narrationText.length,
       toolCallCount = toolCalls.length,
-      messageCount = history.length,
+      messageCount = conversation.history.length,
       success = true,
       executionTimeMs = executionTimeMs
     )
@@ -682,6 +555,18 @@ object GameEngine {
     */
   val MaxModelCallsPerTurn: Int = 12
 
+  /** The most tokens one Dungeon Master model call may answer with. A model that reasons spends them on its reasoning
+    * too, so this is several times the longest scene; llm4s's default (2048 on Anthropic) is not enough for one.
+    */
+  val MaxOutputTokens: Int = 8000
+
+  /** The options of a Dungeon Master model call: room for the answer, and `reasoning` when given. On a model that does
+    * not reason the effort is not sent. Without one, a model that always reasons does so at its own default, which for
+    * the Claude 5 models is high: slow, and long enough to use up the whole answer.
+    */
+  def completionOptions(reasoning: Option[ReasoningEffort]): CompletionOptions =
+    CompletionOptions().withMaxTokens(MaxOutputTokens).withReasoning(reasoning)
+
   /** Conversation tokens sent with each model call by default, besides the system prompt and the current turn. */
   val DefaultContextTokens: Int = 24000
 
@@ -694,8 +579,8 @@ object GameEngine {
     */
   def contextWindowFor(window: Option[ContextWindowConfig], llmClient: LLMClient): Option[ContextWindowConfig] =
     window.map { w =>
-      val modelLimit = (llmClient.getContextWindow() - llmClient.getReserveCompletion()) / 2
-      if (modelLimit > 0) w.copy(maxTokens = w.maxTokens.map(math.min(_, modelLimit))) else w
+      val modelLimit = (llmClient.contextWindow - llmClient.reserveCompletion) / 2
+      if (modelLimit > 0) w.withMaxTokens(w.maxTokens.map(math.min(_, modelLimit))) else w
     }
 
   /** What one turn of the Dungeon Master cost: its model calls, their input and output tokens, and its time. */
@@ -706,20 +591,10 @@ object GameEngine {
 
   object TurnUsage {
 
-    /** The turn's share of a thread's usage: `after` the turn less `before` it. */
-    def apply(after: UsageSummary, before: UsageSummary, durationMs: Long): TurnUsage =
-      TurnUsage(
-        after.requestCount - before.requestCount,
-        after.inputTokens - before.inputTokens,
-        after.outputTokens - before.outputTokens,
-        durationMs)
+    /** A turn's usage as llm4s reports it (`AgentResult.runUsage`), with the time it took. */
+    def apply(usage: UsageSummary, durationMs: Long): TurnUsage =
+      TurnUsage(usage.requestCount, usage.inputTokens, usage.outputTokens, durationMs)
   }
-
-  /** The id of the Dungeon Master agent. */
-  val AgentId: String = "szork-dungeon-master"
-
-  /** The Dungeon Master, compiled twice from the same settings: without and with streaming. */
-  private final case class DungeonMaster(blocking: Agent, streaming: Agent)
 
   /** A turn that ran but did not complete with an answer (a step or token limit, a suspension, or a guardrail where a
     * refusal is not expected).
@@ -727,6 +602,9 @@ object GameEngine {
   final case class TurnNotCompleted(reason: String) extends LLMError {
     override def message: String = s"The Dungeon Master did not finish the turn: $reason"
   }
+
+  /** The id of the Dungeon Master agent. */
+  val AgentId: String = "szork-dungeon-master"
 
   /** Creates a new GameEngine with the specified configuration.
     *
@@ -775,7 +653,8 @@ object GameEngine {
     tracing: Option[Tracing] = None,
     contextWindow: Option[ContextWindowConfig] = Some(DefaultContextWindow),
     inputGuardrails: Seq[InputGuardrail] = PlayerInputGuardrail.default,
-    subagents: SubagentSettings = SubagentSettings.default
+    subagents: SubagentSettings = SubagentSettings.default,
+    reasoning: Option[ReasoningEffort] = None
   ): GameEngine =
     new GameEngine(
       sessionId,
@@ -790,5 +669,7 @@ object GameEngine {
       tracing,
       contextWindow,
       inputGuardrails,
-      subagents)(using llmClient)
+      subagents,
+      reasoning
+    )(using llmClient)
 }

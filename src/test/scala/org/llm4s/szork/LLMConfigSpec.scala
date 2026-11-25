@@ -14,7 +14,7 @@ class LLMConfigSpec extends AnyFunSuite with Matchers {
 
   private def baseUrl(env: Map[String, String]): String =
     SzorkConfig.loadLLMConfig(FakeReader(env)).map(_.toProviderConfig) match {
-      case Some(c: OpenAIConfig) => c.baseUrl
+      case Some(c: OpenAIConfig) => c.baseUrl.asUrl
       case other => fail(s"expected an OpenAI-compatible config, got $other")
     }
 

@@ -125,10 +125,7 @@ final class SceneImageClient(client: ImageGenerationClient, cacheTag: String) ex
             Right(image.data)
           case Left(error) =>
             logger.error(s"Image generation failed after ${System.currentTimeMillis() - start}ms: ${error.message}")
-            Left(
-              ImageGenerationError(
-                s"Image generation error: ${error.message}",
-                retryable = LLMError.isRecoverable(error)))
+            Left(ImageGenerationError(s"Image generation error: ${error.message}", retryable = error.isRetryable))
         }
     }
   }

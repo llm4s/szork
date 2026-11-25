@@ -26,10 +26,10 @@ object AgentTracing {
           sys.props(key) = value
       }
       com.typesafe.config.ConfigFactory.invalidateCaches()
-      Llm4sConfig.tracing() match {
-        case Right(settings) =>
+      Llm4sConfig.tracing().flatMap(Tracing.fromSettings) match {
+        case Right(tracing) =>
           logger.info(s"Agent tracing enabled: $mode")
-          Some(Tracing.create(settings))
+          Some(tracing)
         case Left(error) =>
           logger.warn(s"Agent tracing disabled: ${error.message}")
           None

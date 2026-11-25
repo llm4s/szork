@@ -135,7 +135,7 @@ class SceneImagesSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     client shouldBe a[InstrumentedImageGenerationClient]
     client.generateImage("a cave", SceneImages.Options).isLeft shouldBe true
     events.collect { case e: TraceEvent.ImageGenerationCompleted => (e.provider, e.success) }.toList shouldBe
-      List(("stable-diffusion", false))
+      List((Some("stable-diffusion"), false))
   }
 
   // --- the adapter, with the media cache in front ---

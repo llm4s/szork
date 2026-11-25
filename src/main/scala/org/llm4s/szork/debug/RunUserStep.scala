@@ -80,7 +80,8 @@ object RunUserStep {
         sessionId = sessionId,
         theme = gameState.theme.map(_.prompt),
         artStyle = gameState.artStyle.map(_.id),
-        adventureOutline = gameState.adventureOutline
+        adventureOutline = gameState.adventureOutline,
+        reasoning = SzorkConfig.instance.reasoningEffort
       )
 
       // Restore the saved state and step number

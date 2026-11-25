@@ -110,7 +110,7 @@ object ToolCallInfo {
     messages.toList.flatMap {
       case assistant: AssistantMessage =>
         assistant.toolCalls.map { tc =>
-          ToolCallInfo(tc.id, tc.name, tc.arguments, results.get(tc.id), System.currentTimeMillis())
+          ToolCallInfo(tc.id.asString, tc.name, tc.arguments, results.get(tc.id), System.currentTimeMillis())
         }
       case _ => Nil
     }

@@ -7,8 +7,9 @@
 ## Current Documentation
 
 ### Development Guides
-- [README_DEVELOPMENT.md](README_DEVELOPMENT.md) - Development setup, build and test
-- [README_SBT_REVOLVER.md](README_SBT_REVOLVER.md) - Hot reload configuration with sbt-revolver
+- [README_DEVELOPMENT.md](README_DEVELOPMENT.md) - Development setup, build, hot reload
+- [TESTING.md](TESTING.md) - The test layers, the playtest harness and CI
+- [LLM4S_FEATURES.md](LLM4S_FEATURES.md) - Which llm4s feature is used where, and the workarounds tracked upstream
 - [DEBUG_TOOLS.md](DEBUG_TOOLS.md) - Create and step through games from the command line
 
 ### Design Documents

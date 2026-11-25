@@ -2,7 +2,7 @@
 
 ## Build Configuration
 
-Szork is a standalone Scala 3 project built on the LLM4S library (0.6) for its AI features.
+Szork is a standalone Scala 3 project built on the LLM4S library (0.7) for its AI features.
 
 ## Building and Running
 
@@ -45,16 +45,29 @@ The frontend is in the `frontend` directory. To develop:
 
 The frontend dev server runs on http://localhost:3090 and proxies API calls to the backend on port 8090.
 
+## Hot reload
+
+`sbt "~szorkStart"` runs the server with [sbt-revolver](https://github.com/spray/sbt-revolver) and restarts it when a
+Scala file under `src/` changes (Ctrl+C stops watching). The aliases are `szorkStart`, `szorkStop`, `szorkRestart` and
+`szorkStatus`, for revolver's `reStart`, `reStop` and `reStatus`. The server runs with `-Xmx1g
+-XX:MaxMetaspaceSize=512m` on ports 8090 (HTTP) and 9002 (WebSocket), bound to 127.0.0.1 unless `SZORK_HOST` is set.
+
+A restart ends the live sessions: a game in the browser is loaded again from its last saved step. Do not run a
+playtest against a server in watch mode while editing.
+
+If the server does not start, check that ports 8090 and 9002 are free, run `sbt compile` to see compilation errors,
+then `sbt szorkStop` and `sbt szorkStart`.
+
 ## Testing
 
 ```bash
-sbt test                                   # Backend tests (no network; a fake LLM drives the engine)
+sbt test                                   # Backend tests (no network; scripted models drive the engine)
 sbt "testOnly *WebSocketServerSpec"        # One suite
-RUN_INTEGRATION=true sbt "testOnly *AdventureIntegrationSpec"   # 20 turns against a real LLM
+sbt "runMain org.llm4s.szork.playtest.Playtest"   # A whole adventure against the configured model
 cd frontend && npm test                    # Frontend tests (Vitest)
 ```
 
-CI also compiles main and test sources with `-Werror`, checks formatting (`sbt scalafmtCheckAll`) and runs `npm run lint:check`.
+[TESTING.md](TESTING.md) describes the test layers, the playtest and its checks, and what CI runs.
 
 ## Architecture
 
@@ -62,7 +75,7 @@ See the main [README](../README.md#architecture) for the package layout and how 
 
 ## Dependencies
 
-- **LLM4S 0.6**: `llm4s-agent`, `llm4s-openai`, `llm4s-anthropic`, `llm4s-image`, `llm4s-speech`, `llm4s-observability`
+- **LLM4S 0.7**: `llm4s-agent`, `llm4s-openai`, `llm4s-anthropic`, `llm4s-image`, `llm4s-speech`, `llm4s-observability`
 - **Cask**: HTTP server
 - **Java-WebSocket**: WebSocket server
 - **Vue 3 / Vuetify 3**: frontend

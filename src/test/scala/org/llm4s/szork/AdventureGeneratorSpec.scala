@@ -174,7 +174,7 @@ class AdventureGeneratorSpec extends AnyFunSuite with Matchers {
       override def traceEvent(event: TraceEvent): Either[LLMError, Unit] = { events += event; Right(()) }
     }
     generate(ScriptedLLMClient.always(Reply.text(answer)), Some(tracing)).isRight shouldBe true
-    events.collect { case e: TraceEvent.AgentRunEnded => (e.agent, e.status) }.toList shouldBe
+    events.collect { case e: TraceEvent.AgentRunEnded => (e.agent, e.status.name) }.toList shouldBe
       List((AdventureGenerator.AgentId, "completed"))
   }
 

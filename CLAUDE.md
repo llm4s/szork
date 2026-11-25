@@ -107,7 +107,9 @@ stored in the thread); a second refused move is replaced with a simple "the way 
 checks the rule again before it records a move.
 
 **game/RepeatedToolCalls.scala** - `RepeatedToolCallMiddleware` (llm4s `wrapToolCall`): a tool call the model repeats
-with the same arguments within a turn is not run again, and it is told to answer.
+with the same arguments within a turn is not run again, and it is told to answer. `ToolRoundsMiddleware`
+(`wrapModelCall`): after a turn's first three model calls the model is offered no tools, so a turn that keeps looking
+things up answers instead of running out of steps.
 
 **game/DmSubagents.scala** - The Dungeon Master's llm4s subagents (`TypedAgent`s offered with `withSubagents`, bounded
 by `withDelegation(DmSubagents.Delegation)`): `npc_dialogue` (tool `task_npc_dialogue`, returns `NpcLines`) and `hint`

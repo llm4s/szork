@@ -156,7 +156,7 @@ Set in `.env` (see `.env.example`) or the environment:
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `LLAMA_BASE_URL` | – | LLM provider credentials (OpenAI also powers images, TTS and Whisper) |
-| `SZORK_LLM_PROVIDER`, `SZORK_LLM_MODEL` | from the keys present; `gpt-4o` / `claude-sonnet-5-5` | Dungeon Master provider and model (see [Models](#models)) |
+| `SZORK_LLM_PROVIDER`, `SZORK_LLM_MODEL` | from the keys present; `gpt-6-luna` / `claude-sonnet-5-5` | Dungeon Master provider and model (see [Models](#models)) |
 | `SZORK_REASONING_EFFORT` | `low` | How hard the adventure designer, the Dungeon Master and its subagents reason before answering, on models that reason: `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `default` to leave it to the model. Not sent to a model that does not reason. The Claude 5 models always reason, at `high` unless told otherwise, which is slow and can use up the whole answer |
 | `SZORK_DM_CONTEXT_MAX_TOKENS` | `24000` | Conversation tokens sent with each Dungeon Master call, besides the system prompt (oldest turns are dropped first; capped at half the model's context window; `0` or `off` sends the whole game) |
 | `SZORK_DM_CONTEXT_MAX_MESSAGES` | – | Limit each call by conversation messages instead of tokens |
@@ -189,7 +189,9 @@ Checked with the playtest harness on llm4s 0.7.0, at the default reasoning effor
 | `claude-sonnet-5-5` (Anthropic default) | Works: designed an adventure in one call and played 30 turns with no finding, about 3.5 s a turn |
 | `claude-haiku-5-5` | Works: 20 turns with no rule broken, about 2.7 s a turn; its first outline needed llm4s's one correction |
 | `claude-sonnet-4-6` | Works: 12 turns with no finding, but about 11 s a turn, because `low` turns its extended thinking on. Set `SZORK_REASONING_EFFORT=default` to play it without |
-| `gpt-4o` (OpenAI default) | Not replayed in the latest live tests |
+| `gpt-6-luna` (OpenAI default) | Works: designed an adventure and played 16 turns with no finding, about 3.7 s a turn. It plays with reasoning off: OpenAI's Chat Completions API lets its current models call tools only that way, and llm4s switches it off for this model |
+| `gpt-6.1-terra`, `gpt-5.6-terra`, `gpt-5.6-luna` | Do not work on llm4s 0.7.0: it refuses tools on `gpt-6.1-terra`, and sends the `gpt-5.6` models a reasoning effort OpenAI rejects with tools. All three call tools on Chat Completions when asked directly with reasoning off |
+| `gpt-4o` | The previous default; not replayed in the latest live tests |
 
 To check a model, run a playtest on it: `SZORK_LLM_MODEL=<model> sbt "runMain org.llm4s.szork.playtest.Playtest"`
 (see [Testing](docs/TESTING.md)).

@@ -413,7 +413,9 @@ class GameEngine(
         new WorldStateMiddleware(world, inventory),
         new ExitGuardMiddleware(world),
         // a tool call the model repeats within a turn is not run again, and it is told to answer
-        new RepeatedToolCallMiddleware
+        new RepeatedToolCallMiddleware,
+        // nor are the tool calls of a turn that keeps looking things up instead of answering
+        new ToolRoundsMiddleware
       )
     val windowed = modelWindow.fold(stated)(window => stated.withMiddleware(new ContextWindowMiddleware(window)))
     val builder = tracing.fold(windowed)(windowed.withTracing)

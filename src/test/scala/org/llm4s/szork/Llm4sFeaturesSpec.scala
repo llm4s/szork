@@ -114,4 +114,31 @@ class Llm4sFeaturesSpec extends AnyFunSuite with Matchers {
     // the next turn may make the same call again
     engine.processCommand("take lamp", generateAudio = false).isRight shouldBe true
   }
+
+  test("a turn that keeps looking things up is given no more tools, and answers") {
+    import org.llm4s.szork.game.ToolRoundsMiddleware
+    // Takes the lamp, then looks up one location after another for as long as it is offered tools
+    val dithering = ScriptedDm {
+      case c if ScriptedDm.lastUserText(c) == "take lamp" =>
+        val round = c.messages.reverseIterator.takeWhile(m => !m.content.contains("take lamp")).size
+        if (round == 0) Reply.toolCall("add_inventory_item", """{"item": "lamp"}""")
+        else if (round < ToolRoundsMiddleware.MaxRounds * 2)
+          Reply.toolCall("get_location_state", s"""{"location_id": "room_$round"}""")
+        else Reply.text(DmAnswers.simple("You take the lamp.", "cavern_entrance", "take"))
+    }
+    val engine = GameEngine.create(dithering, "dithering")
+    engine.initialize().isRight shouldBe true
+
+    engine.processCommand("take lamp", generateAudio = false).toOption.get.text shouldBe "You take the lamp."
+    engine.getInventory shouldBe List("lamp")
+    // the rounds that had tools, then the call that had none
+    val turn = dithering.calls.filter(_.lastUserText.contains("take lamp"))
+    turn.map(_.options.tools.nonEmpty) shouldBe List.fill(ToolRoundsMiddleware.MaxRounds)(true) :+ false
+    engine.lastTurnUsage.map(_.modelCalls) shouldBe Some(ToolRoundsMiddleware.MaxRounds + 1L)
+
+    // the next turn has its tools again
+    engine.processCommand("take lamp", generateAudio = false).isRight shouldBe true
+    val next = dithering.calls.takeRight(ToolRoundsMiddleware.MaxRounds + 1)
+    next.map(_.options.tools.nonEmpty) shouldBe List.fill(ToolRoundsMiddleware.MaxRounds)(true) :+ false
+  }
 }

@@ -94,6 +94,10 @@ object PromptBuilder {
       |this turn. Read it instead of calling a read tool: the read tools are only for OTHER locations, for what the
       |section leaves out (characters met elsewhere, finished quests, older events), or when it says something is
       |unknown or cut short.
+      |A turn is: the tool calls the action needs, made together in one step where you can, then your answer. A tool's
+      |result tells you it worked, so never call a tool to check what you have just done, and never look up other
+      |locations, the inventory or the world summary before answering an ordinary action. After a turn's first
+      |${ToolRoundsMiddleware.MaxRounds} steps you have no tools and must answer.
       |
       |Inventory tools:
       |- list_inventory: rarely needed - the inventory is in the current game state. Only if the section says the

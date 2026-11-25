@@ -364,7 +364,10 @@ final class SzorkRoutes(
         .map(_ => "Request must have an \"outline\" that is an adventure outline")
       // The art director briefs each location's picture; without its briefs pictures are drawn from the descriptions
       directed = ArtDirector.direct(outline, tracing, config.reasoningEffort)(using llmClient).getOrElse(outline)
-      adventure <- library.keep(directed, choice._1, choice._2).left.map(_.message)
+      adventure <- library.keep(directed, choice._1, choice._2).left.map { error =>
+        logger.error(s"Could not keep an adventure: ${error.message}")
+        error.userMessage
+      }
     } yield adventure
     kept match {
       case Right(adventure) => ujson.Obj("status" -> "success", "id" -> adventure.id)

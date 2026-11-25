@@ -14,6 +14,7 @@ import org.llm4s.szork.error.ImageGenerationError
 import org.llm4s.szork.spi.{ImageClient, STTClient}
 import java.nio.file.Files
 import org.llm4s.szork.adventures.AdventureLibrary
+import org.llm4s.szork.media.MediaCache
 import org.llm4s.szork.game.{AdventureOutline, ExitOutline, GameEngine, LocationOutline, PlayerInputGuardrail}
 import org.llm4s.llmconnect.model.Conversation
 import org.llm4s.szork.stubs.{DmAnswers, FakeImageClient, ScriptedDm}
@@ -215,6 +216,43 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     session.artStyle.map(_.id) shouldBe Some("pixel")
     session.theme.map(_.name) shouldBe Some("Caves")
     c.close()
+  }
+
+  test("a game loaded again shows each line with its picture: the game's own, or the library's by URL") {
+    val c = connect()
+    val started = startGame(c)("data")
+    val gameId = started("gameId").str
+    c.await("imageReady")
+    // The server's image client keeps what it draws in the game's media cache; the test's fake one does not
+    val style = AdventureLibrary.styleOf(sessions.getSession(started("sessionId").str).get.artStyle.map(_.id))
+    MediaCache.cacheImage(gameId, "cavern_entrance", "the entrance", style, "QUJD")
+    c.sendJson("type" -> "command", "command" -> "examine wall")
+    c.await("commandResponse")
+    val again = connect()
+    again.sendJson("type" -> "loadGame", "gameId" -> gameId, "image" -> true)
+    val lines = again.await("gameLoaded")("data")("conversation").arr
+    lines.head("image").str shouldBe "QUJD"
+    lines.last.obj.get("image") shouldBe None // answered in place: it was shown without a picture
+    lines.last.obj.get("url") shouldBe None
+    c.close()
+    again.close()
+
+    val l = connect()
+    l.sendJson("type" -> "newGame", "adventureId" -> cavernAdventure.id, "image" -> true)
+    val libraryGame = l.await("gameStarted")("data")("gameId").str
+    l.await("imageReady")
+    val reloaded = connect()
+    reloaded.sendJson("type" -> "loadGame", "gameId" -> libraryGame, "image" -> true)
+    val opening = reloaded.await("gameLoaded")("data")("conversation").arr.head
+    opening("url").str should startWith(s"/api/library/adventures/${cavernAdventure.id}/images/cavern_entrance")
+    opening.obj.get("image") shouldBe None
+
+    val without = connect()
+    without.sendJson("type" -> "loadGame", "gameId" -> libraryGame, "image" -> false)
+    without.await("gameLoaded")("data")("conversation").arr.head.obj.get("url") shouldBe None
+    l.close()
+    reloaded.close()
+    without.close()
   }
 
   test("a new game of an adventure the library does not have is refused") {

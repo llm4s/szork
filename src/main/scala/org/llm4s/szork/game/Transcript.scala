@@ -14,8 +14,11 @@ import org.llm4s.llmconnect.model.{AssistantMessage, Message, UserMessage}
   */
 object Transcript {
 
-  /** One line of the transcript, said by the player ("user") or the Dungeon Master ("assistant"). */
-  final case class Entry(role: String, content: String)
+  /** One line of the transcript, said by the player ("user") or the Dungeon Master ("assistant"). `pictured` is the
+    * location whose picture the line was shown with: an answer is pictured when it arrives somewhere, and when the
+    * Dungeon Master says the place now looks different (the rule the server draws pictures by).
+    */
+  final case class Entry(role: String, content: String, pictured: Option[String] = None)
 
   def of(messages: Seq[Message]): List[Entry] = {
     // A turn's command (None for the hidden first turn) and its final answer, if it has one
@@ -30,9 +33,20 @@ object Transcript {
       case (turns, _) => turns
     }
 
-    turns.toList.flatMap { turn =>
-      turn.command.map(Entry("user", _)).toList ++
-        turn.answer.map(answer => Entry("assistant", ResponseInterpreter.interpret(answer).narration))
-    }
+    // Each turn's lines, and where its answer left the player (to tell an arrival from an answer given in place)
+    turns
+      .foldLeft((List.empty[Entry], Option.empty[String])) { case ((entries, location), turn) =>
+        val answered = turn.answer.map(ResponseInterpreter.interpret)
+        val now = answered.flatMap(_.data).map(_.locationId).orElse(location)
+        val line = answered.map { answer =>
+          val pictured = answer.data.collect {
+            case scene: GameScene if !location.contains(scene.locationId) => scene.locationId
+            case data if answer.imageUpdate.isDefined => data.locationId
+          }
+          Entry("assistant", answer.narration, pictured)
+        }
+        (entries ++ turn.command.map(Entry("user", _)) ++ line, now)
+      }
+      ._1
   }
 }

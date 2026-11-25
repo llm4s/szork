@@ -28,6 +28,32 @@ class TranscriptSpec extends AnyFunSuite with Matchers {
       "assistant" -> "You take the lamp.")
   }
 
+  test("an answer is pictured where it arrives and where the place changes, not when given in place") {
+    val messages = Vector(
+      UserMessage(GameConstants.Prompts.INIT_ADVENTURE),
+      AssistantMessage(opening),
+      UserMessage("look"),
+      AssistantMessage(opening),
+      UserMessage("take lamp"),
+      AssistantMessage(DmAnswers.simple("You take the lamp.", "entrance", "take")),
+      UserMessage("go north"),
+      AssistantMessage(DmAnswers.scene("A hall.", "hall", "Hall", Seq("south" -> "entrance"))),
+      UserMessage("burn the tapestry"),
+      AssistantMessage(DmAnswers.simple("It burns.", "hall", "burn", imageUpdate = Some("A scorched hall.")))
+    )
+
+    Transcript.of(messages).map(_.pictured) shouldBe List(
+      Some("entrance"), // the opening scene
+      None,
+      None, // a look around: the same place
+      None,
+      None,
+      None,
+      Some("hall"),
+      None,
+      Some("hall"))
+  }
+
   test("a turn without a final answer shows its command only; an unreadable answer shows the fallback") {
     val messages = Vector(
       UserMessage(GameConstants.Prompts.INIT_ADVENTURE),

@@ -40,6 +40,14 @@ export interface GameMessage {
   isStreaming?: boolean;
 }
 
+/** What an <img> shows for a picture sent as a library `url` or as Base64 `image`; undefined when there is neither. */
+function pictureSource(image?: string, url?: string): string | undefined {
+  if (url) return url;
+  if (!image) return undefined;
+  // Pictures are JPEGs (which start "/9j/" in Base64) unless the provider's PNG could not be shrunk
+  return `data:image/${image.startsWith("/9j/") ? "jpeg" : "png"};base64,${image}`;
+}
+
 export function useWebSocketGame() {
   const wsClient = ref<WebSocketClient | null>(null);
   const sessionId = ref<string | null>(null);
@@ -179,11 +187,12 @@ export function useWebSocketGame() {
       lastMessageIndex = data.messageIndex;
       applyFlags(data);
       endStreaming();
-      // History has no media to attach, so its entries carry no message index
+      // History's entries carry no message index (nothing more arrives for them), but come with their pictures
       messages.value = data.conversation.map((entry: ConversationEntry) => ({
         text: entry.content,
         isUser: entry.role === "user",
         timestamp: new Date(),
+        image: pictureSource(entry.image, entry.url),
       }));
       const lastMessage = messages.value[messages.value.length - 1];
       if (data.currentScene && lastMessage && !lastMessage.isUser) lastMessage.scene = data.currentScene;
@@ -254,9 +263,7 @@ export function useWebSocketGame() {
     client.on<ImageReadyMessage>("imageReady", ({ data }) => {
       const message = messages.value.find((m) => m.messageIndex === data.messageIndex);
       if (message?.hasImage) {
-        // Pictures are JPEGs (which start "/9j/" in Base64) unless the provider's PNG could not be shrunk
-        const type = data.image?.startsWith("/9j/") ? "jpeg" : "png";
-        message.image = data.url ?? `data:image/${type};base64,${data.image}`;
+        message.image = pictureSource(data.image, data.url);
         message.imageLoading = false;
       }
     });

@@ -172,7 +172,7 @@ src/main/scala/org/llm4s/szork/
 ├── spi/, adapters/  The media clients behind traits that tests replace
 ├── error/        SzorkError and the messages the player sees
 └── tools/        GenerateStyleSamples
-frontend/         Vue 3, Vuetify 3, TypeScript
+frontend/         Vue 3, Vuetify 4, TypeScript
 adventures/       The ready-made adventures, their pictures, and a music track per mood
 ```
 

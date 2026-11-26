@@ -63,8 +63,8 @@ Specs: `DungeonMasterOutputSpec`, `GameEngineValidationSpec`, `Llm4sFeaturesSpec
 ### 5. Streaming and partial JSON
 
 `GameEngine.narrationListener` handles the agent's stream events (`AgentEvents.ModelCallStarted`, `TextDelta`,
-`ToolCallStarted`, `SubagentEvents.TaskStarted`/`TaskEnded`). The answer streams as JSON text; `streaming/
-StreamingJsonParser.scala` reads the narration out of it as it grows with llm4s's `PartialJson`, from the first brace
+`ToolCallStarted`, `SubagentEvents.TaskStarted`/`TaskEnded`). The answer streams as JSON text;
+`streaming/StreamingJsonParser.scala` reads the narration out of it as it grows with llm4s's `PartialJson`, from the first brace
 that opens an object.
 
 Specs: `StreamingParsersSpec`, `Llm4sFeaturesSpec` (a streamed turn ends with the corrected narration).

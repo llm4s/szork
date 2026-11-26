@@ -8,15 +8,17 @@ import org.llm4s.speech.AudioInput
 import org.llm4s.speech.config.STTConfig
 import org.llm4s.szork.api.SpeechConfig
 import org.llm4s.speech.SpeechProviderSelector
-import org.llm4s.speech.stt.{SpeechToText => SttClient}
+import org.llm4s.speech.stt.{STTOptions, SpeechToText => SttClient}
 import org.llm4s.szork.error.*
 import org.llm4s.szork.error.ErrorHandling.*
 
 /** Voice commands via llm4s-speech's speech-to-text client (OpenAI Whisper), chosen by `SpeechProviderSelector`.
   *
-  * Configured by OPENAI_API_KEY and the [[SpeechConfig]] model.
+  * Configured by OPENAI_API_KEY and the [[SpeechConfig]] model and language. The transcriber is told the language
+  * (English unless SZORK_STT_LANGUAGE says otherwise) rather than left to guess it from each recording.
   */
-final class SpeechToText private (client: SttClient) {
+final class SpeechToText private[szork] (client: SttClient, language: Option[String]) {
+  private val options = STTOptions(language = language)
   private val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   /** Transcribes a browser recording. The bytes are uploaded as a file named like `filename`, so Whisper reads the
@@ -31,7 +33,7 @@ final class SpeechToText private (client: SttClient) {
         try {
           Files.write(file, audioBytes)
           client
-            .transcribe(AudioInput.FileAudio(file))
+            .transcribe(AudioInput.FileAudio(file), options)
             .map(_.text.trim)
             .left
             .map(error => NetworkError(s"Transcription failed: ${error.message}", "openai", retryable = true))
@@ -75,6 +77,6 @@ object SpeechToText {
           .getSTTClient(config)
           .left
           .map(error => ConfigurationError(s"Speech-to-text unavailable: ${error.message}"))
-          .map(new SpeechToText(_))
+          .map(new SpeechToText(_, speech.sttLanguage))
     }
 }

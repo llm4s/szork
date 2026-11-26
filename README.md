@@ -210,6 +210,7 @@ any case. A number that does not parse is ignored.
 | `STABLE_DIFFUSION_URL` (or `SD_URL`), `STABLE_DIFFUSION_API_KEY` (or `SD_API_KEY`) | `http://localhost:7860`, – | The `local` Stable Diffusion server |
 | `SZORK_TTS_ENABLED`, `SZORK_TTS_VOICE`, `SZORK_TTS_MODEL` | `true`, `nova`, `tts-1` | Narration (needs `OPENAI_API_KEY`) |
 | `SZORK_STT_ENABLED`, `SZORK_STT_MODEL` | `true`, `whisper-1` | Voice input (needs `OPENAI_API_KEY`) |
+| `SZORK_STT_LANGUAGE` | `en` | The language voice commands are spoken in (`en`, `fr-FR`, ...); `auto` lets the transcriber guess |
 | `SZORK_MUSIC_ENABLED`, `REPLICATE_API_KEY` | `true`, – | Background music: the library's tracks, and new ones made on Replicate |
 | `SZORK_MUSIC_POLL_MAX_ATTEMPTS`, `SZORK_MUSIC_POLL_INTERVAL_MS` | `30`, `1000` | How long to wait for a new track (polls, and the time between them) |
 | `SZORK_MEDIA_CONNECT_TIMEOUT_MS`, `SZORK_MEDIA_READ_TIMEOUT_MS` | `10000`, `30000` | Network timeouts for Replicate |

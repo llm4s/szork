@@ -75,6 +75,9 @@ class SzorkConfigSpec extends AnyFunSuite with Matchers {
     val effort = load("SZORK_REASONING_EFFORT" -> "hgih", "OPENAI_API_KEY" -> "sk-oa")
     effort.validate().left.toOption.get.message should include("SZORK_REASONING_EFFORT 'hgih'")
     load("SZORK_REASONING_EFFORT" -> "High", "OPENAI_API_KEY" -> "sk-oa").validate() shouldBe Right(())
+
+    val language = load("SZORK_STT_LANGUAGE" -> "english", "OPENAI_API_KEY" -> "sk-oa")
+    language.validate().left.toOption.get.message should include("SZORK_STT_LANGUAGE 'english'")
   }
 
   test("ports the server cannot listen on stop it from starting") {
@@ -102,6 +105,7 @@ class SzorkConfigSpec extends AnyFunSuite with Matchers {
       "SZORK_TTS_VOICE" -> "onyx",
       "SZORK_TTS_MODEL" -> "tts-1-hd",
       "SZORK_STT_MODEL" -> "whisper-2",
+      "SZORK_STT_LANGUAGE" -> "fr-FR",
       "SZORK_MEDIA_CONNECT_TIMEOUT_MS" -> "1000",
       "SZORK_MEDIA_READ_TIMEOUT_MS" -> "2000",
       "SZORK_MUSIC_POLL_MAX_ATTEMPTS" -> "5",
@@ -127,7 +131,8 @@ class SzorkConfigSpec extends AnyFunSuite with Matchers {
       ttsEnabled = false,
       sttEnabled = false,
       musicEnabled = false,
-      speech = SpeechConfig(ttsModel = "tts-1-hd", ttsVoice = "onyx", sttModel = "whisper-2"),
+      speech =
+        SpeechConfig(ttsModel = "tts-1-hd", ttsVoice = "onyx", sttModel = "whisper-2", sttLanguage = Some("fr-FR")),
       mediaNetwork = MediaNetworkConfig(connectTimeoutMs = 1000, readTimeoutMs = 2000),
       musicPoll = MusicPollConfig(maxAttempts = 5, pollIntervalMs = 50),
       dmContextWindow = None,

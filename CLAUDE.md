@@ -168,7 +168,7 @@ picture at the same time share one generation). `docs/ADVENTURES.md` describes i
 reach the filesystem; a step is written whole into a new directory, and a game loads from its highest readable step.
 **media/** - image, music, speech and the media cache; `SceneImages` builds the server's one llm4s image client (traced
 with the Dungeon Master) and the cached `ImageClient` over it; speech clients come from llm4s's
-`SpeechProviderSelector`; `MusicGeneration` is plain HTTP to Replicate (llm4s has no music API).
+`SpeechProviderSelector` (the transcriber is told `SZORK_STT_LANGUAGE`, `en` unless set, rather than guessing); `MusicGeneration` is plain HTTP to Replicate (llm4s has no music API).
 
 **frontend/src/** - `layouts/GameView.vue` (screens: intro, game list, setup, game) built from `components/`
 (`IntroScreen`, `GameSelection`, `AdventureSetup` with `ThemePicker`/`StylePicker`/`FeatureToggles`/

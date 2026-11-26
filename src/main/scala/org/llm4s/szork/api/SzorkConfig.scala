@@ -326,7 +326,7 @@ object SzorkConfig {
       adventuresDirectory = setting("SZORK_ADVENTURES_DIR").getOrElse(DefaultAdventuresDirectory),
       cache = MediaCacheConfig.load(env),
       sessionTtlMinutes = int("SZORK_SESSION_TTL_MINUTES").filter(_ > 0).getOrElse(DefaultSessionTtlMinutes),
-      problems = llmProblem.toList ++ effortProblem.toList
+      problems = llmProblem.toList ++ effortProblem.toList ++ SpeechConfig.languageProblem(env).toList
     )
   }
 

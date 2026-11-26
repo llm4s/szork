@@ -101,6 +101,49 @@ describe("GameSelection", () => {
     expect(wrapper.emitted("load-game")).toEqual([["g1"], ["g1"]]);
   });
 
+  it("says when the saved games cannot be fetched, rather than that there are none, and tries again", async () => {
+    vi.mocked(axios.get).mockImplementation(async (url: string) => {
+      if (url === "/api/games") throw new Error("Network Error");
+      return url === "/api/adventures" ? { data: { status: "success", adventures: [] } } : { data: flags };
+    });
+    const wrapper = mountWithVuetify(GameSelection);
+    await flushPromises();
+    expect(wrapper.find(".games-error").exists()).toBe(true);
+    expect(wrapper.find(".no-games").exists()).toBe(false);
+
+    vi.mocked(axios.get).mockResolvedValue({ data: { status: "success", games: [game("g1", "The Lost Mine")] } });
+    await wrapper.find(".retry-games").trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".games-error").exists()).toBe(false);
+    expect(wrapper.find(".game-card .game-title").text()).toBe("The Lost Mine");
+  });
+
+  it("deletes a saved game, and says so when it could not", async () => {
+    vi.stubGlobal("visualViewport", new EventTarget());
+    const wrapper = await mountSelection([game("g1", "The Lost Mine"), game("g2", "The Deep")]);
+    const vm = wrapper.vm as unknown as {
+      confirmDelete: (g: SavedGameSummary) => void;
+      deleteGame: () => Promise<void>;
+      errorSnackbar: boolean;
+      errorMessage: string;
+    };
+
+    vi.mocked(axios.delete).mockResolvedValueOnce({ data: { status: "error", error: "Disk full" } });
+    vm.confirmDelete(game("g1", "The Lost Mine"));
+    await vm.deleteGame();
+    await flushPromises();
+    expect(vm.errorSnackbar).toBe(true);
+    expect(vm.errorMessage).toContain("Failed to delete");
+    expect(wrapper.findAll(".game-card")).toHaveLength(2);
+
+    vi.mocked(axios.delete).mockResolvedValueOnce({ data: { status: "success", message: "Game deleted: g1" } });
+    await vm.deleteGame();
+    await flushPromises();
+    expect(axios.delete).toHaveBeenLastCalledWith("/api/game/g1");
+    expect(wrapper.findAll(".game-card .game-title").map((t) => t.text())).toEqual(["The Deep"]);
+    vi.unstubAllGlobals();
+  });
+
   it("asks to start a new game", async () => {
     const wrapper = await mountSelection([]);
     await wrapper.find(".new-game-button").trigger("click");

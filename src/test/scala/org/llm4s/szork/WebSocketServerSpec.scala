@@ -47,12 +47,11 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
   }
 
   // "anger the provider" fails as a provider does when it rejects the key, with its own text in the error
-  private val rejectsTheKey: PartialFunction[Conversation, Reply] = {
-    case ScriptedDm.Command("anger the provider") =>
-      Reply.failure(
-        org.llm4s.error.AuthenticationError(
-          org.llm4s.types.ProviderModelTypes.ProviderId("anthropic"),
-          "invalid x-api-key sk-ant-SECRET in /Users/someone/szork/.env"))
+  private val rejectsTheKey: PartialFunction[Conversation, Reply] = { case ScriptedDm.Command("anger the provider") =>
+    Reply.failure(
+      org.llm4s.error.AuthenticationError(
+        org.llm4s.types.ProviderModelTypes.ProviderId("anthropic"),
+        "invalid x-api-key sk-ant-SECRET in /Users/someone/szork/.env"))
   }
 
   // The adventure library, holding the cavern as a ready-made adventure

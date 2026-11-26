@@ -4,8 +4,8 @@ import org.llm4s.error.{LLMError => LLM4SError}
 
 /** Base trait for all Szork application errors. Provides consistent error handling across the application.
   *
-  * `message` is for the server log: it may carry a provider's own text or a file path. `userMessage` is what the
-  * player is shown, and says what they can do about it.
+  * `message` is for the server log: it may carry a provider's own text or a file path. `userMessage` is what the player
+  * is shown, and says what they can do about it.
   */
 sealed trait SzorkError {
   def message: String
@@ -136,7 +136,8 @@ case class NetworkError(
 case class ConfigurationError(
   message: String
 ) extends SzorkError {
-  override def userMessage: String = s"The server is not set up for this: $message. See the README's configuration table."
+  override def userMessage: String =
+    s"The server is not set up for this: $message. See the README's configuration table."
 }
 
 // Category: Not found errors

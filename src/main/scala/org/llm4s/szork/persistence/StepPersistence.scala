@@ -188,11 +188,13 @@ object StepPersistence {
   def saveNewGame(stepData: StepData, metadata: GameMetadata): SzorkResult[Unit] =
     saveStep(stepData).flatMap(_ => saveGameMetadata(metadata))
 
-  /** Saves a later step, then records it in the game's game.json, adding `playTimeMs` to the game's play time. */
+  /** Saves a later step, then records it in the game's game.json, adding `playTimeMs` to the game's play time. A game
+    * whose game.json is gone (it was deleted) is not saved: nothing of it is written again.
+    */
   def saveNextStep(stepData: StepData, playTimeMs: Long): SzorkResult[Unit] =
     for {
-      _ <- saveStep(stepData)
       metadata <- loadGameMetadata(stepData.metadata.gameId)
+      _ <- saveStep(stepData)
       _ <- saveGameMetadata(GameMetadataHelper.afterStep(metadata, stepData.metadata.stepNumber, playTimeMs))
     } yield ()
 

@@ -130,6 +130,9 @@ class TypedWebSocketServer(
       }
     }
     session.touch()
+    // A connection that closed before it was attached has had its onClose already: detach it here, or the session
+    // would count as connected, and never expire
+    if (!conn.isOpen) detach(conn)
   }
 
   /** Detaches `conn` from its session; the session stays until it expires or is resumed. */
@@ -197,9 +200,14 @@ class TypedWebSocketServer(
       case None => send(conn, ErrorMessage("No active session"))
     }
 
-  /** Runs `body` on the session's serial executor, reporting a failure to the player (the details only to the log). */
+  /** Runs `body` on the session's serial executor, reporting a failure to the player (the details only to the log). A
+    * task that comes to run after the session has ended (its game deleted while the task waited) does nothing.
+    */
   private def runFor(session: GameSession)(body: => Unit): Unit =
-    Future { session.touch(); body }(using session.executor).onComplete {
+    Future {
+      if (session.ended) logger.info(s"[${session.id}] Dropped a task queued before the session ended")
+      else { session.touch(); body }
+    }(using session.executor).onComplete {
       case Failure(e) =>
         logger.error(s"[${session.id}] Session task failed", e)
         sendTo(session, ErrorMessage("Internal server error"))
@@ -225,17 +233,22 @@ class TypedWebSocketServer(
     new GameSession(sessionId, gameId, engine, theme, artStyle, features, executor)
   }
 
-  /** Ends the session playing `gameId`, if there is one, and runs `body` once that session's queued work (a turn and
-    * its save, say) is done, so the session saves nothing after `body`. The session's connection is detached.
+  /** Ends the session playing `gameId`, if there is one, and runs `body` once the task in progress on that session (a
+    * turn and its save, say) is done; tasks still queued behind it are dropped, so the session saves nothing after
+    * `body`. The session's connection is detached.
     */
   def endGame[A](gameId: String)(body: => A): Future[A] =
     sessionManager.removeGame(gameId) match {
       case None => Future(body)(using workEC)
       case Some(session) =>
-        sessionConnections.remove(session.id).foreach(connectionSessions.remove)
+        release(session)
         logger.info(s"[${session.id}] Session ended for game $gameId")
         Future(body)(using session.executor)
     }
+
+  /** Detaches the session's connection, unless that connection has moved to another session meanwhile. */
+  private def release(session: GameSession): Unit =
+    sessionConnections.remove(session.id).foreach(conn => connectionSessions.remove(conn, session.id))
 
   // ============= Games =============
 
@@ -254,7 +267,8 @@ class TypedWebSocketServer(
     */
   private def startNewGame(conn: WebSocket, request: NewGameRequest, adventure: Option[Adventure]): Unit = {
     val sessionId = IdGenerator.sessionId()
-    val gameId = IdGenerator.gameId()
+    // A new game never takes the id of a saved game, whose saves it would overwrite
+    val gameId = Iterator.continually(IdGenerator.gameId()).find(id => !StepPersistence.gameExists(id)).get
     val themePrompt = adventure.fold(request.theme)(_.theme.map(_.prompt))
     val artStyleId = request.artStyle.orElse(adventure.flatMap(_.artStyle.map(_.id)))
     val outline = adventure
@@ -283,41 +297,49 @@ class TypedWebSocketServer(
           .filter(a => artStyleId.contains(a.id))
           .orElse(artStyleId.map(a => ArtStyle(a, a)))
         val session = makeSession(gameId, sessionId, engine, theme, artStyle, features)
-        sessionManager.createSession(session)
-        attach(conn, session)
+        if (!sessionManager.createSession(session)) {
+          logger.error(s"Session id $sessionId or game id $gameId is already in use; the game was not started")
+          send(conn, ErrorMessage("Failed to start game", Some("Please start the game again.")))
+        } else playOpening(conn, session, outline)
+    }
+  }
 
-        runFor(session) {
-          engine.initialize() match {
-            case Right(text) =>
-              val audio = if (features.tts) engine.narrate(text) else None
-              val turn = turnMedia(session, imageWanted = true)
-              sendTo(
-                session,
-                GameStartedMessage(
-                  sessionId = sessionId,
-                  gameId = gameId,
-                  text = text,
-                  messageIndex = turn.messageIndex,
-                  scene = engine.getCurrentScene.map(convertScene),
-                  audio = audio,
-                  hasImage = turn.hasImage,
-                  hasMusic = turn.hasMusic,
-                  ttsEnabled = features.tts,
-                  sttEnabled = features.stt,
-                  imageEnabled = features.image,
-                  musicEnabled = features.music
-                )
-              )
-              startMedia(session, turn)
-              if (features.autoSave) saveInitialStep(session, text, outline)
+  /** Plays a new game's opening scene in its registered `session`, and saves it. */
+  private def playOpening(conn: WebSocket, session: GameSession, outline: Option[AdventureOutline]): Unit = {
+    val (engine, features, sessionId, gameId) = (session.engine, session.features, session.id, session.gameId)
+    attach(conn, session)
 
-            case Left(error) =>
-              logger.warn(s"[${session.id}] Failed to start game: ${error.message}")
-              sendTo(session, ErrorMessage("Failed to start game", Some(error.userMessage)))
-              sessionConnections.remove(session.id).foreach(connectionSessions.remove)
-              sessionManager.removeSession(session.id)
-          }
-        }
+    runFor(session) {
+      engine.initialize() match {
+        case Right(text) =>
+          val audio = if (features.tts) engine.narrate(text) else None
+          val turn = turnMedia(session, imageWanted = true)
+          sendTo(
+            session,
+            GameStartedMessage(
+              sessionId = sessionId,
+              gameId = gameId,
+              text = text,
+              messageIndex = turn.messageIndex,
+              scene = engine.getCurrentScene.map(convertScene),
+              audio = audio,
+              hasImage = turn.hasImage,
+              hasMusic = turn.hasMusic,
+              ttsEnabled = features.tts,
+              sttEnabled = features.stt,
+              imageEnabled = features.image,
+              musicEnabled = features.music
+            )
+          )
+          startMedia(session, turn)
+          if (features.autoSave) saveInitialStep(session, text, outline)
+
+        case Left(error) =>
+          logger.warn(s"[${session.id}] Failed to start game: ${error.message}")
+          sendTo(session, ErrorMessage("Failed to start game", Some(error.userMessage)))
+          release(session)
+          sessionManager.removeSession(session.id)
+      }
     }
   }
 

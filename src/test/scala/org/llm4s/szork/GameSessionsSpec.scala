@@ -16,7 +16,7 @@ import org.llm4s.szork.error.ErrorHandling.SzorkResult
 import org.llm4s.szork.game.GameEngine
 import org.llm4s.szork.persistence.StepPersistence
 import org.llm4s.szork.spi.MusicClient
-import org.llm4s.szork.stubs.{FakeImageClient, ScriptedDm}
+import org.llm4s.szork.stubs.{DmAnswers, FakeImageClient, ScriptedDm}
 import org.llm4s.szork.websocket.TypedWebSocketServer
 
 /** Session lifecycle over real connections, with saves on: one session per game, ending a game's session, music on its
@@ -71,15 +71,55 @@ class GameSessionsSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll 
     autoSave = true
   )
 
+  // A second server, whose sessions expire as soon as they have no connection, and whose games can be held: a game of
+  // the theme "slow" waits for `startGate` before its engine is made, and the command "wait here" waits for `turnGate`
+  @volatile private var startGate = new CountDownLatch(0)
+  @volatile private var turnGate = new CountDownLatch(0)
+  // Counted down when a "wait here" turn reaches the gate (the scripted client's call log is locked while it waits)
+  @volatile private var turnWaiting = new CountDownLatch(1)
+  private val gatedLLMs = new java.util.concurrent.ConcurrentLinkedQueue[org.llm4s.testkit.ScriptedLLMClient]()
+  private val gatedPort = {
+    val s = new ServerSocket(0)
+    try s.getLocalPort
+    finally s.close()
+  }
+  private val gatedSessions = new SessionManager()
+  private val gatedServer = new TypedWebSocketServer(
+    address = new InetSocketAddress("127.0.0.1", gatedPort),
+    sessionManager = gatedSessions,
+    capabilities = Capabilities(tts = false, stt = false, image = false, music = false),
+    engineFactory = (sessionId, theme, artStyle, outline, _) => {
+      if (theme.contains("slow")) startGate.await(30, TimeUnit.SECONDS)
+      val llm = ScriptedDm { case ScriptedDm.Command("wait here") =>
+        turnWaiting.countDown()
+        turnGate.await(30, TimeUnit.SECONDS)
+        org.llm4s.testkit.Reply.text(DmAnswers.simple("You wait.", "cavern_entrance", "wait"))
+      }
+      gatedLLMs.add(llm)
+      Right(GameEngine.create(llm, sessionId, theme, artStyle, outline))
+    },
+    sttClient = None,
+    workPool = workPool,
+    mediaEC = ExecutionContext.fromExecutor(mediaPool),
+    musicEC = ExecutionContext.fromExecutor(musicPool),
+    autoSave = true,
+    sessionTtlMillis = 0
+  )
+
   override def beforeAll(): Unit = {
     StepPersistence.useSaveDirectory(saveRoot)
     server.setReuseAddr(true)
     server.start()
+    gatedServer.setReuseAddr(true)
+    gatedServer.start()
     Thread.sleep(300)
   }
 
   override def afterAll(): Unit = {
     musicGate.countDown()
+    startGate.countDown()
+    turnGate.countDown()
+    gatedServer.stop(1000)
     server.stop(1000)
     workPool.shutdownNow()
     mediaPool.shutdownNow()
@@ -92,7 +132,7 @@ class GameSessionsSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll 
     Files.deleteIfExists(path)
   }
 
-  private final class Client extends WebSocketClient(new URI(s"ws://127.0.0.1:$port")) {
+  private final class Client(to: Int = port) extends WebSocketClient(new URI(s"ws://127.0.0.1:$to")) {
     val received = new LinkedBlockingQueue[ujson.Value]()
     override def onOpen(handshake: ServerHandshake): Unit = ()
     override def onMessage(message: String): Unit = received.put(ujson.read(message))
@@ -113,8 +153,8 @@ class GameSessionsSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll 
     }
   }
 
-  private def connect(): Client = {
-    val c = new Client
+  private def connect(to: Int = port): Client = {
+    val c = new Client(to)
     c.connectBlocking(5, TimeUnit.SECONDS) shouldBe true
     c.await("connected")
     c
@@ -223,6 +263,46 @@ class GameSessionsSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll 
     c.sendJson("type" -> "streamCommand", "command" -> "look")
     c.await("error")("data")("error").str shouldBe "No active session"
     Thread.sleep(300)
+    Files.exists(saveRoot.resolve(gameId)) shouldBe false
+    c.close()
+  }
+
+  test("a connection that closes before its new game is attached does not keep the session alive") {
+    startGate = new CountDownLatch(1)
+    val before = gatedSessions.count
+    val c = connect(gatedPort)
+    c.sendJson("type" -> "newGame", "theme" -> "slow")
+    Thread.sleep(200) // the engine is being made
+    c.closeBlocking()
+    startGate.countDown()
+
+    eventually(gatedSessions.count == before + 1)
+    // The session was registered for a connection that had already gone; with nothing attached, it expires
+    eventually {
+      gatedServer.expireSessions()
+      gatedSessions.count == before
+    }
+  }
+
+  test("a turn queued behind the end of its game is dropped, and the game is not saved again") {
+    turnGate = new CountDownLatch(1)
+    turnWaiting = new CountDownLatch(1)
+    val c = connect(gatedPort)
+    c.sendJson("type" -> "newGame", "theme" -> "caves")
+    val gameId = c.await("gameStarted")("data")("gameId").str
+    eventually(StepPersistence.gameExists(gameId))
+    val llm = gatedLLMs.toArray.last.asInstanceOf[org.llm4s.testkit.ScriptedLLMClient]
+
+    c.sendJson("type" -> "streamCommand", "command" -> "wait here") // held at the model call
+    turnWaiting.await(5, TimeUnit.SECONDS) shouldBe true
+    c.sendJson("type" -> "streamCommand", "command" -> "look") // queued behind it
+    Thread.sleep(100)
+    val deleted = gatedServer.endGame(gameId)(StepPersistence.deleteGame(gameId))
+    turnGate.countDown()
+
+    Await.result(deleted, 10.seconds) shouldBe Right(())
+    Thread.sleep(300)
+    llm.calls.flatMap(call => ScriptedDm.Command.unapply(call.conversation)) should not contain "look"
     Files.exists(saveRoot.resolve(gameId)) shouldBe false
     c.close()
   }

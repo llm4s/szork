@@ -6,7 +6,7 @@ import org.llm4s.szork.error.ErrorHandling._
 import ujson._
 import org.llm4s.szork.game.IdGenerator
 import org.llm4s.szork.media.AtomicFiles
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.nio.charset.StandardCharsets
 import org.slf4j.{Logger, LoggerFactory}
 import scala.util.{Try, Using}
@@ -72,15 +72,23 @@ object StepPersistence {
     dir
   }
 
-  /** Ensure step directory exists. */
-  private def ensureStepDir(gameId: String, stepNumber: Int): Path = {
-    ensureGameDir(gameId)
-    val stepDir = getStepDir(gameId, stepNumber)
-    if (!Files.exists(stepDir)) {
-      Files.createDirectories(stepDir)
-      logger.debug(s"Created step directory: ${stepDir.toAbsolutePath}")
-    }
-    stepDir
+  /** Writes a step directory whole: `write` fills a new directory, which then takes the place of `stepDir` and of
+    * anything an earlier save of that step left there. The new directory's name starts with a dot, so it is never
+    * listed as a step.
+    */
+  private def replaceStepDir(stepDir: Path)(write: Path => Unit): Unit = {
+    val gameDir = stepDir.getParent
+    val name = stepDir.getFileName.toString
+    val fresh = Files.createTempDirectory(gameDir, s".$name.new-")
+    try {
+      write(fresh)
+      if (Files.exists(stepDir)) {
+        val old = gameDir.resolve(s".$name.old-${java.util.UUID.randomUUID()}")
+        Files.move(stepDir, old, StandardCopyOption.ATOMIC_MOVE)
+        Files.move(fresh, stepDir, StandardCopyOption.ATOMIC_MOVE)
+        deleteRecursively(old)
+      } else Files.move(fresh, stepDir, StandardCopyOption.ATOMIC_MOVE)
+    } finally if (Files.exists(fresh)) deleteRecursively(fresh)
   }
 
   /** Save JSON with pretty printing. Like every save, it is atomic: a crash leaves the old file or the new one. */
@@ -136,46 +144,16 @@ object StepPersistence {
         Left(PersistenceError(s"Failed to load game metadata: ${e.getMessage}", Some(e), operation = "load"))
     }
 
-  /** Save a complete step. Callers write the game's game.json after it, so game.json never names a missing step. */
+  /** Save a complete step. Callers write the game's game.json after it, so game.json never names a missing step. The
+    * step's directory is written whole, so a step saved again (a turn played again after a load) keeps nothing of the
+    * earlier save.
+    */
   def saveStep(stepData: StepData): SzorkResult[Unit] =
     try {
-      val stepDir = ensureStepDir(stepData.metadata.gameId, stepData.metadata.stepNumber)
-
-      // Save step metadata
-      saveJson(stepDir.resolve("metadata.json"), StepMetadataCodec.toJson(stepData.metadata))
-
-      // Save game state
-      saveJson(stepDir.resolve("state.json"), GameStateCodec.toJson(stepData.gameState))
-
-      // Save user command (if present)
-      stepData.userCommand.foreach(cmd => saveText(stepDir.resolve("command.txt"), cmd))
-
-      // Save narration text
-      saveText(stepDir.resolve("response.txt"), stepData.narrationText)
-
-      // Save structured response (if present)
-      stepData.response.foreach { resp =>
-        val responseJson = resp match {
-          case SceneResponse(scene) =>
-            ujson.Obj(
-              "type" -> "scene",
-              "scene" -> ujson.read(GameScene.toJson(scene))
-            )
-        }
-        saveJson(stepDir.resolve("response.json"), responseJson)
+      ensureGameDir(stepData.metadata.gameId)
+      replaceStepDir(getStepDir(stepData.metadata.gameId, stepData.metadata.stepNumber)) { stepDir =>
+        writeStep(stepDir, stepData)
       }
-
-      // Save tool calls (if any)
-      if (stepData.toolCalls.nonEmpty) {
-        val toolCallsJson = ujson.Arr(stepData.toolCalls.map(ToolCallCodec.toJson)*)
-        saveJson(stepDir.resolve("tool-calls.json"), toolCallsJson)
-      }
-
-      // Save adventure outline (step 1 only)
-      stepData.outline.foreach { outline =>
-        saveJson(stepDir.resolve("outline.json"), AdventureGenerator.outlineToJson(outline))
-      }
-
       logger.debug(s"Saved step ${stepData.metadata.stepNumber} for game ${stepData.metadata.gameId}")
       Right(())
     } catch {
@@ -183,6 +161,44 @@ object StepPersistence {
         logger.error(s"Failed to save step ${stepData.metadata.stepNumber} for game ${stepData.metadata.gameId}", e)
         Left(PersistenceError(s"Failed to save step: ${e.getMessage}", Some(e), operation = "save"))
     }
+
+  /** Writes the files of `stepData` into the empty directory `stepDir`. */
+  private def writeStep(stepDir: Path, stepData: StepData): Unit = {
+    // Save step metadata
+    saveJson(stepDir.resolve("metadata.json"), StepMetadataCodec.toJson(stepData.metadata))
+
+    // Save game state
+    saveJson(stepDir.resolve("state.json"), GameStateCodec.toJson(stepData.gameState))
+
+    // Save user command (if present)
+    stepData.userCommand.foreach(cmd => saveText(stepDir.resolve("command.txt"), cmd))
+
+    // Save narration text
+    saveText(stepDir.resolve("response.txt"), stepData.narrationText)
+
+    // Save structured response (if present)
+    stepData.response.foreach { resp =>
+      val responseJson = resp match {
+        case SceneResponse(scene) =>
+          ujson.Obj(
+            "type" -> "scene",
+            "scene" -> ujson.read(GameScene.toJson(scene))
+          )
+      }
+      saveJson(stepDir.resolve("response.json"), responseJson)
+    }
+
+    // Save tool calls (if any)
+    if (stepData.toolCalls.nonEmpty) {
+      val toolCallsJson = ujson.Arr(stepData.toolCalls.map(ToolCallCodec.toJson)*)
+      saveJson(stepDir.resolve("tool-calls.json"), toolCallsJson)
+    }
+
+    // Save adventure outline (step 1 only)
+    stepData.outline.foreach { outline =>
+      saveJson(stepDir.resolve("outline.json"), AdventureGenerator.outlineToJson(outline))
+    }
+  }
 
   /** Saves a new game's first step, then its game.json: a game is listed only once its first step is complete. */
   def saveNewGame(stepData: StepData, metadata: GameMetadata): SzorkResult[Unit] =
@@ -257,10 +273,21 @@ object StepPersistence {
         Left(PersistenceError(s"Failed to load step: ${e.getMessage}", Some(e), operation = "load"))
     }
 
-  /** Load the latest step for a game. */
+  /** Load the latest step for a game: the step its game.json names, or, if that step cannot be read, the highest step
+    * that can (the game then carries on from there).
+    */
   def loadLatestStep(gameId: String): SzorkResult[StepData] =
     loadGameMetadata(gameId).flatMap { metadata =>
-      loadStep(gameId, metadata.currentStep)
+      loadStep(gameId, metadata.currentStep).left.flatMap { error =>
+        val earlier = listSteps(gameId).filter(_ < metadata.currentStep).reverse
+        earlier.iterator.map(step => step -> loadStep(gameId, step)).collectFirst { case (step, Right(data)) =>
+          logger.warn(s"Step ${metadata.currentStep} of game $gameId cannot be read; loading step $step instead")
+          data
+        } match {
+          case Some(data) => Right(data)
+          case None => Left(error)
+        }
+      }
     }
 
   /** List all step numbers for a game. */

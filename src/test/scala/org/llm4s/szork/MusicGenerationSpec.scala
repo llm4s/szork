@@ -170,4 +170,11 @@ class MusicGenerationSpec extends AnyFunSuite with Matchers {
       server.requests shouldBe empty
     }
   }
+
+  test("scene music moods are looked up by name") {
+    MusicMoods.byName("combat") shouldBe Some(MusicMoods.COMBAT)
+    MusicMoods.byName(" Mystery ") shouldBe Some(MusicMoods.MYSTERY)
+    MusicMoods.byName("tense") shouldBe None
+    MusicMoods.orDefault("tense") shouldBe MusicMoods.EXPLORATION
+  }
 }

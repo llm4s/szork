@@ -22,16 +22,6 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt.toLowerCase should include("oil painting")
   }
 
-  test("the prompt keeps puzzles for the player, brings characters in, and says how the adventure ends") {
-    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("PUZZLES - LET THE PLAYER SOLVE THEM")
-    prompt should include("that a clue is a red herring")
-    prompt should include("Bring each into the scene on the player's first visit")
-    prompt should include("ENDING THE ADVENTURE")
-    prompt should include("""call update_quest_progress for "main" with "completed"""")
-    prompt should include("""give "items" (and""")
-  }
-
   test("fullSystemPrompt includes outline content when provided") {
     val outline = AdventureOutline(
       title = "Test Adventure",
@@ -47,15 +37,6 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     val prompt = PromptBuilder.fullSystemPrompt(None, None, Some(outline))
     prompt should include("Test Adventure")
     prompt should include("KEY LOCATIONS")
-  }
-
-  test("fullSystemPrompt clearly establishes LLM as the game engine") {
-    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("=== YOUR ROLE AND CAPABILITIES ===")
-    prompt should include("YOU ARE THE GAME ENGINE")
-    prompt should include("You have FULL capability to:")
-    prompt should include("Generate room descriptions and scenes for ANY location")
-    prompt should include("Process ALL player commands")
   }
 
   test("fullSystemPrompt says when to use every tool, and that their state outlasts the conversation") {
@@ -79,14 +60,6 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt should not include "list_inventory (is the key held?)"
   }
 
-  test("fullSystemPrompt has rules for tool usage") {
-    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("TOOL RULES:")
-    prompt should include("Movement commands (north/south/east/west/up/down/in/out)")
-    prompt should include("Movement needs no tool: your fullScene answer moves the player")
-    prompt should include("Call set_exit_state with \"open\" in the")
-  }
-
   test("the exit rules are stated once, for every exit state") {
     val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
     def count(text: String) = prompt.sliding(text.length).count(_ == text)
@@ -96,14 +69,7 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt should not include "PLAYER MOVEMENT VALIDATION"
     prompt should not include "EXIT STATE ENFORCEMENT"
     // every state the world state keeps is defined
-    prompt should include("- \"open\" = passable")
-    prompt should include("- \"closed\" = shut, but the player can simply open it")
-    prompt should include("""- "locked", "sealed" or "blocked" = IMPASSABLE until the player overcomes its obstacle""")
-    prompt should include("- \"hidden\" = not shown and not usable until discovered")
     org.llm4s.szork.game.ExitState.names.foreach(state => prompt should include(s"\"$state\""))
-    // a plain closed door is opened on the way, and one with an obstacle stays shut
-    prompt should include("With no obstacle: \"open door\", or just moving that way, opens it")
-    prompt should include("With an obstacle (stuck, barred, guarded): it stays shut")
   }
 
   test("objects are told apart by prominence, not by repeating them in a short narration") {

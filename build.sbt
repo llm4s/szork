@@ -59,7 +59,7 @@ lazy val root = (project in file("."))
       
       // Core dependencies
       "com.lihaoyi"   %% "upickle"         % "4.4.3",
-      "ch.qos.logback" % "logback-classic" % "1.5.34",
+      "ch.qos.logback" % "logback-classic" % "1.5.38",
       "io.github.cdimascio"           %  "dotenv-java"     % "3.2.0",
       
       // HTTP and WebSocket

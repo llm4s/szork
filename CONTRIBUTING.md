@@ -14,6 +14,9 @@ Backend, from the repository root:
 sbt scalafmtCheckAll Test/compile test    # sbt scalafmtAll fixes formatting
 ```
 
+`sbt coverage test coverageReport` measures test coverage (the report is `target/scala-*/scoverage-report/index.html`;
+CI keeps it as the `coverage-report` artifact). Nothing fails on a low figure.
+
 `build.sbt` compiles with `-Werror` and `-Wunused`, so a warning fails the build, locally as in CI.
 
 Frontend, from `frontend/`:

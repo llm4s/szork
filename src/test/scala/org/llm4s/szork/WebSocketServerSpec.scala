@@ -388,6 +388,35 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     c.close()
   }
 
+  test("a command, theme or outline over its limit is refused with a clear error, and the game goes on") {
+    val c = connect()
+    c.sendJson("type" -> "newGame", "theme" -> "x" * (SzorkConfig.MaxThemeChars + 1))
+    c.await("error")("data")("details").str should include(s"${SzorkConfig.MaxThemeChars} characters")
+
+    startGame(c)
+    val long = "look " * (SzorkConfig.MaxCommandChars / 5 + 1)
+    c.sendJson("type" -> "streamCommand", "command" -> long)
+    val refused = c.await("error")("data")
+    refused("error").str shouldBe "Command too long"
+    refused("details").str should include(s"${SzorkConfig.MaxCommandChars} characters")
+    c.sendJson("type" -> "command", "command" -> long)
+    c.await("error")("data")("error").str shouldBe "Command too long"
+
+    c.sendJson("type" -> "streamCommand", "command" -> "go north")
+    c.await("streamComplete")("data")("scene")("locationName").str shouldBe "Small Hall"
+    c.close()
+  }
+
+  test("a recording or outline larger than its limit is refused before it is decoded") {
+    val overAudio = "A" * ((SzorkConfig.MaxAudioBytes / 3 + 1) * 4)
+    TypedWebSocketServer.overLimit(AudioCommandRequest(overAudio)).map(_.error) shouldBe Some("Recording too long")
+    TypedWebSocketServer.overLimit(AudioCommandRequest(recording)) shouldBe None
+    val bigOutline = ujson.Obj("title" -> "x" * SzorkConfig.MaxOutlineChars)
+    TypedWebSocketServer.overLimit(NewGameRequest(adventureOutline = Some(bigOutline))).flatMap(_.details).get should
+      include("outline is too large")
+    TypedWebSocketServer.overLimit(NewGameRequest(adventureOutline = Some(ujson.Obj("title" -> "x")))) shouldBe None
+  }
+
   test("an invalid message gets an error, not a dropped connection") {
     val c = connect()
     c.send("""{"type":"noSuchThing"}""")

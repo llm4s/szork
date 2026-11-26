@@ -1,7 +1,9 @@
 package org.llm4s.szork.api
 
 import cask._
-import io.undertow.Undertow
+import io.undertow.{Undertow, UndertowOptions}
+import io.undertow.server.HttpHandler
+import io.undertow.util.Headers
 import org.slf4j.{Logger, LoggerFactory}
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{Conversation, SystemMessage, UserMessage}
@@ -106,8 +108,24 @@ final class SzorkApp(
     // Cask's debug mode sends exception details to clients in error responses
     override def debugMode: Boolean = false
   }
+  // Requests are checked before Cask sees them (see SzorkApp.refusal). Undertow also cuts off a body larger than the
+  // limit that does not declare its length.
+  private val guarded: HttpHandler = { exchange =>
+    SzorkApp.refusal(config, exchange.getRequestContentLength) match {
+      case Some((status, message)) =>
+        logger.warn(s"Refused ${exchange.getRequestMethod} ${exchange.getRequestPath}: $message")
+        exchange.setStatusCode(status)
+        exchange.getResponseHeaders.put(Headers.CONTENT_TYPE, "application/json")
+        exchange.getResponseSender.send(ujson.write(ujson.Obj("status" -> "error", "message" -> message)))
+      case None => caskMain.defaultHandler.handleRequest(exchange)
+    }
+  }
   private val http =
-    Undertow.builder.addHttpListener(config.port, config.host).setHandler(caskMain.defaultHandler).build
+    Undertow.builder
+      .addHttpListener(config.port, config.host)
+      .setServerOption(UndertowOptions.MAX_ENTITY_SIZE, java.lang.Long.valueOf(SzorkConfig.MaxRequestBytes))
+      .setHandler(guarded)
+      .build
 
   def start(): Unit = {
     wsServer.setReuseAddr(true)
@@ -163,6 +181,13 @@ object SzorkApp {
         tracing
       )
     }
+
+  /** Why an HTTP request is refused, as its status and message, if it is: a body larger than
+    * [[SzorkConfig.MaxRequestBytes]] (`contentLength` is -1 when the request does not declare it).
+    */
+  private[api] def refusal(config: SzorkConfig, contentLength: Long): Option[(Int, String)] =
+    Option.when(contentLength > SzorkConfig.MaxRequestBytes)(
+      413 -> s"The request is too large: at most ${SzorkConfig.MaxRequestBytes / 1024} KB.")
 
   /** Logs which optional features the server provides, and why any it does not are off. */
   private[api] def logFeatures(logger: Logger, config: SzorkConfig, capabilities: Capabilities): Unit = {
@@ -227,6 +252,8 @@ final class SzorkRoutes(
     if (!isJson(request)) return notJson
     scala.util.Try(ujson.read(request.text())("theme").str).toOption match {
       case None => ujson.Obj("valid" -> false, "message" -> "Request must be a JSON object with a \"theme\" string")
+      case Some(themeDescription) if themeDescription.length > SzorkConfig.MaxThemeChars =>
+        ujson.Obj("valid" -> false, "message" -> SzorkRoutes.ThemeTooLong)
       case Some(themeDescription) => validateThemeDescription(themeDescription)
     }
   }
@@ -321,6 +348,8 @@ final class SzorkRoutes(
       case Left(message) =>
         logger.warn(s"Rejected generate-adventure request: $message")
         ujson.Obj("status" -> "error", "message" -> message)
+      case Right((theme, _)) if theme.exists(_.prompt.length > SzorkConfig.MaxThemeChars) =>
+        ujson.Obj("status" -> "error", "message" -> SzorkRoutes.ThemeTooLong)
       case Right((theme, _)) =>
         generateAdventureFor(theme)
     }
@@ -440,6 +469,10 @@ final class SzorkRoutes(
   }
 
   initialize()
+}
+
+object SzorkRoutes {
+  val ThemeTooLong: String = s"The theme can be at most ${SzorkConfig.MaxThemeChars} characters."
 }
 
 /** Starts the server from the environment's configuration (see [[SzorkConfig.load]]). */

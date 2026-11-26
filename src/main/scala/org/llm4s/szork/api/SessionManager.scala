@@ -63,6 +63,17 @@ final class GameSession(
     */
   def end(): Unit = hasEnded = true
   def ended: Boolean = hasEnded
+
+  // Turns running or waiting on `executor`
+  private val pendingTurns = new java.util.concurrent.atomic.AtomicInteger(0)
+
+  /** Counts a turn in, unless `max` are already running or waiting: then false, and the turn should be refused. */
+  def beginTurn(max: Int): Boolean =
+    if (pendingTurns.incrementAndGet() <= max) true
+    else { pendingTurns.decrementAndGet(); false }
+
+  /** Counts a turn out once it has finished (or was dropped). */
+  def endTurn(): Unit = pendingTurns.decrementAndGet(): Unit
 }
 
 /** Thread-safe registry of active game sessions, with at most one session per game.

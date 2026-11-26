@@ -181,6 +181,31 @@ object SzorkConfig {
     */
   val DefaultReasoningEffort: ReasoningEffort = ReasoningEffort.Low
 
+  // ============= Limits on what a client may send =============
+
+  /** The longest command a player may type (or a recording may be heard as). */
+  val MaxCommandChars: Int = 1000
+
+  /** The largest recording a voice command may be, decoded: tens of seconds of speech are well under it. */
+  val MaxAudioBytes: Int = 10 * 1024 * 1024
+
+  /** The largest adventure outline, as JSON, a new game may bring with it. A designed outline is some tens of KB. */
+  val MaxOutlineChars: Int = 256 * 1024
+
+  /** The longest theme description: what the player types to validate a theme or to design an adventure. */
+  val MaxThemeChars: Int = 2000
+
+  /** The largest body an HTTP request may have (a kept adventure's outline is the largest the frontend sends). */
+  val MaxRequestBytes: Long = 1024L * 1024
+
+  /** The largest WebSocket message: a voice command of [[MaxAudioBytes]], as Base64 in its JSON, fits. A larger one
+    * closes the connection.
+    */
+  val MaxMessageBytes: Int = 16 * 1024 * 1024
+
+  /** How many turns a session may have running or waiting at once; a command sent beyond them is refused. */
+  val MaxPendingTurns: Int = 3
+
   /** The browser origins allowed by default: the dev frontend (Vite, port 3090) and this server's own port. */
   def defaultOrigins(port: Int): Set[String] =
     Set(3090, port).flatMap(p => Set(s"http://localhost:$p", s"http://127.0.0.1:$p"))

@@ -10,13 +10,7 @@ import java.util.UUID
   */
 object IdGenerator {
 
-  /** Generate a new ID with the specified prefix.
-    *
-    * @param prefix
-    *   The prefix to use (e.g., "game", "sess")
-    * @return
-    *   A formatted ID like "game-a3b2c1d4"
-    */
+  /** A new ID such as "game-a3b2c1d4": the prefix and eight hex digits. */
   private def generate(prefix: String): String = {
     val uuid = UUID.randomUUID().toString.replace("-", "").take(8).toLowerCase
     s"$prefix-$uuid"

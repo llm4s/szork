@@ -1,8 +1,8 @@
 package org.llm4s.szork.adventures
 
 import org.llm4s.szork.api.{ArtStyle, GameTheme}
-import org.llm4s.szork.error._
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.error.*
+import org.llm4s.szork.error.ErrorHandling.*
 import org.llm4s.szork.game.{AdventureGenerator, AdventureOutline}
 import org.llm4s.szork.media.{AtomicFiles, MediaRef, PictureFiles}
 import org.slf4j.LoggerFactory
@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.util.Base64
 import java.util.concurrent.{CompletableFuture, ConcurrentHashMap}
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 import scala.util.{Try, Using}
 
 /** A ready-made adventure: an outline to play as it is, with the theme and art style it was designed for. */
@@ -48,7 +48,7 @@ final case class AdventureSummary(
   * Adventure ids, location ids and moods reach the filesystem only as names this class has checked or made.
   */
 final class AdventureLibrary(val root: Path) {
-  import AdventureLibrary._
+  import AdventureLibrary.*
 
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   // The media being made, by file: games that need a file already being made wait for that one result

@@ -1,7 +1,7 @@
 package org.llm4s.szork.media
 
-import org.llm4s.szork.error._
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.error.*
+import org.llm4s.szork.error.ErrorHandling.*
 import org.llm4s.szork.persistence.GameDirs
 import java.nio.file.{Files, Path, Paths}
 import java.nio.file.attribute.FileTime
@@ -12,7 +12,7 @@ import org.llm4s.szork.api.MediaCacheConfig
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicLong
 import scala.collection.concurrent.TrieMap
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
 /** On-disk cache of the pictures made for one game, so revisiting a location does not pay to draw it again.
@@ -29,7 +29,7 @@ import scala.util.Using
   * mark is permanent.
   */
 object MediaCache {
-  private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
   // The server's settings (SzorkConfig.cache), set at startup; tests point the directory at a temporary one
   @volatile private var settings: MediaCacheConfig = MediaCacheConfig()
 

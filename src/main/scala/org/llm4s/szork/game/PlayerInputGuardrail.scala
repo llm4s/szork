@@ -55,7 +55,7 @@ object PlayerInputGuardrail {
     "send_to_url"
   )
 
-  import InjectionCategory._
+  import InjectionCategory.*
 
   // Whose instructions: the Dungeon Master's, or the conversation's ("your rules", "all previous instructions")
   private val Theirs = """(all\s+)?(of\s+)?(your|(the\s+)?(previous|prior|above|earlier|preceding))\s+"""

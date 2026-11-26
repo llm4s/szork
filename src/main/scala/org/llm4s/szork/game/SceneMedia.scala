@@ -1,8 +1,8 @@
 package org.llm4s.szork.game
 
 import org.llm4s.szork.adventures.AdventureLibrary
-import org.llm4s.szork.error._
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.error.*
+import org.llm4s.szork.error.ErrorHandling.*
 import org.llm4s.szork.media.{MediaCache, MediaPlanner, MediaRef}
 import org.llm4s.szork.spi.{ImageClient, MusicClient, TTSClient}
 import org.slf4j.LoggerFactory
@@ -14,13 +14,9 @@ import org.slf4j.LoggerFactory
   * here reads the game's mutable state (the adventure and outline are looked up when a picture is asked for), so images
   * and music can be generated while the next turn is in progress.
   *
-  * @param library
-  *   the adventure library, which keeps the pictures of a library adventure's locations and the mood tracks (None:
-  *   pictures are made for this game alone, and a mood's track is made each time it is asked for)
-  * @param adventure
-  *   the id of the library adventure this game plays, if it plays one
-  * @param outlineLocation
-  *   the adventure outline's location with an id, if the outline has it
+  * The `library` keeps the pictures of a library adventure's locations and the mood tracks (None: pictures are made for
+  * this game alone, and a mood's track each time it is asked for); `adventure` is the id of the library adventure this
+  * game plays, if any.
   */
 private[game] final class SceneMedia(
   sessionId: String,

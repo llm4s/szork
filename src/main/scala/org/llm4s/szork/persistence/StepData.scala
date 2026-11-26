@@ -4,39 +4,13 @@ import org.llm4s.llmconnect.model.{AssistantMessage, Message, ToolMessage}
 import org.llm4s.szork.game.{GameScene, AdventureOutline}
 import ujson.Value
 
-/** Unified data models for step-based game persistence.
-  *
-  * These models are used by both regular gameplay (UI) and debug sessions, providing a single source of truth for game
-  * state storage.
-  */
-
 // Note: GameMetadata is defined in GameState.scala and includes:
 // - gameId, theme, artStyle, adventureTitle
 // - createdAt, lastSaved, lastPlayed, totalPlayTime
 // - currentStep, totalSteps (for step-based persistence)
 
-/** Metadata for a single step (stored in step-N/metadata.json).
-  *
-  * @param gameId
-  *   Game identifier this step belongs to
-  * @param stepNumber
-  *   Step number (1-indexed)
-  * @param timestamp
-  *   Timestamp when step was executed
-  * @param userCommand
-  *   User command that triggered this step (None for initial step)
-  * @param responseLength
-  *   Length of narration text response
-  * @param toolCallCount
-  *   Number of tool calls executed
-  * @param messageCount
-  *   Total messages in conversation after this step
-  * @param success
-  *   Whether step executed successfully
-  * @param error
-  *   Error message if step failed
-  * @param executionTimeMs
-  *   Time taken to execute step in milliseconds
+/** Metadata for a single step (stored in step-N/metadata.json): `stepNumber` is 1-indexed, `userCommand` None for the
+  * initial step.
   */
 case class StepMetadata(
   gameId: String,
@@ -55,21 +29,6 @@ case class StepMetadata(
   *
   * This is the primary data structure for step-based persistence. Each step directory contains a complete snapshot of
   * game state.
-  *
-  * @param metadata
-  *   Step-level metadata
-  * @param gameState
-  *   Complete game state at this step
-  * @param userCommand
-  *   User command text (for convenience, also in metadata)
-  * @param narrationText
-  *   Narration text response
-  * @param response
-  *   The scene the step described, if it described one
-  * @param toolCalls
-  *   Tool calls executed during this step
-  * @param outline
-  *   Adventure outline (included in step 1 only)
   */
 case class StepData(
   metadata: StepMetadata,
@@ -82,17 +41,6 @@ case class StepData(
 )
 
 /** Information about a tool call executed during a step.
-  *
-  * @param id
-  *   Tool call identifier
-  * @param name
-  *   Tool name (e.g., "list_inventory")
-  * @param arguments
-  *   Tool arguments as JSON
-  * @param result
-  *   Tool result (if available)
-  * @param timestamp
-  *   Timestamp when tool was called
   */
 case class ToolCallInfo(
   id: String,

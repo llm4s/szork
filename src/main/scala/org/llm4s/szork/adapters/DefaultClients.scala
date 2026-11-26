@@ -2,8 +2,8 @@ package org.llm4s.szork.adapters
 
 import org.llm4s.szork.api.{MediaNetworkConfig, MusicPollConfig, SpeechConfig}
 import org.llm4s.szork.media.{MusicGeneration, TextToSpeech, SpeechToText}
-import org.llm4s.szork.spi._
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.spi.*
+import org.llm4s.szork.error.ErrorHandling.*
 
 /** Narration through llm4s-speech. One client serves every game: build it once. */
 class DefaultTTSClient(speech: SpeechConfig) extends TTSClient {

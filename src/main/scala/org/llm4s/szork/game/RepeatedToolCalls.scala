@@ -31,8 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger
   * `add`): of two identical calls in one response, exactly one runs and the other is answered as a repeat, whose result
   * sits beside it in the conversation.
   *
-  * @param readOnly
-  *   The tools that only read the game ([[GameTools.ReadOnly]])
+  * `readOnly` names the tools that only read the game ([[GameTools.ReadOnly]]).
   */
 final class RepeatedToolCallMiddleware(readOnly: Set[String] = GameTools.ReadOnly) extends AgentMiddleware {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)

@@ -1,6 +1,6 @@
 package org.llm4s.szork.media
 
-import ujson._
+import ujson.*
 import java.nio.file.{Files, Path}
 import java.nio.charset.StandardCharsets
 

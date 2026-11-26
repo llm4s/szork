@@ -1,7 +1,7 @@
 package org.llm4s.szork.persistence
 
-import ujson._
-import org.llm4s.llmconnect.model._
+import ujson.*
+import org.llm4s.llmconnect.model.*
 
 /** JSON codecs for step-based persistence data structures. */
 

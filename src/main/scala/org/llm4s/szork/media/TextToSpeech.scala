@@ -10,15 +10,15 @@ import org.llm4s.szork.api.SpeechConfig
 import org.llm4s.speech.tts.TTSOptions
 import org.llm4s.speech.SpeechProviderSelector
 import org.llm4s.speech.tts.{TextToSpeech => TtsClient}
-import org.llm4s.szork.error._
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.error.*
+import org.llm4s.szork.error.ErrorHandling.*
 
 /** Narration via llm4s-speech's text-to-speech client (OpenAI), chosen by `SpeechProviderSelector`.
   *
   * Configured by OPENAI_API_KEY and the [[SpeechConfig]] model and voice.
   */
 final class TextToSpeech private (client: TtsClient, val defaultVoice: String) {
-  private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   /** Speaks `text` as MP3. */
   def synthesize(text: String, voice: String = defaultVoice): SzorkResult[Array[Byte]] = {

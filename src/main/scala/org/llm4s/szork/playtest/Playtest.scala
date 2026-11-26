@@ -91,16 +91,10 @@ object Player {
 
 /** What a playtest is asked to do.
   *
-  * @param theme
-  *   The adventure to design and play
-  * @param turns
-  *   The most turns the player takes (the playtest ends sooner if the adventure does)
-  * @param probeExits
-  *   Whether to walk at the start location's locked and sealed exits in games of their own, to see that they hold
-  * @param artStyle
-  *   The art style the Dungeon Master is told pictures are drawn in (None: the default)
-  * @param adventureId
-  *   The adventure library's id of the adventure played, if it is one (see [[Playtest.playAdventure]])
+  * `turns` is the most the player takes (the playtest ends sooner if the adventure does); `probeExits` walks at the
+  * start location's locked and sealed exits in games of their own, to see that they hold; `artStyle` is the style the
+  * Dungeon Master is told pictures are drawn in (None: the default); `adventureId` is the library adventure played, if
+  * it is one (see [[Playtest.playAdventure]]).
   */
 final case class PlaytestConfig(
   theme: String,

@@ -116,12 +116,8 @@ object SceneImages {
   def cacheTag(config: ImageGenerationConfig): String = s"${config.provider}/${config.model}"
 }
 
-/** Scene images from an llm4s image client, cached per game and location.
-  *
-  * @param client
-  *   the llm4s image client (instrumented by [[SceneImages.llm4sClient]])
-  * @param cacheTag
-  *   the provider and model, part of each cache key
+/** Scene images from an llm4s image client ([[SceneImages.llm4sClient]]), cached per game and location; `cacheTag` (the
+  * provider and model) is part of each cache key.
   */
 final class SceneImageClient(
   client: ImageGenerationClient,

@@ -2,8 +2,8 @@ package org.llm4s.szork.game
 
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.ReasoningEffort
-import org.llm4s.szork.error._
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.error.*
+import org.llm4s.szork.error.ErrorHandling.*
 import org.llm4s.toolapi.{ObjectSchema, Schema}
 import org.llm4s.trace.Tracing
 import org.slf4j.LoggerFactory

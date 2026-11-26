@@ -1,15 +1,19 @@
 package org.llm4s.szork
 
-import org.llm4s.llmconnect.model.Conversation
+import org.llm4s.error.SimpleError
+import org.llm4s.llmconnect.model.{Conversation, ReasoningEffort}
+import org.llm4s.szork.adventures.Adventure
+import org.llm4s.szork.api.{ArtStyle, GameTheme, SubagentConfig, SzorkConfig}
 import org.llm4s.szork.game._
 import org.llm4s.szork.playtest._
 import org.llm4s.szork.stubs.{DmAnswers, ScriptedDm}
 import org.llm4s.testkit.{Reply, ScriptedLLMClient}
+import org.scalatest.LoneElement
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 
 /** The playtest harness itself, with scripted models: a designer, a Dungeon Master and a player. */
-class PlaytestSpec extends AnyFunSuite with Matchers {
+class PlaytestSpec extends AnyFunSuite with Matchers with LoneElement {
 
   private val outline = AdventureOutline(
     title = "The Locked Cellar",
@@ -154,6 +158,91 @@ class PlaytestSpec extends AnyFunSuite with Matchers {
     val stranded = outline.copy(keyLocations = outline.keyLocations :+ LocationOutline("vault", "Vault", "x", "x"))
     PlaytestChecks.outline(stranded).map(f => (f.check, f.hard)) shouldBe List(("outline-map", true))
     PlaytestChecks.outline(outline) shouldBe Nil
+  }
+
+  private val PlayerPrompt = "You answer with the player's next command"
+  private def isPlayer(c: Conversation) = c.messages.exists(_.content.startsWith(PlayerPrompt))
+  private def isDm(c: Conversation) = c.messages.exists(_.content.contains("You are a Dungeon Master"))
+
+  test("the model player is asked with the configured reasoning and room to answer, and plays what it types") {
+    val llm = models { case c if isPlayer(c) => Reply.text("> GO NORTH\n") }
+    val report = Playtest
+      .run(PlaytestConfig("a house", 1, probeExits = false), llm, Player.model(llm, Some(ReasoningEffort.Low)))
+      .fold(e => fail(e.message), identity)
+    report.turns.map(_.command) shouldBe Vector("go north")
+    report.findings shouldBe Nil
+    val asked = llm.calls.filter(c => isPlayer(c.conversation)).loneElement
+    asked.options.maxTokens shouldBe Some(Player.MaxOutputTokens)
+    asked.options.reasoning shouldBe Some(ReasoningEffort.Low)
+  }
+
+  test("a player that cannot choose looks around, is reported, and a playtest it never played in fails") {
+    val failing = models { case c if isPlayer(c) => Reply.failure(SimpleError("overloaded")) }
+    val report = Playtest
+      .run(PlaytestConfig("a house", 2, probeExits = false), failing, Player.model(failing))
+      .fold(e => fail(e.message), identity)
+    report.turns.map(_.command) shouldBe Vector("look", "look")
+    report.findings.map(f => (f.check, f.hard, f.turn)) shouldBe List(
+      ("player-failed", false, Some(1)),
+      ("player-failed", false, Some(2)),
+      ("player-never-played", true, None))
+    report.findings.head.detail should include("overloaded")
+    report.passed shouldBe false
+
+    val silent = models { case c if isPlayer(c) => Reply.text("  \n") }
+    Player.model(silent).next("x", None, Nil, Nil) shouldBe Left("the player model answered with no command")
+  }
+
+  test("the playtest's games are made from the server's settings") {
+    val llm = models()
+    val quiet = SzorkConfig(subagents = SubagentConfig(npcDialogue = false, hints = false), reasoningEffort = None)
+    Playtest
+      .run(PlaytestConfig("a house", 1, probeExits = false), llm, Player.scripted("wait"), settings = quiet)
+      .isRight shouldBe true
+    val dm = llm.calls.filter(c => isDm(c.conversation))
+    dm should not be empty
+    dm.flatMap(_.options.tools.map(_.name)).filter(_.startsWith("task_")) shouldBe empty
+    dm.map(_.options.reasoning).distinct shouldBe List(None)
+
+    val subagents = models()
+    Playtest
+      .run(PlaytestConfig("a house", 1, probeExits = false), subagents, Player.scripted("wait"))
+      .isRight shouldBe true
+    subagents.calls.filter(c => isDm(c.conversation)).head.options.tools.map(_.name) should contain(
+      DmSubagents.HintTool)
+  }
+
+  test("a library adventure is played under its own theme and art style") {
+    val adventure = Adventure(
+      "the-locked-cellar",
+      outline,
+      Some(GameTheme("custom", "Station", "a derelict space station")),
+      Some(ArtStyle("pixel", "Pixel")),
+      0L)
+    val llm = models()
+    val report = Playtest
+      .playAdventure(
+        adventure,
+        PlaytestConfig("a haunted lighthouse", 1, probeExits = false),
+        llm,
+        Player.scripted("wait"))
+      .fold(e => fail(e.message), identity)
+    report.theme shouldBe "a derelict space station"
+    val system = llm.calls.filter(c => isDm(c.conversation)).head.conversation.messages.head.content
+    system should include("Adventure Theme: a derelict space station")
+    system should include("Art Style: pixel art style")
+    system should not include "lighthouse"
+  }
+
+  test("a report is written where it is asked for, making its directories, or the failure is said") {
+    val report = playtest(models(), 1, "wait")
+    val root = java.nio.file.Files.createTempDirectory("playtest")
+    val nested = root.resolve("runs/today/report.json")
+    Playtest.writeReport(report, nested) shouldBe Right(nested)
+    ujson.read(java.nio.file.Files.readString(nested))("title").str shouldBe "The Locked Cellar"
+
+    val blocked = root.resolve("runs/today/report.json/inside.json") // a file is in the way of the directory
+    Playtest.writeReport(report, blocked).isLeft shouldBe true
   }
 
   test("an outline problem's severity is decided by its kind, not by the words in it") {

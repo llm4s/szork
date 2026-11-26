@@ -23,8 +23,9 @@ class AdventureIntegrationSpec extends AnyFunSuite with Matchers {
     val llm = SzorkConfig.getLLMClient().fold(e => fail(s"LLM client: $e"), identity)
 
     val config = PlaytestConfig("underground realm: caverns, ancient ruins, subterranean rivers, glowing fungi", 20)
+    val settings = SzorkConfig.instance
     val report = Playtest
-      .run(config, llm, Player.model(llm), model, log = println)
+      .run(config, llm, Player.model(llm, settings.reasoningEffort), model, log = println, settings = settings)
       .fold(e => fail(s"The playtest could not run: ${e.message}"), identity)
 
     println(report.summary)

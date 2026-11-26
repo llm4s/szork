@@ -8,7 +8,11 @@ import org.llm4s.szork.game.GameEngine
 import org.llm4s.szork.media.{MediaCache, SceneImages}
 import org.llm4s.szork.persistence.StepPersistence
 import org.llm4s.llmconnect.model.ReasoningEffort
-import org.llm4s.security.Secret
+import org.llm4s.config.Llm4sConfig
+import org.llm4s.llmconnect.{LLMClient, LLMConnect}
+import org.llm4s.llmconnect.config.ProviderConfig
+import com.typesafe.config.ConfigFactory
+import scala.jdk.CollectionConverters.*
 import org.slf4j.Logger
 import java.nio.file.Paths
 
@@ -122,6 +126,9 @@ case class SzorkConfig(
     }
 }
 
+/** The language model Szork was asked for: one of the provider sections in `application.conf`, with the key, model and
+  * base URL its settings give. [[toProviderConfig]] hands it to llm4s.
+  */
 case class LLMConfig(
   provider: String,
   apiKey: String,
@@ -129,62 +136,50 @@ case class LLMConfig(
   baseUrl: Option[String] = None
 ) {
 
-  /** The llm4s provider configuration, or why there is none (a provider Szork does not know). */
-  def toProviderConfig: Either[String, org.llm4s.llmconnect.config.ProviderConfig] = {
-    import org.llm4s.types.ProviderModelTypes.{BaseUrl, ModelName}
-    provider.toLowerCase match {
-      case "openai" =>
-        Right(
-          org.llm4s.llmconnect.config.OpenAIConfig(
-            apiKey = Secret(apiKey),
-            model = ModelName(model.getOrElse(LLMConfig.DefaultOpenAIModel)),
-            organization = None,
-            baseUrl = BaseUrl(baseUrl.getOrElse("https://api.openai.com/v1")),
-            contextWindow = 128000,
-            reserveCompletion = 4096
-          ))
-      case "anthropic" =>
-        Right(
-          org.llm4s.llmconnect.config.AnthropicConfig(
-            apiKey = Secret(apiKey),
-            model = ModelName(model.getOrElse(LLMConfig.DefaultAnthropicModel)),
-            baseUrl = BaseUrl(baseUrl.getOrElse("https://api.anthropic.com")),
-            contextWindow = 200000,
-            reserveCompletion = 4096
-          ))
-      case "llama" | "local" =>
-        // Use OpenAI-compatible config for local LLaMA servers
-        Right(
-          org.llm4s.llmconnect.config.OpenAIConfig(
-            apiKey = Secret(if (apiKey == "not-required") "sk-no-key-required" else apiKey),
-            model = ModelName(model.getOrElse(LLMConfig.DefaultLlamaModel)),
-            organization = None,
-            baseUrl = BaseUrl(baseUrl.getOrElse("http://localhost:11434/v1")),
-            contextWindow = 8192,
-            reserveCompletion = 2048
-          ))
-      case other =>
-        Left(s"Unknown LLM provider: $other")
+  /** The llm4s provider configuration, or why there is none (a provider Szork does not know, or a section llm4s
+    * refuses).
+    *
+    * Read by llm4s's `Llm4sConfig` from the section of `application.conf` named after the provider, under this config's
+    * key, model and base URL. Szork's settings come from `.env` as well as the environment, which Typesafe Config does
+    * not read, so they are laid over the file here rather than substituted in it.
+    */
+  def toProviderConfig: Either[String, ProviderConfig] =
+    LLMConfig.section(provider).toRight(s"Unknown LLM provider: $provider").flatMap { name =>
+      val section = s"llm4s.providers.$name"
+      val settings = Map("llm4s.defaultProvider" -> name) ++
+        Option.unless(apiKey == LLMConfig.NoKey)(s"$section.apiKey" -> apiKey) ++
+        model.map(s"$section.model" -> _) ++
+        baseUrl.map(s"$section.baseUrl" -> _)
+      Llm4sConfig
+        .from(ConfigFactory.parseMap(settings.asJava).withFallback(ConfigFactory.parseResources("application.conf")))
+        .flatMap(_.defaultProvider())
+        .left
+        .map(_.message)
     }
-  }
 }
 
 object LLMConfig {
 
-  /** Models used when SZORK_LLM_MODEL is not set. */
-  // gpt-6-luna plays a whole adventure. OpenAI's Chat Completions API, which llm4s uses, lets its current models
-  // call tools only with reasoning off, and llm4s 1.0.0 arranges that for this model (it refuses gpt-6.1-terra and
-  // does not arrange it for the gpt-5.6 models)
-  val DefaultOpenAIModel = "gpt-6-luna"
-
-  /** Claude Sonnet 5.5, which plays a whole adventure at [[SzorkConfig.DefaultReasoningEffort]]. Run a playtest on a
-    * model before making it this.
-    */
-  val DefaultAnthropicModel = "claude-sonnet-5-5"
-  val DefaultLlamaModel = "llama3"
+  /** The key of a provider that needs none (a local server): its section's own placeholder is used. */
+  val NoKey = "not-required"
 
   /** The providers SZORK_LLM_PROVIDER may name. */
   val Providers: List[String] = List("openai", "anthropic", "llama", "local")
+
+  /** The section of `application.conf` for a provider SZORK_LLM_PROVIDER may name (`local` is `llama`). */
+  def section(provider: String): Option[String] = provider.toLowerCase match {
+    case "local" => Some("llama")
+    case name if Providers.contains(name) => Some(name)
+    case _ => None
+  }
+
+  /** The model a provider's section names: what is played on when SZORK_LLM_MODEL is not set. */
+  def defaultModel(provider: String): String =
+    ConfigFactory.parseResources("application.conf").getString(s"llm4s.providers.${section(provider).get}.model")
+
+  val DefaultOpenAIModel: String = defaultModel("openai")
+  val DefaultAnthropicModel: String = defaultModel("anthropic")
+  val DefaultLlamaModel: String = defaultModel("llama")
 }
 
 object SzorkConfig {
@@ -255,17 +250,14 @@ object SzorkConfig {
   /** The configuration from the environment (.env and the process environment), for the command-line tools. */
   lazy val instance: SzorkConfig = load()
 
-  /** An LLM client for `config`'s provider. */
-  def getLLMClient(config: SzorkConfig = instance): Either[String, org.llm4s.llmconnect.LLMClient] =
+  /** An LLM client for `config`'s provider, built by llm4s from its provider configuration and model registry. */
+  def getLLMClient(config: SzorkConfig = instance): Either[String, LLMClient] =
     config.llmConfig match {
       case Some(llm) =>
         for {
           provider <- llm.toProviderConfig
-          registry <- org.llm4s.model.ModelRegistryService.default().left.map(_.message)
-          client <- {
-            given org.llm4s.model.ModelRegistryService = registry
-            org.llm4s.llmconnect.LLMConnect.getClient(provider).left.map(_.message)
-          }
+          registry <- Llm4sConfig.modelRegistryService().left.map(_.message)
+          client <- LLMConnect.getClient(provider)(using registry).left.map(_.message)
         } yield client
       case None =>
         Left("No LLM configuration found")
@@ -353,9 +345,8 @@ object SzorkConfig {
   /** The LLM to use, from SZORK_LLM_PROVIDER or else whichever provider's settings are present (None: none are); Left
     * when SZORK_LLM_PROVIDER names a provider Szork does not know. Blank values count as not set.
     *
-    * Hand-written rather than llm4s's `Llm4sConfig.defaultProvider()`: that reads `llm4s.providers` from Typesafe
-    * config, which sees neither Szork's .env file nor SZORK_LLM_PROVIDER/SZORK_LLM_MODEL, and has no "whichever key is
-    * set" fallback.
+    * This chooses which of `application.conf`'s provider sections to use; [[LLMConfig.toProviderConfig]] has llm4s read
+    * it. llm4s's own `llm4s.defaultProvider` names one section, with no "whichever key is set" fallback.
     */
   private[szork] def loadLLMConfig(env: ConfigReader = EnvLoader): Either[String, Option[LLMConfig]] = {
     def setting(key: String): Option[String] = env.get(key).map(_.trim).filter(_.nonEmpty)
@@ -368,8 +359,8 @@ object SzorkConfig {
       LLMConfig("openai", key, model.orElse(Some(LLMConfig.DefaultOpenAIModel)), setting("OPENAI_BASE_URL")))
     def anthropic = anthropicKey.map(key =>
       LLMConfig("anthropic", key, model.orElse(Some(LLMConfig.DefaultAnthropicModel)), setting("ANTHROPIC_BASE_URL")))
-    // Without LLAMA_BASE_URL, LLMConfig.toProviderConfig's default, which ends in /v1
-    def llama = LLMConfig("llama", "not-required", model.orElse(Some(LLMConfig.DefaultLlamaModel)), llamaUrl)
+    // Without LLAMA_BASE_URL, the llama section's own URL, which ends in /v1
+    def llama = LLMConfig("llama", LLMConfig.NoKey, model.orElse(Some(LLMConfig.DefaultLlamaModel)), llamaUrl)
 
     setting("SZORK_LLM_PROVIDER").map(_.toLowerCase) match {
       case Some("openai") => Right(openAI)

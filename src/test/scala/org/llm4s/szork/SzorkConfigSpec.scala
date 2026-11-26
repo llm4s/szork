@@ -1,6 +1,6 @@
 package org.llm4s.szork
 
-import org.llm4s.llmconnect.config.OpenAIConfig
+import org.llm4s.llmconnect.config.{AnthropicConfig, OpenAIConfig}
 import org.llm4s.szork.config.ConfigReader
 import org.llm4s.szork.api.*
 import org.scalatest.funsuite.AnyFunSuite
@@ -173,6 +173,30 @@ class SzorkConfigSpec extends AnyFunSuite with Matchers {
 
   test("a provider Szork does not know is an error, not an exception") {
     LLMConfig("gemini", "key").toProviderConfig shouldBe Left("Unknown LLM provider: gemini")
+  }
+
+  test("llm4s builds each provider from its section of application.conf, under Szork's key, model and URL") {
+    LLMConfig("openai", "sk-oa").toProviderConfig match {
+      case Right(c: OpenAIConfig) =>
+        c.model.asString shouldBe LLMConfig.DefaultOpenAIModel
+        c.apiKey.reveal shouldBe "sk-oa"
+      case other => fail(s"expected an OpenAI config, got $other")
+    }
+    LLMConfig("anthropic", "sk-ant", Some("claude-haiku-5-5"), Some("http://127.0.0.1:9999")).toProviderConfig match {
+      case Right(c: AnthropicConfig) =>
+        c.model.asString shouldBe "claude-haiku-5-5"
+        c.apiKey.reveal shouldBe "sk-ant"
+        c.baseUrl.asUrl shouldBe "http://127.0.0.1:9999"
+      case other => fail(s"expected an Anthropic config, got $other")
+    }
+    LLMConfig("local", LLMConfig.NoKey, Some("mistral")).toProviderConfig match {
+      case Right(c: OpenAIConfig) =>
+        c.model.asString shouldBe "mistral"
+        c.apiKey.reveal shouldBe "sk-no-key-required"
+      case other => fail(s"expected an OpenAI-compatible config, got $other")
+    }
+    LLMConfig.DefaultOpenAIModel shouldBe "gpt-6-luna"
+    LLMConfig.DefaultAnthropicModel shouldBe "claude-sonnet-5-5"
   }
 
   private def llamaBaseUrl(env: (String, String)*): String =

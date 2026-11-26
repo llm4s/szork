@@ -16,7 +16,8 @@ You need:
 
 - Java 21 or later
 - sbt 1.12 or later (it fetches Scala 3)
-- Node.js 22.13 or later
+- Node.js 22.13 or later (`.nvmrc` names 22)
+- curl, for `./dev.sh`
 - an API key for Anthropic or OpenAI (see [What each key gives you](#what-each-key-gives-you))
 
 ```bash
@@ -26,7 +27,18 @@ cp .env.example .env
 # edit .env: uncomment ANTHROPIC_API_KEY or OPENAI_API_KEY and put your key in it
 ```
 
-Start the game server in one terminal:
+Then start the server and the frontend with one command:
+
+```bash
+./dev.sh
+```
+
+It checks for Java, sbt, Node, curl and `.env`, installs the frontend's packages the first time, refuses to start if
+port 8090, 9002 or 3090 is already in use, waits for the server (the first build downloads and compiles for some
+minutes) and prints `Open http://localhost:3090`. Ctrl+C stops both; their logs are in `backend.log` and
+`frontend.log`. It runs the server in watch mode, so it restarts when a Scala file changes.
+
+To run the two yourself instead, start the game server in one terminal:
 
 ```bash
 sbt szorkStart
@@ -48,8 +60,6 @@ npm run dev
 Open http://localhost:3090. The frontend is the only way to play: the server has no page of its own to play on. Choose
 **Begin Your Adventure**, then one of the **Ready-Made Adventures** to play at once, or **Start New Adventure** to
 have one designed for a theme you choose (that takes a minute or so).
-
-`./dev.sh` starts both at once, the server in watch mode, with its log in `backend.log`.
 
 ## What each key gives you
 

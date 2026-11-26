@@ -3,7 +3,8 @@ package org.llm4s.szork.websocket
 import java.net.InetSocketAddress
 import java.util.concurrent.{Executor, Executors, ScheduledExecutorService, TimeUnit}
 import org.java_websocket.WebSocket
-import org.java_websocket.drafts.Draft
+import org.java_websocket.drafts.{Draft, Draft_6455}
+import org.java_websocket.extensions.IExtension
 import org.java_websocket.exceptions.InvalidDataException
 import org.java_websocket.framing.CloseFrame
 import org.java_websocket.handshake.{ClientHandshake, ServerHandshakeBuilder}
@@ -54,7 +55,11 @@ class TypedWebSocketServer(
   sessionTtlMillis: Long = TypedWebSocketServer.DefaultSessionTtlMillis,
   allowedOrigins: Option[Set[String]] = None,
   library: Option[AdventureLibrary] = None
-) extends WebSocketServer(address) {
+) extends WebSocketServer(
+      address,
+      // Messages larger than any the client sends close the connection rather than fill the server's memory
+      java.util.List.of[Draft](new Draft_6455(java.util.List.of[IExtension](), SzorkConfig.MaxMessageBytes))
+    ) {
 
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
   private val workEC = ExecutionContext.fromExecutor(workPool, e => logger.error("Unhandled error in work pool", e))
@@ -168,17 +173,35 @@ class TypedWebSocketServer(
         }
     }
 
-  private def dispatch(conn: WebSocket, message: ClientMessage): Unit = message match {
-    case request: NewGameRequest => runForConnection(conn)(startNewGame(conn, request))
-    case request: LoadGameRequest if !IdGenerator.isValidGameId(request.gameId) =>
-      send(conn, ErrorMessage("Failed to load game", Some(s"Invalid game id: ${request.gameId.take(40)}")))
-    case request: LoadGameRequest => runForConnection(conn)(loadGame(conn, request))
-    case ResumeSessionRequest(sessionId) => resume(conn, sessionId)
-    case CommandRequest(command) => withSession(conn)(s => runFor(s)(playCommand(s, command)))
-    case request: StreamCommandRequest => withSession(conn)(s => runFor(s)(playStreamCommand(s, request)))
-    case request: AudioCommandRequest => withSession(conn)(s => runFor(s)(playAudioCommand(s, request)))
-    case PingMessage(_) => ()
-  }
+  private def dispatch(conn: WebSocket, message: ClientMessage): Unit =
+    TypedWebSocketServer.overLimit(message) match {
+      case Some(refusal) =>
+        logger.warn(s"[WS-IN] Refused ${message.getClass.getSimpleName}: ${refusal.details.getOrElse("")}")
+        send(conn, refusal)
+      case None =>
+        message match {
+          case request: NewGameRequest => runForConnection(conn)(startNewGame(conn, request))
+          case request: LoadGameRequest if !IdGenerator.isValidGameId(request.gameId) =>
+            send(conn, ErrorMessage("Failed to load game", Some(s"Invalid game id: ${request.gameId.take(40)}")))
+          case request: LoadGameRequest => runForConnection(conn)(loadGame(conn, request))
+          case ResumeSessionRequest(sessionId) => resume(conn, sessionId)
+          case CommandRequest(command) => withSession(conn)(s => runTurn(conn, s)(playCommand(s, command)))
+          case request: StreamCommandRequest => withSession(conn)(s => runTurn(conn, s)(playStreamCommand(s, request)))
+          case request: AudioCommandRequest => withSession(conn)(s => runTurn(conn, s)(playAudioCommand(s, request)))
+          case PingMessage(_) => ()
+        }
+    }
+
+  /** Runs a turn on the session, unless it already has [[SzorkConfig.MaxPendingTurns]] running or waiting: then the
+    * command is refused, so a client cannot queue up turns (and model calls) without end.
+    */
+  private def runTurn(conn: WebSocket, session: GameSession)(body: => Unit): Unit =
+    if (!session.beginTurn(SzorkConfig.MaxPendingTurns)) {
+      logger.warn(s"[${session.id}] Refused a command: ${SzorkConfig.MaxPendingTurns} turns are already pending")
+      send(conn, TypedWebSocketServer.TooManyCommands)
+    } else
+      // Counted out when the task has run, or been dropped, or failed
+      runFor(session, session.endTurn())(body)
 
   private def send(conn: WebSocket, message: ServerMessage): Unit =
     if (conn.isOpen) {
@@ -203,10 +226,12 @@ class TypedWebSocketServer(
   /** Runs `body` on the session's serial executor, reporting a failure to the player (the details only to the log). A
     * task that comes to run after the session has ended (its game deleted while the task waited) does nothing.
     */
-  private def runFor(session: GameSession)(body: => Unit): Unit =
+  private def runFor(session: GameSession, after: => Unit = ())(body: => Unit): Unit =
     Future {
-      if (session.ended) logger.info(s"[${session.id}] Dropped a task queued before the session ended")
-      else { session.touch(); body }
+      try
+        if (session.ended) logger.info(s"[${session.id}] Dropped a task queued before the session ended")
+        else { session.touch(); body }
+      finally after
     }(using session.executor).onComplete {
       case Failure(e) =>
         logger.error(s"[${session.id}] Session task failed", e)
@@ -535,6 +560,9 @@ class TypedWebSocketServer(
               logger.warn(s"[${session.id}] Transcription failed: ${error.message}")
               error.userMessage
             }) match {
+          case Right(transcription) if transcription.length > SzorkConfig.MaxCommandChars =>
+            sendTo(session, TranscriptionMessage(transcription))
+            sendTo(session, TypedWebSocketServer.overLimit(CommandRequest(transcription)).get)
           case Right(transcription) =>
             sendTo(session, TranscriptionMessage(transcription))
             playCommand(session, transcription, imageWanted = request.imageGeneration.getOrElse(true))
@@ -683,6 +711,38 @@ class TypedWebSocketServer(
 
 object TypedWebSocketServer {
   val DefaultSessionTtlMillis: Long = 30L * 60 * 1000
+
+  /** The answer to a command sent while [[SzorkConfig.MaxPendingTurns]] are already pending. */
+  val TooManyCommands: ErrorMessage = ErrorMessage(
+    "Too many commands",
+    Some("The Dungeon Master is still answering your earlier commands. Wait for an answer, then send it again."))
+
+  private def tooLongCommand: ErrorMessage =
+    ErrorMessage("Command too long", Some(s"A command can be at most ${SzorkConfig.MaxCommandChars} characters."))
+
+  /** The refusal of a message that is larger than [[SzorkConfig]]'s limits allow, if it is. */
+  private[szork] def overLimit(message: ClientMessage): Option[ErrorMessage] = {
+    import SzorkConfig._
+    def tooLong(command: String) = Option.when(command.length > MaxCommandChars)(tooLongCommand)
+    message match {
+      case CommandRequest(command) => tooLong(command)
+      case request: StreamCommandRequest => tooLong(request.command)
+      // Base64 takes four characters for each three bytes
+      case request: AudioCommandRequest if request.audio.length.toLong / 4 * 3 > MaxAudioBytes =>
+        Some(
+          ErrorMessage(
+            "Recording too long",
+            Some(s"A recording can be at most ${MaxAudioBytes / (1024 * 1024)} MB. Record a shorter command.")))
+      case request: NewGameRequest if request.theme.exists(_.length > MaxThemeChars) =>
+        Some(ErrorMessage("Failed to start game", Some(s"The theme can be at most $MaxThemeChars characters.")))
+      case request: NewGameRequest if request.adventureOutline.exists(ujson.write(_).length > MaxOutlineChars) =>
+        Some(
+          ErrorMessage(
+            "Failed to start game",
+            Some(s"The adventure outline is too large: at most ${MaxOutlineChars / 1024} KB of JSON.")))
+      case _ => None
+    }
+  }
 
   /** Whether a handshake with `origin` may connect: always without an Origin header (non-browser clients). */
   def originAllowed(origin: Option[String], allowed: Option[Set[String]]): Boolean =

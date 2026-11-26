@@ -83,6 +83,23 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
 
   private def deleteJson(path: String): ujson.Value = ujson.read(requests.delete(s"$http$path").text())
 
+  /** Sends a request's head (with no body) over a plain socket, so any header can be set; returns its status and body.
+    */
+  private def raw(
+    method: String,
+    path: String,
+    headers: Seq[String],
+    host: String = s"127.0.0.1:${config.port}"): (Int, String) = {
+    val socket = new java.net.Socket("127.0.0.1", config.port)
+    try {
+      val head = (s"$method $path HTTP/1.1" +: s"Host: $host" +: "Connection: close" +: headers).mkString("\r\n")
+      socket.getOutputStream.write(s"$head\r\n\r\n".getBytes("UTF-8"))
+      socket.getOutputStream.flush()
+      val response = new String(socket.getInputStream.readAllBytes(), "UTF-8")
+      (response.split(" ")(1).toInt, response.split("\r\n\r\n", 2).lift(1).getOrElse(""))
+    } finally socket.close()
+  }
+
   private final class Client extends WebSocketClient(new URI(s"ws://127.0.0.1:${config.wsPort}")) {
     val received = new LinkedBlockingQueue[ujson.Value]()
     override def onOpen(handshake: ServerHandshake): Unit = ()
@@ -153,6 +170,27 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
   test("theme validation rejects a request without a theme, or one that is not JSON") {
     postJson("/api/game/validate-theme", """{"name": "x"}""")("valid").bool shouldBe false
     postJson("/api/game/validate-theme", """{"theme": "a lighthouse"}""", "text/plain")("status").str shouldBe "error"
+  }
+
+  test("a theme or request body over its limit is refused without asking the LLM") {
+    val calls = themeLLM.calls.size
+    val longTheme = "a lighthouse " * (SzorkConfig.MaxThemeChars / 13 + 1)
+    val validated = postJson("/api/game/validate-theme", ujson.write(ujson.Obj("theme" -> longTheme)))
+    validated("valid").bool shouldBe false
+    validated("message").str shouldBe SzorkRoutes.ThemeTooLong
+
+    val theme = ujson.Obj("id" -> "x", "name" -> "X", "prompt" -> longTheme)
+    val generated = postJson("/api/game/generate-adventure", ujson.write(ujson.Obj("theme" -> theme)))
+    (generated("status").str, generated("message").str) shouldBe ("error", SzorkRoutes.ThemeTooLong)
+
+    // Refused on its declared length, before the body is read
+    val (status, body) = raw(
+      "POST",
+      "/api/game/validate-theme",
+      Seq("Content-Type: application/json", s"Content-Length: ${SzorkConfig.MaxRequestBytes + 1}"))
+    status shouldBe 413
+    ujson.read(body)("message").str should include("too large")
+    themeLLM.calls.size shouldBe calls
   }
 
   test("adventure generation rejects a malformed request without asking the LLM") {

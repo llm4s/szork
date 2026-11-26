@@ -154,6 +154,9 @@ The server exposes capabilities and allows per‑session overrides.
 Set in `.env` (see `.env.example`) or the environment. A blank value counts as not set. A flag (a setting whose
 default is `true`) is on unless set to `false`, `off`, `0` or `no`, in any case. The server does not start with a
 port it cannot use, an unknown `SZORK_LLM_PROVIDER` or `SZORK_REASONING_EFFORT`, or no LLM; the log says which.
+What a client may send is bounded by fixed limits in `SzorkConfig`: a command of 1000 characters, a recording of
+10 MB, a theme of 2000 characters, an adventure outline of 256 KB, an HTTP body of 1 MB, a WebSocket message of
+16 MB, and three turns running or waiting per game (a command beyond them is refused until one finishes).
 
 | Variable | Default | Purpose |
 |---|---|---|

@@ -307,6 +307,26 @@ class GameSessionsSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll 
     c.close()
   }
 
+  test("commands beyond the pending-turn limit are refused while a turn runs; the ones accepted are played") {
+    turnGate = new CountDownLatch(1)
+    turnWaiting = new CountDownLatch(1)
+    val c = connect(gatedPort)
+    c.sendJson("type" -> "newGame", "theme" -> "caves")
+    c.await("gameStarted")
+    c.sendJson("type" -> "streamCommand", "command" -> "wait here")
+    turnWaiting.await(5, TimeUnit.SECONDS) shouldBe true
+    (2 to SzorkConfig.MaxPendingTurns).foreach(_ => c.sendJson("type" -> "streamCommand", "command" -> "look"))
+    c.sendJson("type" -> "streamCommand", "command" -> "look")
+    c.await("error")("data")("error").str shouldBe "Too many commands"
+
+    turnGate.countDown()
+    (1 to SzorkConfig.MaxPendingTurns).foreach(_ => c.await("streamComplete"))
+    // with the queue drained, commands are taken again
+    c.sendJson("type" -> "streamCommand", "command" -> "look")
+    c.await("streamComplete")
+    c.close()
+  }
+
   test("slow music does not hold up scene images") {
     musicGate = new CountDownLatch(1)
     try {

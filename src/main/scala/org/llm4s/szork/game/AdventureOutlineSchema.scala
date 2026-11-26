@@ -38,15 +38,16 @@ object AdventureOutlineSchema {
           "the player discovers it")
         .withEnum(ExitStates)
     ))
-    .withProperty(Schema.property(
-      "obstacle",
-      nullableString(
-        "open: null. locked, sealed or blocked: required - what must be overcome and how (e.g. 'a brass padlock; " +
-          "the brass key opens it', 'rusted shut; needs the crowbar', 'a fallen beam; lever it aside with the " +
-          "iron bar'). hidden: how the player finds it (e.g. 'revealed by pulling the red book'). closed: null " +
-          "for a door the player can simply open, or what keeps it shut until overcome (e.g. 'swollen in its " +
-          "frame; needs oiling')")
-    ))
+    .withProperty(
+      Schema.property(
+        "obstacle",
+        nullableString(
+          "open: null. locked, sealed or blocked: required - what must be overcome and how (e.g. 'a brass padlock; " +
+            "the brass key opens it', 'rusted shut; needs the crowbar', 'a fallen beam; lever it aside with the " +
+            "iron bar'). hidden: how the player finds it (e.g. 'revealed by pulling the red book'). closed: null " +
+            "for a door the player can simply open, or what keeps it shut until overcome (e.g. 'swollen in its " +
+            "frame; needs oiling')")
+      ))
 
   private val location: ObjectSchema[LocationOutline] = Schema
     .`object`[LocationOutline]("A key location")

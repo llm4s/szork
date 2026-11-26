@@ -1,58 +1,41 @@
 package org.llm4s.szork.streaming
 
-/** Extracts the `narrationText` string from JSON as it streams in, so the player sees narration while the rest of the
-  * structured answer is still being written.
+import org.llm4s.szork.game.DungeonMasterOutput
+
+/** Extracts the `narrationText` string from a Dungeon Master answer as it streams in, so the player sees narration
+  * while the rest of the structured answer is still being written.
   *
-  * Each chunk is appended; [[processChunk]] returns the narration decoded since the last call. Escape sequences are
-  * decoded only once complete, so a chunk that ends inside one never emits a partial character.
+  * Each chunk is appended; [[processChunk]] returns the narration that became available since the last call. The text
+  * so far is read with llm4s's `PartialJson` (from its first brace, as [[DungeonMasterOutput.jsonIn]] reads it), which
+  * leaves out an escape sequence that has not fully arrived, so a chunk that ends inside one never emits a partial
+  * character; text that is not valid JSON ends what is read. Once a field after the narration has started, the
+  * narration is whole and later chunks are not read: the schema puts `narrationText` first, so the text is re-read only
+  * while the narration is being written.
   */
 class StreamingJsonParser {
   private val accumulated = new StringBuilder()
-  private var emitted = 0
-  private val FieldStart = """"narrationText"\s*:\s*"""".r
+  private var decoded = ""
+  private var complete = false
 
   /** Appends `chunk`; returns the narration text that became available, if any. */
-  def processChunk(chunk: String): Option[String] = {
-    accumulated.append(chunk)
-    val narration = decodedNarration
-    if (narration.length > emitted) {
-      val fresh = narration.substring(emitted)
-      emitted = narration.length
-      Some(fresh)
-    } else None
-  }
-
-  /** The narration decoded so far (complete once the closing quote has arrived). */
-  def narration: String = decodedNarration
-
-  private def decodedNarration: String =
-    FieldStart.findFirstMatchIn(accumulated) match {
-      case None => ""
-      case Some(m) =>
-        val out = new StringBuilder()
-        var i = m.end
-        var done = false
-        while (!done && i < accumulated.length)
-          accumulated.charAt(i) match {
-            case '"' => done = true
-            case '\\' if i + 1 < accumulated.length =>
-              accumulated.charAt(i + 1) match {
-                case 'n' => out.append('\n'); i += 2
-                case 't' => out.append('\t'); i += 2
-                case 'r' => out.append('\r'); i += 2
-                case 'b' => out.append('\b'); i += 2
-                case 'f' => out.append('\f'); i += 2
-                case 'u' if i + 6 <= accumulated.length =>
-                  scala.util.Try(Integer.parseInt(accumulated.substring(i + 2, i + 6), 16)) match {
-                    case scala.util.Success(code) => out.append(code.toChar); i += 6
-                    case _ => done = true
-                  }
-                case 'u' => done = true // the \\uXXXX escape has not fully arrived
-                case other => out.append(other); i += 2 // \\" \\\\ \\/
-              }
-            case '\\' => done = true // the escape has not fully arrived
-            case c => out.append(c); i += 1
-          }
-        out.toString
+  def processChunk(chunk: String): Option[String] =
+    if (complete) None
+    else {
+      accumulated.append(chunk)
+      val emitted = decoded.length
+      DungeonMasterOutput.jsonIn(accumulated.toString, partialStrings = true).flatMap(_.objOpt).foreach { fields =>
+        fields.get(StreamingJsonParser.Field).flatMap(_.strOpt).foreach(decoded = _)
+        complete = fields.keys.dropWhile(_ != StreamingJsonParser.Field).size > 1
+      }
+      Option.when(decoded.length > emitted)(decoded.substring(emitted))
     }
+
+  /** The narration decoded so far (complete once a later field, or the end of the answer, has arrived). */
+  def narration: String = decoded
+}
+
+object StreamingJsonParser {
+
+  /** The field streamed to the player. */
+  private val Field = "narrationText"
 }

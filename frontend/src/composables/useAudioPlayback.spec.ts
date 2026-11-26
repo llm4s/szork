@@ -94,11 +94,18 @@ describe("useAudioPlayback", () => {
     expect(second.paused).toBe(false);
   });
 
-  it("does not play music while music is off", () => {
+  it("keeps a track that arrives while music is off, and plays it when music is switched on", async () => {
     const audio = useAudioPlayback();
     audio.backgroundMusicEnabled.value = false;
+    await nextTick();
     audio.playBackgroundMusic("data:audio/mpeg;base64,bXVzaWM=", "calm");
-    expect(FakeAudio.instances).toHaveLength(0);
+    const [music] = FakeAudio.instances;
+    expect(music.paused).toBe(true);
+
+    audio.backgroundMusicEnabled.value = true;
+    await nextTick();
+    expect(music.paused).toBe(false);
+    expect(music.loop).toBe(true);
   });
 
   it("pauses music when switched off and resumes it when switched back on", async () => {

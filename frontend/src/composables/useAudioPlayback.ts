@@ -1,6 +1,6 @@
 /**
  * Plays the game's spoken narration and looping background music, each of which the player can switch
- * off. Narration arrives as base64 MP3; music as a source to play (a library URL, or a data: URL).
+ * off (narration that arrives while it is off is dropped; music is kept, to play when switched on). Narration arrives as base64 MP3; music as a source to play (a library URL, or a data: URL).
  */
 
 import { ref, watch, onUnmounted, getCurrentInstance } from "vue";
@@ -46,16 +46,19 @@ export function useAudioPlayback(options: AudioPlaybackOptions = {}) {
     }
   };
 
-  /** Loop a music track, replacing the current one. Does nothing while music is off. */
+  /**
+   * Loop a music track, replacing the current one. While music is off the track is kept, not played,
+   * so switching music on plays the scene's music rather than silence.
+   */
   const playBackgroundMusic = (musicSource: string, mood: string) => {
-    log(`Playing background music, mood: ${mood}, enabled: ${backgroundMusicEnabled.value}`);
-    if (!backgroundMusicEnabled.value) return;
+    log(`Background music for mood ${mood}, enabled: ${backgroundMusicEnabled.value}`);
     try {
       stopBackgroundMusic();
       const track = new Audio(musicSource);
       track.volume = MUSIC_VOLUME;
       track.loop = true;
       music = track;
+      if (!backgroundMusicEnabled.value) return;
       track.play().catch((error) => {
         log("Error playing background music:", error);
         if (music === track) music = null;

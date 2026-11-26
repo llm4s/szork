@@ -1,6 +1,6 @@
 package org.llm4s.szork
 
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 import org.llm4s.llmconnect.config.OpenAIConfig
 import org.llm4s.szork.api.{LLMConfig, SzorkConfig}
 import org.scalatest.funsuite.AnyFunSuite

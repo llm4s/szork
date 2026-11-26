@@ -1,6 +1,6 @@
 package org.llm4s.szork.media
 
-import org.llm4s.config.{ConfigReader, EnvLoader}
+import org.llm4s.szork.config.{ConfigReader, EnvLoader}
 import org.llm4s.security.Secret
 import org.llm4s.szork.api.{MediaNetworkConfig, MusicPollConfig}
 import org.llm4s.szork.error._

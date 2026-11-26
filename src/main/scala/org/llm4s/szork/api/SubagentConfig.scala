@@ -1,6 +1,6 @@
 package org.llm4s.szork.api
 
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 
 /** The Dungeon Master's subagents (llm4s delegation, see `game.DmSubagents`). Part of [[SzorkConfig]]: SZORK_NPC_AGENT
   * and SZORK_HINT_AGENT turn the NPC dialogue and hint subagents on or off (on unless `false`, `off`, `0` or `no`), and

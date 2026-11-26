@@ -1,8 +1,12 @@
 package org.llm4s.szork.api
 
 import org.slf4j.LoggerFactory
-import org.llm4s.config.{EnvLoader, Llm4sConfig}
+import org.llm4s.config.Llm4sConfig
+import org.llm4s.szork.config.EnvLoader
 import org.llm4s.trace.Tracing
+import com.typesafe.config.ConfigFactory
+import pureconfig.ConfigSource
+import scala.jdk.CollectionConverters.*
 
 /** Tracing for the Dungeon Master agent, configured the llm4s way.
   *
@@ -19,14 +23,10 @@ object AgentTracing {
   /** Tracing for `variables`, or None when TRACING_MODE is unset or `none`. */
   def create(variables: Map[String, String]): Option[Tracing] =
     variables.get("TRACING_MODE").map(_.trim.toLowerCase).filter(m => m.nonEmpty && m != "none").flatMap { mode =>
-      // llm4s reads its settings through Typesafe config, which sees the process environment and system
-      // properties but not Szork's .env file; values from .env reach it as system properties.
-      variables.foreach { case (key, value) =>
-        if (Prefixes.exists(key.startsWith) && sys.env.get(key).isEmpty && sys.props.get(key).isEmpty)
-          sys.props(key) = value
-      }
-      com.typesafe.config.ConfigFactory.invalidateCaches()
-      Llm4sConfig.tracing().flatMap(Tracing.fromSettings) match {
+      // llm4s's reference.conf reads TRACING_MODE, LANGFUSE_* and OTEL_* as top-level substitutions, so the
+      // variables go in as the application config and no global state (system properties) is touched.
+      val settings = ConfigFactory.parseMap(variables.filter((key, _) => Prefixes.exists(key.startsWith)).asJava)
+      Llm4sConfig.tracing(ConfigSource.fromConfig(ConfigFactory.load(settings))).flatMap(Tracing.fromSettings) match {
         case Right(tracing) =>
           logger.info(s"Agent tracing enabled: $mode")
           Some(tracing)

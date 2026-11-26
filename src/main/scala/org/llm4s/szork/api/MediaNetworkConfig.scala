@@ -1,6 +1,6 @@
 package org.llm4s.szork.api
 
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 
 /** Network timeouts for the media HTTP calls Szork makes itself (music generation on Replicate); the llm4s speech and
   * image clients use their own. Part of [[SzorkConfig]]: SZORK_MEDIA_CONNECT_TIMEOUT_MS and

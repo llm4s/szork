@@ -2,7 +2,7 @@ package org.llm4s.szork.media
 
 import java.util.Base64
 import org.slf4j.{Logger, LoggerFactory}
-import org.llm4s.config.{ConfigReader, EnvLoader}
+import org.llm4s.szork.config.{ConfigReader, EnvLoader}
 import org.llm4s.security.Secret
 import org.llm4s.speech.AudioFormat
 import org.llm4s.speech.config.TTSConfig

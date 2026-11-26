@@ -1,6 +1,6 @@
 package org.llm4s.szork
 
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 import org.llm4s.szork.api.SpeechConfig
 import org.llm4s.szork.error.{ConfigurationError, ValidationError}
 import org.llm4s.szork.media.{SpeechToText, TextToSpeech}

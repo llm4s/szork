@@ -287,6 +287,42 @@ class ExitGuardSpec extends AnyFunSuite with Matchers {
     turnCalls(llm) shouldBe 1
   }
 
+  test("a move refused after two rounds of tool calls is still offered the tools to open the way") {
+    val command = "answer the riddle and go east"
+    // tool results since the player's command: what the model has done so far this turn
+    def done(c: Conversation): Int =
+      c.messages.reverseIterator.takeWhile(!_.isInstanceOf[UserMessage]).count(_.isInstanceOf[ToolMessage])
+    val llm = dm {
+      case c if corrected(c) => Reply.toolCall("set_exit_state", """{"direction": "east", "state": "open"}""")
+      case c if ScriptedDm.lastUserText(c) == command =>
+        done(c) match {
+          case 0 => Reply.toolCall("get_location_state", """{"location_id": "riddle_gate"}""")
+          case 1 => Reply.toolCall("set_location_flag", """{"flag": "riddle", "value": "answered"}""")
+          case _ => Reply.text(ThroughTheArch) // refused the first time, used once the arch is open
+        }
+    }
+    val engine = started(llm)
+
+    play(engine, command, streaming = false)._1.text shouldBe "You stride under the arch."
+
+    // the correction came in the third round, which may still call tools: it was offered them, and its call ran
+    val correction = llm.calls.find(c => ScriptedDm.lastUserText(c.conversation).startsWith(ExitGuard.CorrectionLead))
+    correction.map(_.options.tools.nonEmpty) shouldBe Some(true)
+    correction.get.messages.last.content should include("set_exit_state")
+    exitState(engine, "market_thoroughfare", "east") shouldBe ExitState.Open
+    engine.getWorldState.currentLocation shouldBe Some("riddle_gate")
+  }
+
+  test("a correction offered no tools does not ask the model to call one") {
+    val seeded = WorldState.seededFrom(Some(outline))
+    seeded.enter("market_thoroughfare", "Market Thoroughfare")
+    val move = ExitGuard.blockedMove(seeded.snapshot, "riddle_gate").get
+    ExitGuard.correction(move) should include("set_exit_state")
+    val toolless = ExitGuard.correction(move, canOpen = false)
+    toolless should not include "set_exit_state"
+    toolless should include("simple response with locationId market_thoroughfare")
+  }
+
   test("blockedMove: only a move to another location, along exits of which none is open") {
     val seeded = WorldState.seededFrom(Some(outline))
     // no current location yet: the opening scene

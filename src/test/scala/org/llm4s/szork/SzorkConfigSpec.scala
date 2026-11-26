@@ -42,7 +42,8 @@ class SzorkConfigSpec extends AnyFunSuite with Matchers {
       c.autoSaveEnabled,
       c.cache.enabled,
       c.subagents.npcDialogue,
-      c.subagents.hints)
+      c.subagents.hints
+    )
     List("false", "OFF", " 0 ", "No").foreach { off =>
       withClue(off)(values(load(flags.map(_ -> off)*)) shouldBe List.fill(flags.size)(false))
     }
@@ -80,7 +81,8 @@ class SzorkConfigSpec extends AnyFunSuite with Matchers {
     val llm = Some(LLMConfig("openai", "sk-oa"))
     SzorkConfig(llmConfig = llm).validate() shouldBe Right(())
     SzorkConfig(llmConfig = llm, port = 70000).validate().left.toOption.get.message should include("Invalid port")
-    SzorkConfig(llmConfig = llm, port = 9002).validate().left.toOption.get.message should include("equals the HTTP port")
+    SzorkConfig(llmConfig = llm, port = 9002).validate().left.toOption.get.message should include(
+      "equals the HTTP port")
     SzorkConfig().validate().left.toOption.get.message should include("No LLM provider configured")
   }
 

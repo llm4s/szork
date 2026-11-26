@@ -420,6 +420,29 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     StepPersistence.deleteGame(gameId2)
   }
 
+  /** A step of the test game with nothing but `narration` in it. */
+  private def step(number: Int, narration: String, command: Option[String] = None, toolCalls: Boolean = false) =
+    StepData(
+      metadata = StepMetadata(testGameId, number, 1L, command, narration.length, 0, 0, success = true),
+      gameState = GameState(testGameId, None, None, None, None, Set(), List(), 1L, 1L, 1L, 0L),
+      userCommand = command,
+      narrationText = narration,
+      response = None,
+      toolCalls =
+        if (toolCalls) List(org.llm4s.szork.persistence.ToolCallInfo("t1", "look", ujson.Obj(), None, 1L)) else Nil
+    )
+
+  private def gameMetadata(step: Int) =
+    GameMetadata(testGameId, "fantasy", "pixel", "Test", 1L, 1L, 1L, 0L, currentStep = step, totalSteps = step)
+
+  test("a later step of a game that was deleted is not saved, and writes nothing") {
+    StepPersistence.saveNewGame(step(1, "Start"), gameMetadata(1)) shouldBe Right(())
+    StepPersistence.deleteGame(testGameId) shouldBe Right(())
+
+    StepPersistence.saveNextStep(step(2, "Later", Some("look")), 10L).isLeft shouldBe true
+    Files.exists(testGameDir) shouldBe false
+  }
+
   test("saves replace files by an atomic rename, leaving no temporary files") {
     def metadata(title: String) = GameMetadata(
       gameId = testGameId,

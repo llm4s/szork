@@ -48,6 +48,7 @@ final class GameSession(
 ) {
   @volatile private var lastActiveAt: Long = System.currentTimeMillis()
   @volatile private var currentFeatures: SessionFeatures = initialFeatures
+  @volatile private var hasEnded: Boolean = false
 
   def features: SessionFeatures = currentFeatures
 
@@ -56,6 +57,12 @@ final class GameSession(
 
   def touch(): Unit = lastActiveAt = System.currentTimeMillis()
   def lastActive: Long = lastActiveAt
+
+  /** Marks the session over (its game deleted, or the session removed or expired): work still queued for it is dropped,
+    * so nothing plays or saves the game after.
+    */
+  def end(): Unit = hasEnded = true
+  def ended: Boolean = hasEnded
 }
 
 /** Thread-safe registry of active game sessions, with at most one session per game.
@@ -72,17 +79,28 @@ class SessionManager {
 
   def getSession(sessionId: String): Option[GameSession] = sessions.get(sessionId)
 
+  /** How many sessions there are. */
+  def count: Int = sessions.size
+
   /** The session playing `gameId`, if it has one. */
   def sessionForGame(gameId: String): Option[GameSession] = games.get(gameId)
 
-  /** Registers the session of a new game. */
-  def createSession(session: GameSession): Unit = synchronized {
-    sessions(session.id) = session
-    games(session.gameId) = session
+  /** Registers the session of a new game; false, registering nothing, if its session id or game id is already taken. */
+  def createSession(session: GameSession): Boolean = synchronized {
+    if (sessions.contains(session.id) || games.contains(session.gameId)) false
+    else {
+      sessions(session.id) = session
+      games(session.gameId) = session
+      true
+    }
   }
 
+  /** Removes the session and ends it. */
   def removeSession(sessionId: String): Unit = synchronized {
-    sessions.remove(sessionId).foreach(s => games.remove(s.gameId, s))
+    sessions.remove(sessionId).foreach { s =>
+      s.end()
+      games.remove(s.gameId, s)
+    }
   }
 
   /** Runs `f` on session `sessionId`, if it exists, so that it cannot expire while `f` runs. */
@@ -104,18 +122,20 @@ class SessionManager {
     f(live)
   }
 
-  /** Removes the session playing `gameId` and returns it. */
+  /** Removes the session playing `gameId`, ends it and returns it. */
   def removeGame(gameId: String): Option[GameSession] = synchronized {
     games.remove(gameId).map { session =>
+      session.end()
       sessions.remove(session.id, session)
       session
     }
   }
 
-  /** Removes sessions idle for longer than `ttlMillis` that `inUse` does not claim; returns their ids. */
+  /** Removes and ends sessions idle for longer than `ttlMillis` that `inUse` does not claim; returns their ids. */
   def expireIdle(now: Long, ttlMillis: Long, inUse: String => Boolean): List[String] = synchronized {
     val expired = sessions.values.filter(s => now - s.lastActive > ttlMillis && !inUse(s.id)).toList
     expired.foreach { s =>
+      s.end()
       sessions.remove(s.id, s)
       games.remove(s.gameId, s)
     }

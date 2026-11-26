@@ -23,13 +23,27 @@ class SessionManagerSpec extends AnyFunSuite with Matchers {
     manager.sessionForGame("game-1") shouldBe Some(first)
   }
 
-  test("removing a game's session frees the game") {
+  test("removing a game's session frees the game, and ends the session") {
     val manager = new SessionManager()
     val s = session("s1", "game-1")
-    manager.createSession(s)
+    manager.createSession(s) shouldBe true
+    s.ended shouldBe false
     manager.removeGame("game-1") shouldBe Some(s)
+    s.ended shouldBe true
     manager.getSession("s1") shouldBe None
     manager.joinGame("game-1")(identity) shouldBe None
+  }
+
+  test("a new session whose session or game id is taken is refused, and the first is kept") {
+    val manager = new SessionManager()
+    val first = session("s1", "game-1")
+    manager.createSession(first) shouldBe true
+    manager.createSession(session("s2", "game-1")) shouldBe false
+    manager.createSession(session("s1", "game-2")) shouldBe false
+    manager.sessionForGame("game-1") shouldBe Some(first)
+    manager.getSession("s1") shouldBe Some(first)
+    manager.sessionForGame("game-2") shouldBe None
+    manager.count shouldBe 1
   }
 
   test("expiry removes idle sessions not in use, and their games") {
@@ -40,6 +54,7 @@ class SessionManagerSpec extends AnyFunSuite with Matchers {
     manager.createSession(connected)
     val later = System.currentTimeMillis() + 60000
     manager.expireIdle(later, 1000, _ == "connected") shouldBe List("idle")
+    idle.ended shouldBe true
     manager.getSession("idle") shouldBe None
     manager.sessionForGame("game-1") shouldBe None
     manager.getSession("connected") shouldBe Some(connected)

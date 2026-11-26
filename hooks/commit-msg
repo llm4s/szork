@@ -1,0 +1,8 @@
+#!/bin/bash
+# commit-msg hook: the project requires a DCO sign-off (git commit -s) on every commit.
+
+if ! grep -qE '^Signed-off-by: .+ <.+>' "$1"; then
+    echo "ERROR: the commit message has no 'Signed-off-by:' line."
+    echo "Commit with 'git commit -s' (or amend with 'git commit --amend -s')."
+    exit 1
+fi

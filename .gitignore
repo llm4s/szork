@@ -47,3 +47,6 @@ build.sbt.save
 talk/
 talks-ppt/
 *.pptx
+
+# Claude Code (agent worktrees, local settings)
+.claude/

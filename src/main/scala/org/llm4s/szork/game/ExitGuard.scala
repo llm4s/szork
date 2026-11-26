@@ -1,6 +1,7 @@
 package org.llm4s.szork.game
 
 import org.llm4s.agent.graph.middleware.{AgentMiddleware, MiddlewareId, ModelContext, ModelRequest, ModelResponse}
+import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{AssistantMessage, UserMessage}
 import org.llm4s.types.Result
 import org.slf4j.LoggerFactory
@@ -9,8 +10,8 @@ import org.slf4j.LoggerFactory
   *
   * There is no move tool: a `fullScene` answer for another location is the move. The answer matches the output schema
   * whichever location it names, so llm4s's own check accepts a walk through a locked door; this is the game's check.
-  * [[ExitGuardMiddleware]] applies it to every answer as the model gives it, and `GameEngine` once more before it
-  * records a move.
+  * [[ExitGuardMiddleware]] applies it to every answer as the model gives it; `GameEngine` checks once more before it
+  * records a move, and fails a turn that still breaks it.
   */
 object ExitGuard {
 
@@ -39,24 +40,16 @@ object ExitGuard {
     } yield BlockedMove(from, destination, ways)
 
   /** [[blockedMove]] for a model's `answer`: the move it would make if the engine used it. Only an answer the engine
-    * would read as a scene moves the player ([[ResponseInterpreter]]); the JSON may have a code fence or prose round
-    * it, as llm4s accepts.
+    * would read as a scene moves the player ([[ResponseInterpreter]]). The answer's JSON is found as llm4s finds it for
+    * the output schema (a code fence or prose round it stripped, `LLMClient.extractJson`), so the move checked is the
+    * one the turn would end with.
     */
   def blockedMoveIn(world: WorldSnapshot, answer: String): Option[BlockedMove] =
-    jsonOf(answer)
-      .flatMap(json => ResponseInterpreter.interpret(json).data)
+    ResponseInterpreter
+      .interpret(LLMClient.extractJson(answer))
+      .data
       .collect { case scene: GameScene => scene }
       .flatMap(scene => blockedMove(world, scene.locationId))
-
-  /** The JSON object in `answer`: the answer itself, or what lies between its first and last brace. */
-  private def jsonOf(answer: String): Option[String] = {
-    def isObject(text: String) = scala.util.Try(ujson.read(text)).toOption.exists(_.objOpt.isDefined)
-    val trimmed = answer.trim
-    val (start, end) = (trimmed.indexOf('{'), trimmed.lastIndexOf('}'))
-    Option(trimmed)
-      .filter(isObject)
-      .orElse(Option.when(start >= 0 && end > start)(trimmed.substring(start, end + 1)).filter(isObject))
-  }
 
   /** What the model is told about an answer that made `move`, asking it to answer again. With `canOpen`, the request
     * offers `set_exit_state`, and the model may open the way with it; otherwise it can only say what is in the way.

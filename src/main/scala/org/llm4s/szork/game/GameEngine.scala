@@ -24,8 +24,9 @@ import org.llm4s.szork.streaming.StreamingJsonParser
 
 /** Core game engine managing AI-driven text adventure gameplay.
   *
-  * Orchestrates LLM agent interactions, game state management, media generation, and persistence. Handles both
-  * streaming and non-streaming gameplay modes.
+  * Plays the Dungeon Master's turns (streaming or not) and keeps the game's state - its scene, inventory and world -
+  * which a turn changes only when it completes; makes the scenes' media through [[SceneMedia]]; and gives and takes the
+  * state a save holds. It does not save: the server stores what [[getGameState]] and [[createStepData]] return.
   *
   * @param sessionId
   *   Unique identifier for this game session
@@ -87,7 +88,6 @@ class GameEngine(
   // The adventure outline and the system prompt built from it. A restored game takes its outline from the save.
   // (volatile: a subagent's brief reads it on the runtime's thread)
   @volatile private var outline: Option[AdventureOutline] = adventureOutline
-  private var systemPrompt: String = PromptBuilder.fullSystemPrompt(theme, artStyle, outline, subagents)
 
   // The library adventure this game plays, if it plays one: its locations' pictures are the library's
   @volatile private var adventureId: Option[String] = None
@@ -114,9 +114,9 @@ class GameEngine(
     worldTools <- GameTools.forWorld(world)
     registry <- ToolRegistry.of(inventoryTools ++ worldTools)
   } yield registry
-  // The subagents the Dungeon Master delegates to: their briefs read this game's outline, world and inventory
   // What every model call of this game asks for besides its messages
   private val modelOptions = GameEngine.completionOptions(reasoning)
+  // The subagents the Dungeon Master delegates to: their briefs read this game's outline, world and inventory
   private val subagentDefinitions =
     DmSubagents.forGame(subagents, () => outline, world, inventory, reasoning.map(_ => llmClient -> modelOptions))
 
@@ -131,22 +131,27 @@ class GameEngine(
     logger.debug(s"[$sessionId] Context window: maxTokens=${w.maxTokens}, maxMessages=${w.maxMessages}"))
   private val runtime: GraphRuntime = GraphRuntime.inMemory()
   // The conversation with the Dungeon Master: its llm4s thread, history and usage
-  private val conversation = new DmConversation(sessionId, buildAgents(systemPrompt))
+  private val conversation =
+    new DmConversation(
+      sessionId,
+      buildAgents(PromptBuilder.fullSystemPrompt(theme, artStyle, outline, subagents)),
+      clock)
 
   private var coreState: CoreState = CoreState()
+  // What the last turn did, for the server to act on: reset when a turn starts and when a game is restored
   private var lastValidationIssues: Option[List[String]] = None
   // Whether the last turn moved the player to a new location (or opened the first scene);
   // scene images and location music are generated only then
   @volatile private var lastTurnChangedLocation: Boolean = false
   // How the player's location looks now, when the last turn's answer said its picture is out of date
   @volatile private var lastTurnImageUpdate: Option[String] = None
-  private val createdAt: Long = clock.now()
+  private var createdAt: Long = clock.now()
   private var sessionStartTime: Long = clock.now()
   private var totalPlayTime: Long = 0L // Accumulated play time from previous sessions
   private var adventureTitle: Option[String] = outline.map(_.title)
 
-  // Enhanced state tracking
-  private var currentStepNumber: Int = 1 // Current step number for persistence
+  // The number of the step the next save is stored as
+  private var currentStepNumber: Int = 1
 
   /** Initializes a new game session with opening scene generation.
     *
@@ -164,7 +169,7 @@ class GameEngine(
     // (the trigger message is not shown to the user)
     conversation.startOver(Vector.empty)
 
-    conversation.runTurn(GameConstants.Prompts.INIT_ADVENTURE, listener = None).flatMap(DmConversation.answered) match {
+    playTurn(GameConstants.Prompts.INIT_ADVENTURE, listener = None).flatMap(DmConversation.answered) match {
       case Right(result) =>
         val outcome = completeTurn(result)
         logger.info(s"[$sessionId] Game initialized: ${outcome.scene.map(_.locationId).getOrElse("no scene")}")
@@ -198,28 +203,74 @@ class GameEngine(
   ): SzorkResult[GameResponse] = {
     logger.debug(s"[$sessionId] Processing command (streaming=${onTextChunk.isDefined}): $command")
 
-    val textStartTime = System.currentTimeMillis()
-    conversation.runTurn(command, onTextChunk.map(narrationListener)) match {
-      case Right(result) if result.status.isInstanceOf[AgentStatus.Blocked] =>
-        // An input guardrail refused the command before the model saw it: the game is as it was, and the Dungeon
-        // Master answers in character
-        lastTurnChangedLocation = false
-        lastTurnImageUpdate = None
-        lastValidationIssues = None
-        val audio = if (generateAudio) media.narrate(PlayerInputGuardrail.Refusal) else None
-        Right(GameResponse(PlayerInputGuardrail.Refusal, audio, coreState.currentScene, refused = true))
-
+    playTurn(command, onTextChunk.map(narrationListener)) match {
       case Right(result) =>
-        logger.debug(s"[$sessionId] Turn completed in ${System.currentTimeMillis() - textStartTime}ms")
-        val outcome = completeTurn(result)
-        val audio = if (generateAudio) media.narrate(outcome.narration) else None
-        Right(GameResponse(outcome.narration, audio, outcome.scene.orElse(coreState.currentScene), refused = false))
+        result.status match {
+          case AgentStatus.Blocked(_, _) =>
+            // An input guardrail refused the command before the model saw it: the game is as it was, and the Dungeon
+            // Master answers in character
+            val audio = if (generateAudio) media.narrate(PlayerInputGuardrail.Refusal) else None
+            Right(GameResponse(PlayerInputGuardrail.Refusal, audio, coreState.currentScene, refused = true))
+          case _ =>
+            val outcome = completeTurn(result)
+            val audio = if (generateAudio) media.narrate(outcome.narration) else None
+            Right(GameResponse(outcome.narration, audio, outcome.scene.orElse(coreState.currentScene), refused = false))
+        }
 
       case Left(error) =>
         val szorkError = AIError(s"Error processing command: ${error.message}", llmError = Some(error))
         Logging.logError(s"[$sessionId] Process command")(Left(szorkError))
         Left(szorkError)
     }
+  }
+
+  /** Runs one turn of the Dungeon Master, as a whole or not at all.
+    *
+    * The turn's tools change the inventory and world as they run (a later call of the turn reads the change). A turn
+    * that does not complete - it fails, ends at a step or output limit, or its answer would move the player through an
+    * exit that is not open - is an error and leaves the game as it was: [[DmConversation]] keeps the history as it was,
+    * and the inventory and world are put back as they were before the turn. A turn a guardrail blocked ran no tool. The
+    * last turn's results ([[locationChangedLastTurn]] and the like) are reset as the turn starts.
+    *
+    * [[ExitGuardMiddleware]] has held every answer of the turn to the exit rule, with the same reading of the answer,
+    * against the world as it stood; an answer that still breaks it here means the two disagree, and the turn is
+    * discarded rather than leave the thread telling of a move the game did not make.
+    */
+  private def playTurn(command: String, listener: Option[StreamEvent => Unit]): Result[AgentResult] = {
+    resetLastTurn()
+    val (worldBefore, inventoryBefore) = (world.snapshot, inventory.list)
+    val outcome = conversation.runTurn(command, listener).flatMap { result =>
+      val move = result.status match {
+        case AgentStatus.Completed(_) =>
+          ResponseInterpreter
+            .interpret(result.answer.getOrElse(""))
+            .data
+            .collect { case scene: GameScene => scene }
+            .flatMap(scene => ExitGuard.blockedMove(world.snapshot, scene.locationId))
+        case _ => None
+      }
+      move match {
+        case None => Right(result)
+        case Some(refused) =>
+          logger.error(
+            s"[$sessionId] The turn's answer moves the player from ${refused.from} to ${refused.to}, through an exit " +
+              "that is not open, past the exit guard: the turn is discarded")
+          conversation.discardLastTurn()
+          Left(GameEngine.TurnNotCompleted(s"its answer moves the player to ${refused.to}, and no way there is open"))
+      }
+    }
+    if (outcome.isLeft) {
+      world.replaceWith(worldBefore)
+      inventory.replaceWith(inventoryBefore)
+    }
+    outcome
+  }
+
+  /** Forgets what the last turn did. */
+  private def resetLastTurn(): Unit = {
+    lastTurnChangedLocation = false
+    lastTurnImageUpdate = None
+    lastValidationIssues = None
   }
 
   /** A listener for a streaming turn's events that passes the narration to `onTextChunk` as it streams.
@@ -270,8 +321,8 @@ class GameEngine(
 
   /** Interprets a completed turn's answer and applies it to the game state.
     *
-    * The answer is parsed and validated, and a scene moves the player - unless it would take them through an exit that
-    * is not open ([[ExitGuard]]). If the answer cannot be used as structured data, its narration is still shown.
+    * The answer is parsed and validated, and a scene moves the player ([[playTurn]] has refused a turn whose scene goes
+    * through an exit that is not open). If the answer cannot be used as structured data, its narration is still shown.
     */
   private def completeTurn(result: AgentResult): TurnOutcome = {
     val answer = result.answer.getOrElse("")
@@ -282,14 +333,7 @@ class GameEngine(
     interpreted.issues.foreach(issues => logger.warn(s"[$sessionId] Response issues: ${issues.mkString("; ")}"))
 
     val previousLocation = coreState.currentScene.map(_.locationId)
-    val described = interpreted.data.collect { case scene: GameScene => scene }
-    // The exit guard middleware has already held the answer to this rule; this is the one place a move is recorded,
-    // so the rule is checked here too. An answer that still breaks it moves no one, and the player is told why.
-    val shut = described.flatMap(s => ExitGuard.blockedMove(world.snapshot, s.locationId))
-    shut.foreach { move =>
-      logger.error(s"[$sessionId] Refused a move from ${move.from} to ${move.to}: no exit between them is open")
-    }
-    val scene = described.filter(_ => shut.isEmpty)
+    val scene = interpreted.data.collect { case scene: GameScene => scene }
     scene.foreach { s =>
       coreState = CoreEngine.applyScene(coreState, s)
       world.enter(s.locationId, s.locationName, s.exits.map(e => (e.direction, e.locationId)))
@@ -310,9 +354,9 @@ class GameEngine(
       if (lying != current.items) coreState = coreState.copy(currentScene = Some(current.copy(items = lying)))
     }
     lastTurnChangedLocation = scene.exists(s => !previousLocation.contains(s.locationId))
-    lastTurnImageUpdate = interpreted.imageUpdate.filter(_ => shut.isEmpty)
+    lastTurnImageUpdate = interpreted.imageUpdate
 
-    TurnOutcome(shut.fold(interpreted.narration)(ExitGuard.shutNarration), scene.flatMap(_ => coreState.currentScene))
+    TurnOutcome(interpreted.narration, scene.flatMap(_ => coreState.currentScene))
   }
 
   /** Narrates `text` with the configured text-to-speech client, if there is one. */
@@ -503,30 +547,28 @@ class GameEngine(
 
   /** Restores game from a saved state snapshot.
     *
-    * Reconstructs conversation history, inventory, and agent state from a previously saved game state.
+    * Reconstructs conversation history, inventory, world and agent state from a previously saved game state. The step
+    * number is not in it: the caller sets it with [[setStepNumber]].
     *
     * @param state
     *   Saved game state to restore
     */
   def restoreGameState(state: GameState): Unit = {
-    // Restore simple state
     coreState = coreState.copy(currentScene = state.currentScene, visitedLocations = state.visitedLocations)
     inventory.replaceWith(state.inventory)
-    // A state without a world (made before it was kept) starts from the world its outline plans
-    world.replaceWith(
-      if (state.worldState == WorldSnapshot.empty) WorldSnapshot.fromOutline(state.adventureOutline)
-      else state.worldState)
+    world.replaceWith(state.worldState)
+    createdAt = state.createdAt
     totalPlayTime = state.totalPlayTime
     sessionStartTime = clock.now() // Reset session timer when restoring
     adventureTitle = state.adventureTitle
     adventureId = state.adventureId
-    // Note: currentStepNumber should be restored from GameMetadata by the caller
+    // There is no last turn yet (the step number is the caller's to set, from the save's metadata: setStepNumber)
+    resetLastTurn()
 
     // The Dungeon Master's prompt is rebuilt from the saved outline, and the saved conversation
     // seeds a new llm4s thread when the next turn runs.
     outline = state.adventureOutline
-    systemPrompt = PromptBuilder.fullSystemPrompt(theme, artStyle, outline, subagents)
-    conversation.rebuild(buildAgents(systemPrompt))
+    conversation.rebuild(buildAgents(PromptBuilder.fullSystemPrompt(theme, artStyle, outline, subagents)))
     conversation.restore(state.agentMessages.toVector)
     logger.info(s"[$sessionId] Game state restored with ${conversation.history.size} agent messages")
   }
@@ -603,7 +645,7 @@ class GameEngine(
 
 }
 
-/** Factory for creating GameEngine instances. */
+/** The Dungeon Master's limits and settings, and what a turn reports. */
 object GameEngine {
 
   /** Model calls allowed in one turn: enough for several tool calls (checking an exit, unlocking it, using up the key,
@@ -663,38 +705,8 @@ object GameEngine {
   /** The id of the Dungeon Master agent. */
   val AgentId: String = "szork-dungeon-master"
 
-  /** Creates a new GameEngine with the specified configuration.
-    *
-    * @param llmClient
-    *   LLM client for AI narrative generation
-    * @param sessionId
-    *   Unique session identifier
-    * @param theme
-    *   Optional theme for the adventure
-    * @param artStyle
-    *   Optional art style for images
-    * @param adventureOutline
-    *   Optional pre-generated adventure structure
-    * @param clock
-    *   Clock implementation for time tracking
-    * @param ttsClient
-    *   Optional text-to-speech client
-    * @param narrationVoice
-    *   The text-to-speech voice for narration
-    * @param imageClient
-    *   Optional image generation client
-    * @param musicClient
-    *   Optional music generation client
-    * @param tracing
-    *   Optional tracing for the agent's runs
-    * @param contextWindow
-    *   How much of the conversation each model call is sent (None sends all of it)
-    * @param inputGuardrails
-    *   Guardrails each player command must pass (empty: none)
-    * @param subagents
-    *   The subagents the Dungeon Master may delegate to
-    * @return
-    *   Configured GameEngine instance
+  /** A new engine: the constructor, with the LLM client passed as the first argument rather than implicitly. The
+    * parameters are the constructor's ([[GameEngine]]).
     */
   def create(
     llmClient: LLMClient,

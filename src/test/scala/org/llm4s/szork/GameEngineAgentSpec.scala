@@ -6,6 +6,7 @@ import org.llm4s.llmconnect.model._
 import org.llm4s.szork.stubs.{DmAnswers, ScriptedDm}
 import org.llm4s.testkit.Reply
 import org.llm4s.szork.game.{GameConstants, GameEngine}
+import org.llm4s.szork.spi.Clock
 
 /** Covers the GameEngine's use of the llm4s Agent: conversation threads, streaming turns, and restoring a saved
   * conversation onto a new thread.
@@ -128,5 +129,74 @@ class GameEngineAgentSpec extends AnyFunSuite with Matchers {
     engine.processCommand("take lamp", generateAudio = false).toOption.get.scene.get.items shouldBe List("rope")
     engine.processCommand("look", generateAudio = false).toOption.get.scene.get.items shouldBe List("rope")
     engine.getCurrentScene.get.items shouldBe List("rope")
+  }
+
+  /** On "take lamp": takes the lamp, records a fact here, then replies `then` (given the tool results so far). */
+  private def takesTheLampThen(`then`: Int => Reply) = ScriptedDm {
+    case c if ScriptedDm.lastUserText(c) == "take lamp" =>
+      c.messages.reverseIterator.takeWhile(!_.isInstanceOf[UserMessage]).count(_.isInstanceOf[ToolMessage]) match {
+        case 0 => Reply.toolCall("add_inventory_item", """{"item": "lamp"}""")
+        case 1 => Reply.toolCall("set_location_flag", """{"flag": "lamp_hook", "value": "empty"}""")
+        case n => `then`(n)
+      }
+  }
+
+  private def leavesTheGameAsItWas(engine: GameEngine, outcome: Either[?, ?], messagesBefore: Vector[Message]): Unit = {
+    outcome.isLeft shouldBe true
+    engine.getInventory shouldBe Nil
+    engine.getWorldState.location(None).get.flags shouldBe Map.empty
+    engine.getMessages shouldBe messagesBefore
+    // the next turn continues from the conversation as it was
+    engine.processCommand("look", generateAudio = false).isRight shouldBe true
+    engine.getMessages.collect { case u: UserMessage => u.content } shouldBe Vector(
+      GameConstants.Prompts.INIT_ADVENTURE,
+      "look")
+  }
+
+  test("a turn that fails after its tools ran leaves the inventory, the world and the conversation as they were") {
+    val failing = takesTheLampThen(_ => Reply.failure(org.llm4s.error.ValidationError("model", "the provider failed")))
+    val engine = GameEngine.create(failing, "failing-turn")
+    engine.initialize().isRight shouldBe true
+    val before = engine.getMessages
+
+    leavesTheGameAsItWas(engine, engine.processCommand("take lamp", generateAudio = false), before)
+  }
+
+  test("a turn stopped at the step limit is a failed turn: nothing of it is kept") {
+    // after the lamp and the fact, it keeps calling tools until the turn runs out of steps
+    val looping = takesTheLampThen(n => Reply.toolCall("get_location_state", s"""{"location_id": "room_$n"}"""))
+    val engine = GameEngine.create(looping, "step-limited-turn")
+    engine.initialize().isRight shouldBe true
+    val before = engine.getMessages
+
+    val stopped = engine.processCommand("take lamp", generateAudio = false)
+    stopped.left.toOption.get.message should include("StepLimitReached")
+    leavesTheGameAsItWas(engine, stopped, before)
+  }
+
+  test("a restored game keeps its creation time, and has no last turn") {
+    final class At(var time: Long) extends Clock { def now(): Long = time }
+    val tookTheLantern = ScriptedDm { case ScriptedDm.Command("take lantern") =>
+      Reply.toolCall("add_inventory_item", """{"item": "lantern"}""")
+    }
+    val original = GameEngine.create(tookTheLantern, "created", clock = new At(1000L))
+    original.initialize().isRight shouldBe true
+    original.processCommand("take lantern", generateAudio = false).isRight shouldBe true
+    val saved = original.getGameState("game-1", None, None)
+    saved.createdAt shouldBe 1000L
+
+    val restored = GameEngine.create(tookTheLantern, "restored", clock = new At(9000L))
+    restored.initialize().isRight shouldBe true
+    restored.processCommand("go north", generateAudio = false).isRight shouldBe true
+    restored.locationChangedLastTurn shouldBe true
+    restored.restoreGameState(saved)
+
+    restored.getGameState("game-1", None, None).createdAt shouldBe 1000L
+    restored.locationChangedLastTurn shouldBe false
+    restored.imageUpdateLastTurn shouldBe None
+    restored.popValidationIssues() shouldBe None
+    restored.lastTurnUsage shouldBe None
+    // the saved turn with its tool call was played by another engine: this one has no last turn to record
+    restored.createStepData("game-1", None, None, None, "", None, 0L).toolCalls shouldBe Nil
   }
 }

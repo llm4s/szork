@@ -74,6 +74,9 @@ final class GameSession(
 
   /** Counts a turn out once it has finished (or was dropped). */
   def endTurn(): Unit = pendingTurns.decrementAndGet(): Unit
+
+  /** Whether a turn is running or waiting to run, so its answer is still to come. */
+  def turnInProgress: Boolean = pendingTurns.get > 0
 }
 
 /** Thread-safe registry of active game sessions, with at most one session per game.

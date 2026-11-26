@@ -335,10 +335,11 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     c.close()
   }
 
-  test("deleting a game that is being played ends its session, then removes its saves") {
+  test("deleting a game that is being played ends its session, tells its player, then removes its saves") {
     val c = connect()
     val (_, gameId) = startGame(c)
     deleteJson(s"/api/game/$gameId")("status").str shouldBe "success"
+    c.await("gameDeleted")("data")("gameId").str shouldBe gameId
     StepPersistence.gameExists(gameId) shouldBe false
     getJson("/api/games")("games").arr.map(_("gameId").str) should not contain gameId
 

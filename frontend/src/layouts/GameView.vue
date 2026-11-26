@@ -33,7 +33,7 @@
         <div class="game-wrapper">
           <v-card-title class="text-h5 game-title">
             <v-row align="center" justify="space-between">
-              <v-col cols="auto">SZork - {{ adventureTitle }}</v-col>
+              <v-col cols="auto">SZork - {{ title }}</v-col>
               <v-col cols="auto">
                 <GameHeaderControls
                   v-model:image-generation="imageGenerationEnabled"
@@ -94,10 +94,13 @@
               @keyup.enter="sendCommand"
               placeholder="Enter your command..."
               aria-label="Your command"
+              :maxlength="MAX_COMMAND_CHARS"
+              :counter="nearCommandLimit ? MAX_COMMAND_CHARS : undefined"
+              :persistent-counter="nearCommandLimit"
+              :hide-details="!nearCommandLimit"
               :disabled="sessionTakenOver"
               variant="outlined"
               density="compact"
-              hide-details
               class="game-input"
               autofocus
             >
@@ -175,6 +178,7 @@ import MessageList from "@/components/MessageList.vue";
 import { useWebSocketGame } from "@/composables/useWebSocketGame";
 import { useAudioPlayback } from "@/composables/useAudioPlayback";
 import { blobToBase64, useVoiceRecorder } from "@/composables/useVoiceRecorder";
+import { MAX_COMMAND_CHARS, nearLimit } from "@/data/limits";
 import type { AdventureConfig, AdventureOutline, AdventureSummary, StyleChoice, ThemeChoice } from "@/types/api";
 
 /** What the player is told when the game server cannot be reached. */
@@ -222,6 +226,9 @@ export default defineComponent({
       loadFailed,
       startFailed,
       sessionTakenOver,
+      gameDeleted,
+      adventureTitle: serverTitle,
+      offeredCommand,
       gameOutcome,
       takeBackSession,
       log: wsLog,
@@ -255,7 +262,11 @@ export default defineComponent({
     const openingText = ref("Starting your adventure...");
     // The library adventure being started, if the game is of one
     const adventureId = ref<string | undefined>(undefined);
-    const adventureTitle = ref<string>("Generative Adventuring");
+    // The title of the adventure being started, shown until the server confirms the game with its own
+    const plannedTitle = ref<string | null>(null);
+    const title = computed(() => serverTitle.value ?? plannedTitle.value ?? "Generative Adventuring");
+    // Near the command length limit, the field shows how much is left
+    const nearCommandLimit = computed(() => nearLimit(userInput.value.length, MAX_COMMAND_CHARS));
     const imageGenerationEnabled = ref(true);
     const speechInputRequested = ref(true);
     // The game this view last asked to load (gameLoaded may not have arrived yet)
@@ -304,7 +315,7 @@ export default defineComponent({
       selectionStarted.value = true;
       clearMessages();
       requestedGameId = null;
-      adventureTitle.value = "Generative Adventuring";
+      plannedTitle.value = null;
     };
 
     const goBackToSelection = () => {
@@ -324,10 +335,7 @@ export default defineComponent({
       backgroundMusicEnabled.value = config.sessionFeatures.music;
       narrationEnabled.value = config.sessionFeatures.tts;
       speechInputRequested.value = config.sessionFeatures.stt;
-      // Set the adventure title if available
-      if (config.outline && config.outline.title) {
-        adventureTitle.value = config.outline.title;
-      }
+      plannedTitle.value = config.outline?.title ?? null;
       gameStarted.value = true;
       setupStarted.value = false;
       nextTick(() => {
@@ -342,7 +350,7 @@ export default defineComponent({
       artStyle.value = null;
       adventureOutline.value = null;
       adventureId.value = adventure.id;
-      adventureTitle.value = adventure.title;
+      plannedTitle.value = adventure.title;
       gameStarted.value = true;
       setupStarted.value = false;
       selectionStarted.value = false;
@@ -357,6 +365,9 @@ export default defineComponent({
       openingText.value = "Loading your adventure...";
       requestedGameId = gameId;
       stopBackgroundMusic();
+      // Nothing of the game shown before stays while this one loads
+      clearMessages();
+      plannedTitle.value = null;
       try {
         // The server answers with gameLoaded, or an error that sets loadFailed
         await wsLoadGame(gameId);
@@ -394,6 +405,19 @@ export default defineComponent({
       }
     };
 
+    // The game was deleted (from another tab or window): back to the list, saying why
+    watch(gameDeleted, (deleted) => {
+      if (!deleted) return;
+      log("The game being played was deleted");
+      backToSelection();
+      showError("This game was deleted, so it can no longer be played.");
+    });
+
+    // A command that never reached the server goes back in the command line, unless the player has typed another
+    watch(offeredCommand, (command) => {
+      if (command && !userInput.value) userInput.value = command;
+    });
+
     watch(startFailed, (failure) => {
       if (!failure) return;
       log("Error starting game:", failure);
@@ -429,24 +453,18 @@ export default defineComponent({
         stopBackgroundMusic();
         openingText.value = "Starting your adventure...";
 
-        // Start game via WebSocket
-        await wsStartNewGame(
-          adventureTheme.value?.name,
-          artStyle.value?.id,
-          imageGenerationEnabled.value,
-          adventureOutline.value,
-          {
+        await wsStartNewGame({
+          theme: adventureTheme.value,
+          artStyle: artStyle.value?.id,
+          imageGeneration: imageGenerationEnabled.value,
+          outline: adventureOutline.value,
+          features: {
             tts: narrationEnabled.value,
             music: backgroundMusicEnabled.value,
             stt: speechInputRequested.value,
           },
-          adventureId.value
-        );
-
-        // Set the adventure title from the outline if available
-        if (adventureOutline.value && adventureOutline.value.title) {
-          adventureTitle.value = adventureOutline.value.title;
-        }
+          adventureId: adventureId.value,
+        });
       } catch (error) {
         log("Could not connect to start the game:", error);
         showError(UNREACHABLE);
@@ -497,7 +515,7 @@ export default defineComponent({
       try {
         const base64Audio = await blobToBase64(audioBlob);
         // The transcription and response will come via WebSocket events
-        await wsSendAudioCommand(base64Audio, imageGenerationEnabled.value);
+        await wsSendAudioCommand(base64Audio, imageGenerationEnabled.value, audioBlob.type);
       } catch (error) {
         addLocalMessage("Error sending the recording. Please try again.");
         log("Error sending audio:", error);
@@ -570,7 +588,9 @@ export default defineComponent({
       onAdventureReady,
       backgroundMusicEnabled,
       loadGame,
-      adventureTitle,
+      title,
+      nearCommandLimit,
+      MAX_COMMAND_CHARS,
       imageGenerationEnabled,
       // Feature flags from server
       ttsEnabled,

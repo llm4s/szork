@@ -262,10 +262,19 @@ class TypedWebSocketServer(
     * turn and its save, say) is done; tasks still queued behind it are dropped, so the session saves nothing after
     * `body`. The session's connection is detached.
     */
-  def endGame[A](gameId: String)(body: => A): Future[A] =
+  def endGame[A](gameId: String)(body: => A): Future[A] = endSession(gameId, notice = None)(body)
+
+  /** Ends the game's session as [[endGame]] does, and runs `delete` when its turn in progress is done; the connection
+    * playing the game is told with [[GameDeletedMessage]], so the player is not left sending commands to it.
+    */
+  def deleteGame[A](gameId: String)(delete: => A): Future[A] =
+    endSession(gameId, notice = Some(GameDeletedMessage(gameId)))(delete)
+
+  private def endSession[A](gameId: String, notice: Option[ServerMessage])(body: => A): Future[A] =
     sessionManager.removeGame(gameId) match {
       case None => Future(body)(using workEC)
       case Some(session) =>
+        notice.foreach(sendTo(session, _))
         release(session)
         logger.info(s"[${session.id}] Session ended for game $gameId")
         Future(body)(using session.executor)
@@ -294,33 +303,19 @@ class TypedWebSocketServer(
     val sessionId = IdGenerator.sessionId()
     // A new game never takes the id of a saved game, whose saves it would overwrite
     val gameId = Iterator.continually(IdGenerator.gameId()).find(id => !StepPersistence.gameExists(id)).get
-    val themePrompt = adventure.fold(request.theme)(_.theme.map(_.prompt))
-    val artStyleId = request.artStyle.orElse(adventure.flatMap(_.artStyle.map(_.id)))
-    val outline = adventure
-      .map(_.outline)
-      .orElse(request.adventureOutline.flatMap { json =>
-        Try(AdventureGenerator.outlineFromJson(json)) match {
-          case Success(parsed) => Some(AdventureGenerator.withSoundMap(parsed))
-          case Failure(e) =>
-            logger.warn(s"Ignoring unparseable adventure outline: ${e.getMessage}")
-            None
-        }
-      })
+    val theme = adventure.fold(TypedWebSocketServer.themeOf(request))(_.theme)
+    val artStyle = artStyleOf(request, adventure)
+    val outline = adventure.map(_.outline).orElse(request.adventureOutline.flatMap(parseOutline))
     val features = SessionFeatures
       .requested(capabilities, request.tts, request.stt, request.image, request.music)
       .copy(autoSave = autoSave)
 
-    engineFactory.create(sessionId, themePrompt, artStyleId, outline, engineFeatures) match {
+    engineFactory.create(sessionId, theme.map(_.prompt), artStyle.map(_.id), outline, engineFeatures) match {
       case Left(error) =>
         send(conn, ErrorMessage("Failed to start game", Some(error)))
 
       case Right(engine) =>
         adventure.foreach(a => engine.playAdventure(a.id))
-        val theme = adventure.fold(request.theme.map(t => GameTheme(t, t, t)))(_.theme)
-        val artStyle = adventure
-          .flatMap(_.artStyle)
-          .filter(a => artStyleId.contains(a.id))
-          .orElse(artStyleId.map(a => ArtStyle(a, a)))
         val session = makeSession(gameId, sessionId, engine, theme, artStyle, features)
         if (!sessionManager.createSession(session)) {
           logger.error(s"Session id $sessionId or game id $gameId is already in use; the game was not started")
@@ -328,6 +323,24 @@ class TypedWebSocketServer(
         } else playOpening(conn, session, outline)
     }
   }
+
+  /** The art style the request names (with the adventure's display name, if it is the adventure's), or else the
+    * adventure's.
+    */
+  private def artStyleOf(request: NewGameRequest, adventure: Option[Adventure]): Option[ArtStyle] =
+    request.artStyle match {
+      case None => adventure.flatMap(_.artStyle)
+      case Some(id) => adventure.flatMap(_.artStyle).filter(_.id == id).orElse(Some(ArtStyle(id, id)))
+    }
+
+  /** The outline a new game brought with it, with its map repaired; None (played without one) if it is not one. */
+  private def parseOutline(json: ujson.Value): Option[AdventureOutline] =
+    AdventureGenerator.parseOutline(json) match {
+      case Right(parsed) => Some(AdventureGenerator.withSoundMap(parsed))
+      case Left(error) =>
+        logger.warn(s"Ignoring unparseable adventure outline: ${error.message}")
+        None
+    }
 
   /** Plays a new game's opening scene in its registered `session`, and saves it. */
   private def playOpening(conn: WebSocket, session: GameSession, outline: Option[AdventureOutline]): Unit = {
@@ -344,6 +357,7 @@ class TypedWebSocketServer(
             GameStartedMessage(
               sessionId = sessionId,
               gameId = gameId,
+              title = outline.map(_.title).getOrElse(GameLoadedMessage.Untitled),
               text = text,
               messageIndex = turn.messageIndex,
               scene = engine.getCurrentScene.map(convertScene),
@@ -412,25 +426,31 @@ class TypedWebSocketServer(
               attach(conn, s); s
             }
             if (session ne loaded) sendLiveGame(session, features)
-            else
-              send(
-                conn,
-                GameLoadedMessage(
-                  sessionId = sessionId,
-                  gameId = request.gameId,
-                  messageIndex = engine.getMessageCount,
-                  conversation = transcript(engine, request.gameId, features.image),
-                  currentLocation = gameState.currentScene.map(_.locationId),
-                  currentScene = gameState.currentScene.map(convertScene),
-                  ttsEnabled = features.tts,
-                  sttEnabled = features.stt,
-                  imageEnabled = features.image,
-                  musicEnabled = features.music
-                )
-              )
-            if (session eq loaded) sendEnding(session)
+            else {
+              send(conn, gameLoaded(session))
+              sendEnding(session)
+            }
         }
     }
+
+  /** The game as `session` has it now, for the connection that loaded it. */
+  private def gameLoaded(session: GameSession): GameLoadedMessage = {
+    val (engine, features) = (session.engine, session.features)
+    val state = engine.getGameState(session.gameId, session.theme, session.artStyle)
+    GameLoadedMessage(
+      sessionId = session.id,
+      gameId = session.gameId,
+      title = state.adventureTitle.getOrElse(GameLoadedMessage.Untitled),
+      messageIndex = engine.getMessageCount,
+      conversation = transcript(engine, session.gameId, features.image),
+      currentLocation = state.currentScene.map(_.locationId),
+      currentScene = state.currentScene.map(convertScene),
+      ttsEnabled = features.tts,
+      sttEnabled = features.stt,
+      imageEnabled = features.image,
+      musicEnabled = features.music
+    )
+  }
 
   /** Tells `session`'s connection that its adventure is over, if it is. */
   private def sendEnding(session: GameSession): Unit =
@@ -452,23 +472,8 @@ class TypedWebSocketServer(
   private def sendLiveGame(session: GameSession, features: SessionFeatures): Unit =
     runFor(session) {
       session.updateFeatures(features)
-      val state = session.engine.getGameState(session.gameId, session.theme, session.artStyle)
       logger.info(s"[${session.id}] Joined the live session of game ${session.gameId} with $features")
-      sendTo(
-        session,
-        GameLoadedMessage(
-          sessionId = session.id,
-          gameId = session.gameId,
-          messageIndex = session.engine.getMessageCount,
-          conversation = transcript(session.engine, session.gameId, session.features.image),
-          currentLocation = state.currentScene.map(_.locationId),
-          currentScene = state.currentScene.map(convertScene),
-          ttsEnabled = session.features.tts,
-          sttEnabled = session.features.stt,
-          imageEnabled = session.features.image,
-          musicEnabled = session.features.music
-        )
-      )
+      sendTo(session, gameLoaded(session))
       sendEnding(session)
     }
 
@@ -478,7 +483,10 @@ class TypedWebSocketServer(
       attach(conn, s); s
     } match {
       case Some(session) =>
-        send(conn, SessionResumedMessage(session.id, session.gameId, session.engine.getMessageCount))
+        // Read before the message index: a turn that ends in between has answered with a larger index, which tells
+        // the client it missed the answer
+        val turnInProgress = session.turnInProgress
+        send(conn, SessionResumedMessage(session.id, session.gameId, session.engine.getMessageCount, turnInProgress))
         session.engine.ending.foreach(outcome => send(conn, GameEndedMessage(session.engine.getMessageCount, outcome)))
       case None =>
         send(conn, ErrorMessage("Session expired", Some(ErrorMessage.SessionExpired)))
@@ -556,7 +564,7 @@ class TypedWebSocketServer(
         Try(java.util.Base64.getDecoder.decode(request.audio)).toEither.left
           .map(_ => "The recording is not valid Base64.")
           .flatMap(bytes =>
-            stt.transcribeBytes(bytes).left.map { error =>
+            stt.transcribeBytes(bytes, TypedWebSocketServer.recordingFileName(request.mimeType)).left.map { error =>
               logger.warn(s"[${session.id}] Transcription failed: ${error.message}")
               error.userMessage
             }) match {
@@ -676,7 +684,7 @@ class TypedWebSocketServer(
     val metadata = GameMetadataHelper.initial(
       gameId = session.gameId,
       adventureTitle = outline.map(_.title).getOrElse("Untitled Adventure"),
-      theme = session.theme.map(_.id).getOrElse("default"),
+      theme = session.theme.map(_.name).getOrElse("default"),
       artStyle = session.artStyle.map(_.id).getOrElse("default"),
       createdAt = System.currentTimeMillis()
     )
@@ -733,7 +741,7 @@ object TypedWebSocketServer {
           ErrorMessage(
             "Recording too long",
             Some(s"A recording can be at most ${MaxAudioBytes / (1024 * 1024)} MB. Record a shorter command.")))
-      case request: NewGameRequest if request.theme.exists(_.length > MaxThemeChars) =>
+      case request: NewGameRequest if (request.theme ++ request.themeName).exists(_.length > MaxThemeChars) =>
         Some(ErrorMessage("Failed to start game", Some(s"The theme can be at most $MaxThemeChars characters.")))
       case request: NewGameRequest if request.adventureOutline.exists(ujson.write(_).length > MaxOutlineChars) =>
         Some(
@@ -742,6 +750,35 @@ object TypedWebSocketServer {
             Some(s"The adventure outline is too large: at most ${MaxOutlineChars / 1024} KB of JSON.")))
       case _ => None
     }
+  }
+
+  /** The theme of a new game that is not of a library adventure: the request's prompt, listed by its name. */
+  private[websocket] def themeOf(request: NewGameRequest): Option[GameTheme] =
+    request.theme.map { prompt =>
+      val name = request.themeName.getOrElse(prompt)
+      GameTheme(id = name, name = name, prompt = prompt)
+    }
+
+  /** The recording formats the transcriber is told about, by MIME type (without parameters such as codecs). */
+  private val RecordingExtensions: Map[String, String] = Map(
+    "audio/webm" -> "webm",
+    "audio/mp4" -> "mp4",
+    "audio/m4a" -> "m4a",
+    "audio/x-m4a" -> "m4a",
+    "audio/ogg" -> "ogg",
+    "audio/wav" -> "wav",
+    "audio/x-wav" -> "wav",
+    "audio/wave" -> "wav",
+    "audio/mpeg" -> "mp3",
+    "audio/mp3" -> "mp3"
+  )
+
+  /** The file name a recording of `mimeType` is uploaded to the transcriber as: its extension says the format (Safari
+    * records MP4, Chrome and Firefox WebM or Ogg). An absent or unknown type is taken to be WebM.
+    */
+  private[szork] def recordingFileName(mimeType: Option[String]): String = {
+    val essence = mimeType.map(_.takeWhile(_ != ';').trim.toLowerCase)
+    s"recording.${essence.flatMap(RecordingExtensions.get).getOrElse("webm")}"
   }
 
   /** Whether a handshake with `origin` may connect: always without an Origin header (non-browser clients). */

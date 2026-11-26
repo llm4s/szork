@@ -109,9 +109,13 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
         library = Some(library)
       ))
 
-  // Every recording says "go north", which moves the player to a new scene
+  // Every recording says "go north", which moves the player to a new scene; the file names it was given are kept
+  private val transcribedFiles = new java.util.concurrent.ConcurrentLinkedQueue[String]()
   private val sttClient: STTClient = new STTClient {
-    override def transcribeBytes(audioBytes: Array[Byte], filename: String): SzorkResult[String] = Right("go north")
+    override def transcribeBytes(audioBytes: Array[Byte], filename: String): SzorkResult[String] = {
+      transcribedFiles.add(filename)
+      Right("go north")
+    }
   }
 
   private val server = new TypedWebSocketServer(
@@ -189,6 +193,28 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     complete("scene")("locationName").str shouldBe "Small Hall"
     complete("scene")("items").arr shouldBe empty // empty lists are sent too
     c.close()
+  }
+
+  test(
+    "a game starts and loads with its adventure's title, and is saved with its theme's name and played with its prompt") {
+    val c = connect()
+    c.sendJson("type" -> "newGame", "adventureId" -> cavernAdventure.id)
+    val library = c.await("gameStarted")("data")
+    library("title").str shouldBe "The Echoing Cavern"
+    val again = connect()
+    again.sendJson("type" -> "loadGame", "gameId" -> library("gameId").str)
+    again.await("gameLoaded")("data")("title").str shouldBe "The Echoing Cavern"
+
+    val description = "A steampunk airship exploring floating islands, chased by sky pirates"
+    c.sendJson("type" -> "newGame", "theme" -> description, "themeName" -> "Custom Adventure")
+    val custom = c.await("gameStarted")("data")
+    custom("title").str shouldBe GameLoadedMessage.Untitled // played without a designed adventure
+    val theme = sessions.getSession(custom("sessionId").str).get.theme.get
+    theme.name shouldBe "Custom Adventure"
+    theme.prompt shouldBe description
+    again.sendJson("type" -> "loadGame", "gameId" -> custom("gameId").str)
+    again.await("gameLoaded")("data")("title").str shouldBe GameLoadedMessage.Untitled
+    Seq(c, again).foreach(_.close())
   }
 
   test("a place is pictured again only when the Dungeon Master says it looks different") {
@@ -272,6 +298,28 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
 
   private val recording = java.util.Base64.getEncoder.encodeToString("audio".getBytes)
 
+  test("a recording is uploaded for transcription as the format the browser recorded") {
+    TypedWebSocketServer.recordingFileName(Some("audio/mp4")) shouldBe "recording.mp4"
+    TypedWebSocketServer.recordingFileName(Some("audio/webm;codecs=opus")) shouldBe "recording.webm"
+    TypedWebSocketServer.recordingFileName(Some("audio/ogg; codecs=opus")) shouldBe "recording.ogg"
+    TypedWebSocketServer.recordingFileName(Some("Audio/X-M4A")) shouldBe "recording.m4a"
+    TypedWebSocketServer.recordingFileName(Some("audio/wav")) shouldBe "recording.wav"
+    TypedWebSocketServer.recordingFileName(Some("audio/mpeg")) shouldBe "recording.mp3"
+    TypedWebSocketServer.recordingFileName(Some("video/x-flv/../../etc")) shouldBe "recording.webm"
+    TypedWebSocketServer.recordingFileName(None) shouldBe "recording.webm"
+
+    val c = connect()
+    startGame(c)
+    transcribedFiles.clear()
+    c.sendJson("type" -> "audioCommand", "audio" -> recording, "mimeType" -> "audio/mp4")
+    c.await("transcription")
+    c.sendJson("type" -> "audioCommand", "audio" -> recording)
+    c.await("commandResponse")
+    c.await("transcription")
+    transcribedFiles.toArray.toList shouldBe List("recording.mp4", "recording.webm")
+    c.close()
+  }
+
   test("a voice command honours its imageGeneration flag") {
     val c = connect()
     startGame(c)
@@ -298,7 +346,9 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
 
     val second = connect()
     second.sendJson("type" -> "resumeSession", "sessionId" -> sessionId)
-    second.await("sessionResumed")("data")("sessionId").str shouldBe sessionId
+    val resumed = second.await("sessionResumed")("data")
+    resumed("sessionId").str shouldBe sessionId
+    resumed("turnInProgress").bool shouldBe false // sent when false too
     second.sendJson("type" -> "streamCommand", "command" -> "look")
     second.await("streamComplete")
     second.close()
@@ -415,6 +465,8 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     TypedWebSocketServer.overLimit(NewGameRequest(adventureOutline = Some(bigOutline))).flatMap(_.details).get should
       include("outline is too large")
     TypedWebSocketServer.overLimit(NewGameRequest(adventureOutline = Some(ujson.Obj("title" -> "x")))) shouldBe None
+    TypedWebSocketServer.overLimit(NewGameRequest(themeName = Some("x" * (SzorkConfig.MaxThemeChars + 1)))) should
+      not be None
   }
 
   test("an invalid message gets an error, not a dropped connection") {
@@ -432,6 +484,13 @@ class WebSocketServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
       ResumeSessionRequest("s1"))
     ProtocolCodec.decode("""{"type":"audioCommand","audio":"AAAA","imageGeneration":false}""") shouldBe Right(
       AudioCommandRequest("AAAA", Some(false)))
+    ProtocolCodec.decode("""{"type":"audioCommand","audio":"AAAA","mimeType":"audio/mp4"}""") shouldBe Right(
+      AudioCommandRequest("AAAA", mimeType = Some("audio/mp4")))
+    ProtocolCodec.decode("""{"type":"newGame","theme":"a long description","themeName":"Custom Adventure"}""") shouldBe
+      Right(NewGameRequest(theme = Some("a long description"), themeName = Some("Custom Adventure")))
+    ujson.read(ProtocolCodec.encode(GameDeletedMessage("g1"))) shouldBe ujson.Obj(
+      "type" -> "gameDeleted",
+      "data" -> ujson.Obj("gameId" -> "g1"))
     val json = ujson.read(ProtocolCodec.encode(MediaFailedMessage(3, MediaKind.Music)))
     json shouldBe ujson.Obj("type" -> "mediaFailed", "data" -> ujson.Obj("messageIndex" -> 3, "kind" -> "music"))
     upickle.default.read[MediaKind](ujson.Str("image")) shouldBe MediaKind.Image

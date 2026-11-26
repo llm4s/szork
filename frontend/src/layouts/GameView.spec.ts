@@ -149,6 +149,80 @@ describe("GameView", () => {
     expect(wrapper.find(".style-card.selected").exists()).toBe(true);
   });
 
+  it("shows the loaded game's title, and nothing of the previous game while the next one loads", async () => {
+    const { wrapper } = await loadedGame();
+    latest().receive("gameLoaded", {
+      ...flags,
+      sessionId: "sess-1",
+      gameId: "g1",
+      title: "The Lost Mine",
+      messageIndex: 1,
+      conversation: [{ role: "assistant", content: "You are in a cave." }],
+    });
+    await flushPromises();
+    expect(wrapper.find(".game-title").text()).toContain("SZork - The Lost Mine");
+
+    // The browser's back or forward button opens another game in the same view
+    await wrapper.setProps({ gameId: "g2" });
+    await flushPromises();
+    expect(latest().sentMessages().at(-1)).toMatchObject({ type: "loadGame", gameId: "g2" });
+    expect(wrapper.text()).not.toContain("You are in a cave.");
+    expect(wrapper.find(".game-title").text()).not.toContain("The Lost Mine");
+    expect(wrapper.text()).toContain("Loading your adventure...");
+  });
+
+  it("starts a custom adventure with the player's description as its prompt, listed by the theme's name", async () => {
+    const { wrapper } = await openView();
+    const description = "A steampunk airship exploring floating islands";
+    (wrapper.vm as unknown as { onAdventureReady: (c: AdventureConfig) => void }).onAdventureReady({
+      theme: { id: "custom", name: "Custom Adventure", prompt: description },
+      style: { id: "illustration", name: "Pencil Art" },
+      outline,
+      sessionFeatures: { image: true, music: false, tts: false, stt: false },
+    });
+    await flushPromises();
+    expect(latest().sentMessages()[0]).toMatchObject({
+      type: "newGame",
+      theme: description,
+      themeName: "Custom Adventure",
+    });
+    expect(wrapper.find(".game-title").text()).toContain("The Lost Mine");
+  });
+
+  it("returns to the game list, saying so, when the game being played is deleted", async () => {
+    const { wrapper, router } = await loadedGame();
+    latest().receive("gameDeleted", { gameId: "g1" });
+    await vi.advanceTimersByTimeAsync(10); // the navigation home
+
+    expect(router.currentRoute.value.path).toBe("/");
+    expect(wrapper.find(".game-selection-screen").exists()).toBe(true);
+    expect((wrapper.vm as unknown as { errorMessage: string }).errorMessage).toContain("deleted");
+  });
+
+  it("puts a command the server never received back in the command line", async () => {
+    const { wrapper } = await loadedGame();
+    const input = wrapper.find(".game-input input");
+    await input.setValue("go north");
+    await input.trigger("keyup.enter");
+    expect((input.element as HTMLInputElement).value).toBe("");
+
+    latest().drop();
+    await vi.advanceTimersByTimeAsync(1_000);
+    latest().open();
+    latest().receive("sessionResumed", { sessionId: "sess-1", gameId: "g1", messageIndex: 1, turnInProgress: false });
+    await flushPromises();
+    expect((input.element as HTMLInputElement).value).toBe("go north");
+  });
+
+  it("stops the command at the server's limit, and counts only near it", async () => {
+    const { wrapper } = await loadedGame();
+    const input = wrapper.find(".game-input input");
+    expect(input.attributes("maxlength")).toBe("1000");
+    expect(wrapper.find(".game-input .v-counter").exists()).toBe(false);
+    await input.setValue("x".repeat(900));
+    expect(wrapper.find(".game-input .v-counter").text()).toContain("900 / 1000");
+  });
+
   it("returns to the game list when a game cannot be loaded", async () => {
     const { wrapper, router } = await openView("gone");
     latest().receive("error", { error: "Failed to load game", details: "Game not found" });

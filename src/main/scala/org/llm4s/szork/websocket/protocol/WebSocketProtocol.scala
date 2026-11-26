@@ -31,6 +31,7 @@ object ServerMessage {
     GameLoadedMessage.rw,
     SessionResumedMessage.rw,
     SessionTakenOverMessage.rw,
+    GameDeletedMessage.rw,
     GameEndedMessage.rw,
     CommandResponseMessage.rw,
     TextChunkMessage.rw,
@@ -46,8 +47,13 @@ object ServerMessage {
 
 // ============= Client Messages =============
 
+/** Starts a game. `theme` is the theme's prompt, what the Dungeon Master is told the adventure is about (a custom
+  * theme's is the player's description); `themeName` is what the game is listed and saved as (a custom theme's is
+  * "Custom Adventure"), the prompt when it is absent.
+  */
 case class NewGameRequest(
   theme: Option[String] = None,
+  themeName: Option[String] = None,
   artStyle: Option[String] = None,
   adventureOutline: Option[ujson.Value] = None, // Adventure outline as JSON
   adventureId: Option[String] = None, // A library adventure to play (its outline, theme and art style are used)
@@ -96,10 +102,14 @@ object StreamCommandRequest {
   implicit val rw: ReadWriter[StreamCommandRequest] = macroRW
 }
 
-/** A spoken command. `imageGeneration` false asks for no scene image for its response, as for typed commands. */
+/** A spoken command. `imageGeneration` false asks for no scene image for its response, as for typed commands.
+  * `mimeType` is the recorder's format (`MediaRecorder.mimeType`, e.g. "audio/mp4" in Safari), which tells the
+  * transcriber how to read the recording; without it the recording is taken to be WebM.
+  */
 case class AudioCommandRequest(
   audio: String, // Base64 encoded audio
-  imageGeneration: Option[Boolean] = None
+  imageGeneration: Option[Boolean] = None,
+  mimeType: Option[String] = None
 ) extends ClientMessage
 object AudioCommandRequest {
   implicit val rw: ReadWriter[AudioCommandRequest] = macroRW
@@ -123,9 +133,11 @@ object ConnectedMessage {
   implicit val rw: ReadWriter[ConnectedMessage] = macroRW
 }
 
+/** A new game's opening scene. `title` is the adventure's (see [[GameLoadedMessage]]). */
 case class GameStartedMessage(
   sessionId: String,
   gameId: String,
+  title: String,
   text: String,
   messageIndex: Int,
   scene: Option[SceneData] = None,
@@ -143,11 +155,13 @@ object GameStartedMessage {
 
 /** A loaded game. `messageIndex` is the session's message index (as in [[SessionResumedMessage]]), so a client can tell
   * on resuming whether it missed a response. The feature flags are the ones the session now uses: loading a game that
-  * is already open applies the features this request asked for to its session.
+  * is already open applies the features this request asked for to its session. `title` is the adventure's title, or
+  * [[GameLoadedMessage.Untitled]] for a game played without a designed adventure.
   */
 case class GameLoadedMessage(
   sessionId: String,
   gameId: String,
+  title: String,
   messageIndex: Int,
   conversation: Seq[ConversationEntry],
   currentLocation: Option[String] = None,
@@ -159,12 +173,22 @@ case class GameLoadedMessage(
 ) extends ServerMessage
 object GameLoadedMessage {
   implicit val rw: ReadWriter[GameLoadedMessage] = macroRW
+
+  /** The `title` of a game that has no designed adventure (its outline has the title otherwise). */
+  val Untitled: String = "Untitled Adventure"
 }
 
+/** Answers a [[ResumeSessionRequest]]. `messageIndex` is the session's message index: one larger than the client's last
+  * means it missed a response, which the client should check first. `turnInProgress` says whether the session has a
+  * turn running or queued (a turn counts until the save after its answer is done): if it has, its answer is still to
+  * come to this connection; if not, and no response was missed, a turn the client is waiting for never reached the
+  * server and should be sent again.
+  */
 case class SessionResumedMessage(
   sessionId: String,
   gameId: String,
-  messageIndex: Int
+  messageIndex: Int,
+  turnInProgress: Boolean
 ) extends ServerMessage
 object SessionResumedMessage {
   implicit val rw: ReadWriter[SessionResumedMessage] = macroRW
@@ -179,6 +203,16 @@ case class SessionTakenOverMessage(
 ) extends ServerMessage
 object SessionTakenOverMessage {
   implicit val rw: ReadWriter[SessionTakenOverMessage] = macroRW
+}
+
+/** Sent to the connection playing a game when the game is deleted (`DELETE /api/game/:id`): its session has ended, and
+  * commands for it are refused. The client should leave the game.
+  */
+case class GameDeletedMessage(
+  gameId: String
+) extends ServerMessage
+object GameDeletedMessage {
+  implicit val rw: ReadWriter[GameDeletedMessage] = macroRW
 }
 
 /** The adventure is over: the main quest was completed or failed. Sent after the response of the turn that ended it

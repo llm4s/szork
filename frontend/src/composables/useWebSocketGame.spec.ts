@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TURN_TIMEOUT_MS, useWebSocketGame } from "./useWebSocketGame";
+import { TURN_LOST, TURN_TIMEOUT_MS, useWebSocketGame } from "./useWebSocketGame";
 import { FakeWebSocket } from "@/test/FakeWebSocket";
 import { SESSION_EXPIRED } from "@/types/WebSocketProtocol";
 
@@ -8,16 +8,19 @@ const latest = () => FakeWebSocket.latest();
 
 const flags = { ttsEnabled: false, sttEnabled: true, imageEnabled: true, musicEnabled: false };
 
+const caves = { id: "caves", name: "Caves", prompt: "an underground realm" };
+
 /** A connected game whose opening response had message index 2. */
 async function startedGame() {
   const game = useWebSocketGame();
-  const starting = game.startNewGame("caves");
+  const starting = game.startNewGame({ theme: caves });
   latest().open();
   await starting;
   latest().receive("gameStarted", {
     ...flags,
     sessionId: "sess-1",
     gameId: "game-1",
+    title: "The Echoing Cavern",
     text: "You are in a cave.",
     messageIndex: 2,
     hasImage: false,
@@ -49,13 +52,20 @@ describe("useWebSocketGame", () => {
 
   it("asks for a new game's features, with images off when the player turned them off", async () => {
     const game = useWebSocketGame();
-    const starting = game.startNewGame("caves", "pixel", false, null, { tts: true, music: false });
+    const starting = game.startNewGame({
+      theme: caves,
+      artStyle: "pixel",
+      imageGeneration: false,
+      outline: null,
+      features: { tts: true, music: false },
+    });
     latest().open();
     await starting;
     expect(latest().sentMessages()).toEqual([
       {
         type: "newGame",
-        theme: "caves",
+        theme: "an underground realm",
+        themeName: "Caves",
         artStyle: "pixel",
         adventureOutline: null,
         tts: true,
@@ -117,7 +127,12 @@ describe("useWebSocketGame", () => {
 
     latest().drop(); // streamComplete is sent now, and lost
     await reconnect();
-    latest().receive("sessionResumed", { sessionId: "sess-1", gameId: "game-1", messageIndex: 4 });
+    latest().receive("sessionResumed", {
+      sessionId: "sess-1",
+      gameId: "game-1",
+      messageIndex: 4,
+      turnInProgress: false,
+    });
     await vi.advanceTimersByTimeAsync(0); // the reload is sent asynchronously
 
     expect(game.isStreaming.value).toBe(false);
@@ -138,7 +153,12 @@ describe("useWebSocketGame", () => {
 
     latest().drop();
     await reconnect();
-    latest().receive("sessionResumed", { sessionId: "sess-1", gameId: "game-1", messageIndex: 2 });
+    latest().receive("sessionResumed", {
+      sessionId: "sess-1",
+      gameId: "game-1",
+      messageIndex: 2,
+      turnInProgress: true,
+    });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(game.isStreaming.value).toBe(true);
@@ -154,6 +174,133 @@ describe("useWebSocketGame", () => {
     });
     expect(game.isStreaming.value).toBe(false);
     expect(game.messages.value[game.messages.value.length - 1].text).toBe("You go north.");
+  });
+
+  it("ends the wait and offers the command back when the server never received it", async () => {
+    const game = await startedGame();
+    await game.sendCommand("go north");
+
+    latest().drop(); // the command was lost with the connection
+    await reconnect();
+    latest().receive("sessionResumed", {
+      sessionId: "sess-1",
+      gameId: "game-1",
+      messageIndex: 2,
+      turnInProgress: false,
+    });
+
+    expect(game.awaitingResponse.value).toBe(false);
+    expect(game.isStreaming.value).toBe(false);
+    expect(game.messages.value.at(-1)?.text).toBe(`Error: ${TURN_LOST}`);
+    expect(game.offeredCommand.value).toBe("go north");
+    expect(latest().sentTypes()).not.toContain("loadGame");
+  });
+
+  it("keeps waiting for a command that was queued while offline, which the server gets after the resume", async () => {
+    const game = await startedGame();
+    latest().drop();
+    const sending = game.sendCommand("look");
+    latest().open();
+    await sending;
+    expect(latest().sentTypes()).toEqual(["resumeSession", "streamCommand"]);
+
+    latest().receive("sessionResumed", {
+      sessionId: "sess-1",
+      gameId: "game-1",
+      messageIndex: 2,
+      turnInProgress: false,
+    });
+    expect(game.awaitingResponse.value).toBe(true);
+    expect(game.offeredCommand.value).toBeNull();
+  });
+
+  it("offers a spoken command back as it was heard", async () => {
+    const game = await startedGame();
+    await game.sendAudioCommand("YXVkaW8=");
+    latest().receive("transcription", { text: "open the door" });
+
+    latest().drop();
+    await reconnect();
+    latest().receive("sessionResumed", {
+      sessionId: "sess-1",
+      gameId: "game-1",
+      messageIndex: 2,
+      turnInProgress: false,
+    });
+    expect(game.offeredCommand.value).toBe("open the door");
+  });
+
+  it("asks again for a game whose load was sent on a connection that dropped", async () => {
+    const game = useWebSocketGame();
+    const loading = game.loadGame("game-1", { tts: false });
+    latest().open();
+    await loading;
+    expect(latest().sentTypes()).toEqual(["loadGame"]);
+
+    latest().drop(); // gameLoaded never arrives
+    await reconnect();
+    expect(latest().sentMessages()).toEqual([{ type: "loadGame", gameId: "game-1", tts: false }]);
+  });
+
+  it("sends a load queued while reconnecting once, not twice", async () => {
+    const game = await startedGame();
+    latest().drop();
+    const loading = game.loadGame("game-2");
+    await reconnect();
+    await loading;
+    expect(
+      latest()
+        .sentTypes()
+        .filter((t) => t === "loadGame")
+    ).toHaveLength(1);
+  });
+
+  it("leaves a game that was deleted, and does not resume its session", async () => {
+    const game = await startedGame();
+    await game.sendCommand("look");
+    latest().receive("gameDeleted", { gameId: "game-other" });
+    expect(game.gameDeleted.value).toBe(false);
+
+    latest().receive("gameDeleted", { gameId: "game-1" });
+    expect(game.gameDeleted.value).toBe(true);
+    expect(game.awaitingResponse.value).toBe(false);
+    expect(game.sessionId.value).toBeNull();
+
+    latest().drop();
+    await reconnect();
+    expect(latest().sentTypes()).not.toContain("resumeSession");
+    game.clearMessages();
+    expect(game.gameDeleted.value).toBe(false);
+  });
+
+  it("knows the adventure's title from the server, and forgets it with the game", async () => {
+    const game = await startedGame();
+    expect(game.adventureTitle.value).toBe("The Echoing Cavern");
+    game.clearMessages();
+    expect(game.adventureTitle.value).toBeNull();
+
+    const loading = game.loadGame("game-1");
+    await loading;
+    latest().receive("gameLoaded", {
+      ...flags,
+      sessionId: "sess-2",
+      gameId: "game-1",
+      title: "The Lost Mine",
+      messageIndex: 3,
+      conversation: [],
+    });
+    expect(game.adventureTitle.value).toBe("The Lost Mine");
+  });
+
+  it("sends a recording's format with it", async () => {
+    const game = await startedGame();
+    await game.sendAudioCommand("YXVkaW8=", true, "audio/mp4");
+    expect(latest().sentMessages()).toContainEqual({
+      type: "audioCommand",
+      audio: "YXVkaW8=",
+      imageGeneration: true,
+      mimeType: "audio/mp4",
+    });
   });
 
   it("reloads an expired session with the features it had", async () => {
@@ -301,7 +448,7 @@ describe("useWebSocketGame", () => {
 
   it("starts a library adventure by its id, leaving the outline to the server", async () => {
     const game = useWebSocketGame();
-    const starting = game.startNewGame(undefined, undefined, true, null, { tts: false }, "the-lost-mine");
+    const starting = game.startNewGame({ outline: null, features: { tts: false }, adventureId: "the-lost-mine" });
     latest().open();
     await starting;
     expect(latest().sentMessages()).toEqual([
@@ -373,7 +520,12 @@ describe("useWebSocketGame", () => {
     latest().drop(); // streamComplete is sent now, and lost
     await reconnect();
     expect(latest().sentMessages()[0]).toEqual({ type: "resumeSession", sessionId: "sess-2" });
-    latest().receive("sessionResumed", { sessionId: "sess-2", gameId: "game-1", messageIndex: 5 });
+    latest().receive("sessionResumed", {
+      sessionId: "sess-2",
+      gameId: "game-1",
+      messageIndex: 5,
+      turnInProgress: false,
+    });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(game.isStreaming.value).toBe(false);
@@ -577,7 +729,7 @@ describe("useWebSocketGame", () => {
   it("reports a game that cannot be started through startFailed", async () => {
     const game = await startedGame();
     game.clearMessages();
-    const starting = game.startNewGame("caves");
+    const starting = game.startNewGame({ theme: caves });
     await starting;
     latest().receive("error", { error: "Failed to start game", details: "No outline" });
     expect(game.startFailed.value).toBe("Failed to start game: No outline");
@@ -624,7 +776,12 @@ describe("useWebSocketGame", () => {
 
     latest().drop();
     await reconnect();
-    latest().receive("sessionResumed", { sessionId: "sess-1", gameId: "game-1", messageIndex: 4 });
+    latest().receive("sessionResumed", {
+      sessionId: "sess-1",
+      gameId: "game-1",
+      messageIndex: 4,
+      turnInProgress: false,
+    });
     expect(game.messages.value.at(-1)?.imageLoading).toBe(false);
 
     // A picture still being drawn is shown when it arrives

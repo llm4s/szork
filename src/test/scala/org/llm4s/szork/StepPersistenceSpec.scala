@@ -443,6 +443,32 @@ class StepPersistenceSpec extends AnyFunSuite with Matchers with BeforeAndAfterA
     Files.exists(testGameDir) shouldBe false
   }
 
+  test("a step saved again keeps nothing of the earlier save") {
+    StepPersistence.saveStep(step(2, "First try", Some("look"), toolCalls = true)) shouldBe Right(())
+    StepPersistence.saveStep(step(2, "Second try")) shouldBe Right(())
+
+    val stepDir = testGameDir.resolve("step-0002")
+    Files.list(stepDir).iterator().asScala.map(_.getFileName.toString).toList.sorted shouldBe
+      List("metadata.json", "response.txt", "state.json")
+    val loaded = StepPersistence.loadStep(testGameId, 2).toOption.get
+    (loaded.narrationText, loaded.userCommand, loaded.toolCalls) shouldBe ("Second try", None, Nil)
+    // nothing but the step is left in the game's directory
+    Files.list(testGameDir).iterator().asScala.map(_.getFileName.toString).toList shouldBe List("step-0002")
+  }
+
+  test("a game whose latest step cannot be read loads from the highest step that can") {
+    StepPersistence.saveNewGame(step(1, "Start"), gameMetadata(1)) shouldBe Right(())
+    StepPersistence.saveNextStep(step(2, "Second", Some("look")), 10L) shouldBe Right(())
+    StepPersistence.saveNextStep(step(3, "Third", Some("look")), 10L) shouldBe Right(())
+    Files.writeString(testGameDir.resolve("step-0003").resolve("state.json"), "{ truncated")
+
+    StepPersistence.loadLatestStep(testGameId).map(_.narrationText) shouldBe Right("Second")
+
+    Files.writeString(testGameDir.resolve("step-0002").resolve("state.json"), "")
+    Files.writeString(testGameDir.resolve("step-0001").resolve("state.json"), "")
+    StepPersistence.loadLatestStep(testGameId).isLeft shouldBe true
+  }
+
   test("saves replace files by an atomic rename, leaving no temporary files") {
     def metadata(title: String) = GameMetadata(
       gameId = testGameId,

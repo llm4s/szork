@@ -141,4 +141,55 @@ class Llm4sFeaturesSpec extends AnyFunSuite with Matchers {
     val next = dithering.calls.takeRight(ToolRoundsMiddleware.MaxRounds + 1)
     next.map(_.options.tools.nonEmpty) shouldBe List.fill(ToolRoundsMiddleware.MaxRounds)(true) :+ false
   }
+
+  test("a call repeated after the game changed runs again; a read repeated with nothing changed is not run") {
+    import org.llm4s.llmconnect.model.{ToolMessage, UserMessage}
+    import org.llm4s.szork.game.RepeatedToolCallMiddleware
+    val steps = Vector(
+      "get_location_state" -> "{}",
+      "set_location_flag" -> """{"flag": "door", "value": "open"}""",
+      "get_location_state" -> "{}", // the location changed since the first read: it runs
+      "get_location_state" -> "{}" // nothing changed since: not run
+    )
+    def done(c: org.llm4s.llmconnect.model.Conversation): Int =
+      c.messages.reverseIterator.takeWhile(!_.isInstanceOf[UserMessage]).count(_.isInstanceOf[ToolMessage])
+    val llm = ScriptedDm {
+      case c if ScriptedDm.lastUserText(c) == "check the door" && done(c) < 2 =>
+        val (tool, args) = steps(done(c))
+        Reply.toolCall(tool, args)
+      case c if ScriptedDm.lastUserText(c) == "check the door" && done(c) == 2 =>
+        Reply.toolCalls(
+          org.llm4s.llmconnect.model
+            .ToolCall(org.llm4s.llmconnect.model.ToolCallId("read-2"), steps(2)._1, ujson.Obj()),
+          org.llm4s.llmconnect.model.ToolCall(org.llm4s.llmconnect.model.ToolCallId("read-3"), steps(3)._1, ujson.Obj())
+        )
+      case c if ScriptedDm.lastUserText(c) == "check the door" =>
+        Reply.text(DmAnswers.simple("The door stands open.", "cavern_entrance", "examine"))
+    }
+    val engine = GameEngine.create(llm, "rereading")
+    engine.initialize().isRight shouldBe true
+
+    engine.processCommand("check the door", generateAudio = false).isRight shouldBe true
+    val results = engine.getMessages.collect { case t: ToolMessage => t.toolCallId.asString -> t.content }.toMap
+    results("read-2") should include("door")
+    results("read-2") should not include RepeatedToolCallMiddleware.Reread
+    results("read-3") should include(RepeatedToolCallMiddleware.Reread)
+  }
+
+  test("setting something back to how it was earlier in the turn runs") {
+    val flags = Vector("open", "shut", "open")
+    val llm = ScriptedDm {
+      case c if ScriptedDm.lastUserText(c) == "fiddle with the door" =>
+        val done = c.messages.reverseIterator
+          .takeWhile(!_.isInstanceOf[org.llm4s.llmconnect.model.UserMessage])
+          .count(_.isInstanceOf[org.llm4s.llmconnect.model.ToolMessage])
+        if (done < flags.size) Reply.toolCall("set_location_flag", s"""{"flag": "door", "value": "${flags(done)}"}""")
+        else Reply.text(DmAnswers.simple("You leave the door open.", "cavern_entrance", "fiddle"))
+    }
+    val engine = GameEngine.create(llm, "setting-back")
+    engine.initialize().isRight shouldBe true
+
+    engine.processCommand("fiddle with the door", generateAudio = false).isRight shouldBe true
+    engine.getWorldState.location(None).get.flags shouldBe Map("door" -> "open")
+  }
 }

@@ -58,17 +58,25 @@ object ExitGuard {
       .orElse(Option.when(start >= 0 && end > start)(trimmed.substring(start, end + 1)).filter(isObject))
   }
 
-  /** What the model is told about an answer that made `move`, asking it to answer again. */
-  def correction(move: BlockedMove): String = {
+  /** What the model is told about an answer that made `move`, asking it to answer again. With `canOpen`, the request
+    * offers `set_exit_state`, and the model may open the way with it; otherwise it can only say what is in the way.
+    */
+  def correction(move: BlockedMove, canOpen: Boolean = true): String = {
     val ways = move.exits.map { e =>
       val note = if (e.state == ExitState.Hidden) " and the player has not discovered it" else ""
       s"- the ${e.direction} exit to ${e.targetId} is ${e.state.wire}$note${e.obstacle.fold("")(o => s" ($o)")}"
     }
+    val stayPut =
+      s"give a simple response with locationId ${move.from} that tells the player what is in the way (never reveal an exit that is hidden)."
+    val answerAgain =
+      if (canOpen)
+        s"""Answer the player's command again, in one of two ways:
+          |1. If what the player did in this command legitimately opens the way (they simply open a closed door that has no obstacle, or they have and use what the obstacle needs), first call set_exit_state to set that exit to "open", and only then give the fullScene for ${move.to}.
+          |2. Otherwise $stayPut""".stripMargin
+      else s"Answer the player's command again: no more tools can be called this turn, so $stayPut"
     s"""$CorrectionLead: its fullScene moves the player from ${move.from} to ${move.to}, but that way is not open. In the current game state:
       |${ways.mkString("\n")}
-      |The player is still at ${move.from}. Answer the player's command again, in one of two ways:
-      |1. If what the player did in this command legitimately opens the way (they simply open a closed door that has no obstacle, or they have and use what the obstacle needs), first call set_exit_state to set that exit to "open", and only then give the fullScene for ${move.to}.
-      |2. Otherwise give a simple response with locationId ${move.from} that tells the player what is in the way (never reveal an exit that is hidden).
+      |The player is still at ${move.from}. $answerAgain
       |Do not give a fullScene for ${move.to} while no exit to it is open.""".stripMargin
   }
 
@@ -115,7 +123,9 @@ object ExitGuard {
   * state agree that the player has not moved.
   *
   * Both calls are counted in the turn's usage, and both are announced to a streaming turn's subscribers: the refused
-  * narration streams before the one that is used, as with llm4s's own correction.
+  * narration streams before the one that is used, as with llm4s's own correction. The corrective call is part of the
+  * model call it corrects: it is offered the same tools, and [[ToolRoundsMiddleware]], which wraps this, does not count
+  * it as another round.
   */
 final class ExitGuardMiddleware(world: WorldState) extends AgentMiddleware {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
@@ -130,9 +140,10 @@ final class ExitGuardMiddleware(world: WorldState) extends AgentMiddleware {
         case None => Right(first)
         case Some(move) =>
           logger.warn(s"Answer moves the player from ${move.from} to ${move.to}, which is not open: asking again")
+          val canOpen = request.tools.get(ExitGuardMiddleware.OpeningTool).isDefined
           val corrective = request.withMessages(
             request.messages :+ AssistantMessage(first.completion.message.content) :+
-              UserMessage(ExitGuard.correction(move)))
+              UserMessage(ExitGuard.correction(move, canOpen)))
           next(corrective).map { second =>
             refused(second).fold(second) { again =>
               logger.warn(s"The corrected answer moves the player to ${again.to} again: the move is refused")
@@ -155,4 +166,7 @@ object ExitGuardMiddleware {
 
   /** The middleware's id in the Dungeon Master's stack. */
   val Id: String = "exit-guard"
+
+  /** The tool that opens an exit, which the correction offers when the request does. */
+  val OpeningTool: String = "set_exit_state"
 }

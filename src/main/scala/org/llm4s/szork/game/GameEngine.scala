@@ -384,6 +384,9 @@ class GameEngine(
     * Each answer is held to the exit states ([[ExitGuardMiddleware]]): a scene that would move the player through an
     * exit that is not open is sent back to the model once, with what is in the way, and never reaches the thread.
     *
+    * A tool call repeated with nothing changed in between is not run again ([[RepeatedToolCallMiddleware]]), and after
+    * a few rounds of tool calls the model is offered none ([[ToolRoundsMiddleware]]).
+    *
     * With a context window, each model call is sent the system prompt (which holds the adventure outline and the game
     * state, and is never pruned) and as much of the recent conversation as fits; the current turn is always sent whole,
     * and a tool call is never sent without its result.
@@ -411,18 +414,20 @@ class GameEngine(
     // what each model call is sent (wrapModelCall), so the two are independent
     val guarded =
       if (inputGuardrails.isEmpty) base else base.withMiddleware(new GuardrailMiddleware(inputGuardrails, Nil))
-    // The current game state joins the system prompt of every model call (a prompt section, never stored), so the
-    // model reads the location, inventory and quests there instead of calling the read tools
-    // An answer that would move the player through an exit that is not open goes back to the model once, with what
-    // is in the way (wrapModelCall); it wraps the context window, so its corrective request is trimmed like any other
+    // llm4s nests wrapModelCall and wrapToolCall in the order middleware are added, the first outermost
     val stated =
       guarded.withMiddleware(
+        // The current game state joins the system prompt of every model call (a prompt section, never stored), so
+        // the model reads the location, inventory and quests there instead of calling the read tools
         new WorldStateMiddleware(world, inventory),
+        // The tool calls of a turn that keeps looking things up instead of answering are not run. It wraps the exit
+        // guard, so the guard's corrective request is part of the round it corrects, not another one
+        new ToolRoundsMiddleware,
+        // An answer that would move the player through an exit that is not open goes back to the model once, with
+        // what is in the way; it wraps the context window, so its corrective request is trimmed like any other
         new ExitGuardMiddleware(world),
-        // a tool call the model repeats within a turn is not run again, and it is told to answer
-        new RepeatedToolCallMiddleware,
-        // nor are the tool calls of a turn that keeps looking things up instead of answering
-        new ToolRoundsMiddleware
+        // A tool call the model repeats with nothing changed in between is not run again, and it is told to answer
+        new RepeatedToolCallMiddleware
       )
     val windowed = modelWindow.fold(stated)(window => stated.withMiddleware(new ContextWindowMiddleware(window)))
     val builder = tracing.fold(windowed)(windowed.withTracing)

@@ -167,9 +167,9 @@ class GameEngine(
     // (the trigger message is not shown to the user)
     conversation.startOver(Vector.empty)
 
-    playTurn(GameConstants.Prompts.INIT_ADVENTURE, listener = None).flatMap(DmConversation.answered) match {
-      case Right(result) =>
-        val outcome = completeTurn(result)
+    playTurn(GameConstants.Prompts.INIT_ADVENTURE, listener = None).flatMap(_.answered) match {
+      case Right(turn) =>
+        val outcome = completeTurn(turn.interpretation)
         logger.info(s"[$sessionId] Game initialized: ${outcome.scene.map(_.locationId).getOrElse("no scene")}")
         Right(outcome.narration)
 
@@ -202,18 +202,15 @@ class GameEngine(
     logger.debug(s"[$sessionId] Processing command (streaming=${onTextChunk.isDefined}): $command")
 
     playTurn(command, onTextChunk.map(narrationListener)) match {
-      case Right(result) =>
-        result.status match {
-          case AgentStatus.Blocked(_, _) =>
-            // An input guardrail refused the command before the model saw it: the game is as it was, and the Dungeon
-            // Master answers in character
-            val audio = if (generateAudio) media.narrate(PlayerInputGuardrail.Refusal) else None
-            Right(GameResponse(PlayerInputGuardrail.Refusal, audio, currentScene, refused = true))
-          case _ =>
-            val outcome = completeTurn(result)
-            val audio = if (generateAudio) media.narrate(outcome.narration) else None
-            Right(GameResponse(outcome.narration, audio, outcome.scene.orElse(currentScene), refused = false))
-        }
+      case Right(GameEngine.PlayedTurn(_, None)) =>
+        // An input guardrail refused the command before the model saw it: the game is as it was, and the Dungeon
+        // Master answers in character
+        val audio = if (generateAudio) media.narrate(PlayerInputGuardrail.Refusal) else None
+        Right(GameResponse(PlayerInputGuardrail.Refusal, audio, currentScene, refused = true))
+      case Right(GameEngine.PlayedTurn(_, Some(interpreted))) =>
+        val outcome = completeTurn(interpreted)
+        val audio = if (generateAudio) media.narrate(outcome.narration) else None
+        Right(GameResponse(outcome.narration, audio, outcome.scene.orElse(currentScene), refused = false))
 
       case Left(error) =>
         val szorkError = AIError(s"Error processing command: ${error.message}", llmError = Some(error))
@@ -230,25 +227,28 @@ class GameEngine(
     * and the inventory and world are put back as they were before the turn. A turn a guardrail blocked ran no tool. The
     * last turn's results ([[locationChangedLastTurn]] and the like) are reset as the turn starts.
     *
+    * A completed turn's answer is decoded here, once: llm4s has checked it against the output schema and the game's
+    * rules ([[GameResponseValidator.problems]]), and `decodeOutput` reads it as a [[DungeonMasterOutput.Answer]].
+    *
     * [[ExitGuardMiddleware]] has held every answer of the turn to the exit rule, with the same reading of the answer,
     * against the world as it stood; an answer that still breaks it here means the two disagree, and the turn is
     * discarded rather than leave the thread telling of a move the game did not make.
     */
-  private def playTurn(command: String, listener: Option[StreamEvent => Unit]): Result[AgentResult] = {
+  private def playTurn(command: String, listener: Option[StreamEvent => Unit]): Result[GameEngine.PlayedTurn] = {
     resetLastTurn()
     val (worldBefore, inventoryBefore) = (world.snapshot, inventory.list)
     val outcome = conversation.runTurn(command, listener).flatMap { result =>
-      val move = result.status match {
+      val interpreted = result.status match {
         case AgentStatus.Completed(_) =>
-          ResponseInterpreter
-            .interpret(result.answer.getOrElse(""))
-            .data
-            .collect { case scene: GameScene => scene }
-            .flatMap(scene => ExitGuard.blockedMove(world.snapshot, scene.locationId))
+          Some(ResponseInterpreter.interpret(result.decodeOutput[DungeonMasterOutput.Answer].left.map(_.message)))
         case _ => None
       }
+      val move = interpreted
+        .flatMap(_.data)
+        .collect { case scene: GameScene => scene }
+        .flatMap(scene => ExitGuard.blockedMove(world.snapshot, scene.locationId))
       move match {
-        case None => Right(result)
+        case None => Right(GameEngine.PlayedTurn(result, interpreted))
         case Some(refused) =>
           logger.error(
             s"[$sessionId] The turn's answer moves the player from ${refused.from} to ${refused.to}, through an exit " +
@@ -317,16 +317,12 @@ class GameEngine(
   /** What a completed turn produced: the narration to show, and the scene if the turn described one. */
   private final case class TurnOutcome(narration: String, scene: Option[GameScene])
 
-  /** Interprets a completed turn's answer and applies it to the game state.
+  /** Applies a completed turn's answer, as [[playTurn]] interpreted it, to the game state.
     *
-    * The answer is parsed and validated, and a scene moves the player ([[playTurn]] has refused a turn whose scene goes
-    * through an exit that is not open). If the answer cannot be used as structured data, its narration is still shown.
+    * A scene moves the player ([[playTurn]] has refused a turn whose scene goes through an exit that is not open). If
+    * the answer cannot be used as structured data, its narration is still shown.
     */
-  private def completeTurn(result: AgentResult): TurnOutcome = {
-    val answer = result.answer.getOrElse("")
-    logger.debug(s"[$sessionId] Turn answer (truncated): ${answer.take(200)}")
-
-    val interpreted = ResponseInterpreter.interpret(answer)
+  private def completeTurn(interpreted: ResponseInterpreter.Interpretation): TurnOutcome = {
     lastValidationIssues = interpreted.issues
     interpreted.issues.foreach(issues => logger.warn(s"[$sessionId] Response issues: ${issues.mkString("; ")}"))
 
@@ -346,8 +342,8 @@ class GameEngine(
     }
     // What the player carries is not lying in the scene: a model often lists an item there on the turn it is taken
     val carried = inventory.list.map(_.trim.toLowerCase).toSet
-    currentScene = currentScene.map(current =>
-      current.copy(items = current.items.filterNot(item => carried(item.trim.toLowerCase))))
+    currentScene =
+      currentScene.map(current => current.copy(items = current.items.filterNot(item => carried(item.trim.toLowerCase))))
     lastTurnChangedLocation = scene.exists(s => !previousLocation.contains(s.locationId))
     lastTurnImageUpdate = interpreted.imageUpdate
 
@@ -445,6 +441,8 @@ class GameEngine(
       .withMaxSteps(GameEngine.MaxModelCallsPerTurn)
       .withCompletionOptions(modelOptions)
       .withOutput(DungeonMasterOutput.schema)
+      // the game's rules for an answer, beyond the schema: they share llm4s's correction of an invalid answer
+      .withOutputCheck(GameResponseValidator.problems)
       .withRuntime(runtime)
     val base =
       if (subagentDefinitions.isEmpty) agent
@@ -697,6 +695,19 @@ object GameEngine {
     */
   final case class TurnNotCompleted(reason: String) extends LLMError {
     override def message: String = s"The Dungeon Master did not finish the turn: $reason"
+  }
+
+  /** A turn [[GameEngine.playTurn]] played: llm4s's result and, for a turn that completed, its answer interpreted (None
+    * for a turn an input guardrail blocked).
+    */
+  private final case class PlayedTurn(result: AgentResult, interpreted: Option[ResponseInterpreter.Interpretation]) {
+
+    /** This turn if it was answered; a turn a guardrail blocked is an error. */
+    def answered: Result[PlayedTurn] = DmConversation.answered(result).map(_ => this)
+
+    /** The answer, interpreted ([[answered]] turns have one). */
+    def interpretation: ResponseInterpreter.Interpretation =
+      interpreted.getOrElse(ResponseInterpreter.interpret(Left("the turn has no answer")))
   }
 
   /** The id of the Dungeon Master agent. */

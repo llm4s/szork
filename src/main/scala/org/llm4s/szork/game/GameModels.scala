@@ -2,34 +2,42 @@ package org.llm4s.szork.game
 
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
-import ujson._
+import upickle.default.ReadWriter
 
+import scala.util.Try
+
+/** An exit from a scene: its direction (one of [[DungeonMasterOutput.Directions]]), the location it leads to, and what
+  * lies that way, if the Dungeon Master said.
+  */
 case class Exit(
-  direction: String, // "north", "south", "east", "west", "up", "down", etc.
-  locationId: String, // Target location ID
-  description: Option[String] = None // Optional description of what's in that direction
-)
+  direction: String,
+  locationId: String,
+  description: Option[String] = None
+) derives ReadWriter
 
-// Base trait for game responses
+/** What a Dungeon Master answer tells the game: a [[GameScene]] or a [[SimpleResponse]]. Read from the answer by
+  * [[GameResponseValidator.read]].
+  */
 sealed trait GameResponseData {
   def narrationText: String
   def locationId: String
 }
 
-// Full scene response with all details
+/** A full scene: the player is somewhere new, or looked around. */
 case class GameScene(
   locationId: String, // Unique identifier for this location (e.g., "forest_entrance", "dark_cave_1")
   locationName: String, // Human-readable location name
   narrationText: String, // The text to display/narrate to the player
   imageDescription: String, // Detailed description for image generation
   musicDescription: String, // Detailed description for music generation
-  musicMood: String, // Mood keyword for music (e.g., "exploration", "combat", "mystery")
+  musicMood: String, // One of DungeonMasterOutput.MusicMoods
   exits: List[Exit], // Available exits from this location
   items: List[String] = Nil, // Items present in this location
   npcs: List[String] = Nil // NPCs present in this location
 ) extends GameResponseData
+    derives ReadWriter
 
-// Simple response for actions that don't change scene
+/** Any other answer: the player stays where they are. */
 case class SimpleResponse(
   narrationText: String, // The response text
   locationId: String, // Current location (unchanged)
@@ -38,109 +46,11 @@ case class SimpleResponse(
   npcs: Option[List[String]] = None // The characters here now, when the action changed them
 ) extends GameResponseData
 
-object GameResponseData {
-  def fromJson(json: String): SzorkResult[GameResponseData] =
-    try {
-      val parsed = read(json)
-      // A field that is absent or null (structured output nulls the fields a response type does not use)
-      def field(name: String): Option[Value] = parsed.obj.get(name).filter(_ != Null)
-
-      // Check response type
-      val responseType = field("responseType").map(_.str).getOrElse("fullScene")
-
-      responseType match {
-        case "simple" =>
-          // Parse as simple response
-          val response = SimpleResponse(
-            narrationText = parsed("narrationText").str,
-            locationId = parsed("locationId").str,
-            actionTaken = field("actionTaken").map(_.str).getOrElse("unknown"),
-            items = field("items").map(_.arr.map(_.str).toList),
-            npcs = field("npcs").map(_.arr.map(_.str).toList)
-          )
-          Right(response)
-
-        case _ =>
-          // Parse as full scene (default behavior)
-          val exits = field("exits")
-            .map { exitsValue =>
-              try
-                exitsValue.arr.map { exitJson =>
-                  try
-                    // Check if it's a string (malformed response)
-                    exitJson match {
-                      case ujson.Str(direction) =>
-                        // Log warning and return error
-                        throw new Exception(
-                          s"Exit malformed: got string '$direction' instead of object. " +
-                            "Exits must be objects with 'direction' and 'locationId' fields."
-                        )
-                      case obj =>
-                        // Parse as proper exit object
-                        Exit(
-                          direction = obj("direction").str,
-                          locationId = obj("locationId").str,
-                          description = obj.obj.get("description").filter(_ != Null).map(_.str)
-                        )
-                    }
-                  catch {
-                    case e: Exception =>
-                      throw new Exception(s"Failed to parse exit: ${exitJson}. Error: ${e.getMessage}")
-                  }
-                }.toList
-              catch {
-                case e: Exception =>
-                  throw new Exception(s"Failed to parse exits array. ${e.getMessage}")
-              }
-            }
-            .getOrElse(Nil)
-
-          val scene = GameScene(
-            locationId = parsed("locationId").str,
-            locationName = parsed("locationName").str,
-            narrationText = parsed("narrationText").str,
-            imageDescription = field("imageDescription").map(_.str).getOrElse(""),
-            musicDescription = field("musicDescription").map(_.str).getOrElse(""),
-            musicMood = field("musicMood").map(_.str).getOrElse(DungeonMasterOutput.DefaultMusicMood),
-            exits = exits,
-            items = field("items").map(_.arr.map(_.str).toList).getOrElse(Nil),
-            npcs = field("npcs").map(_.arr.map(_.str).toList).getOrElse(Nil)
-          )
-
-          Right(scene)
-      }
-    } catch {
-      case e: Exception =>
-        Left(ParseError(s"Failed to parse GameResponseData JSON: ${e.getMessage}", Some(e)))
-    }
-}
-
+/** A scene as a step save stores it. */
 object GameScene {
-  // Keep the old method for backward compatibility
   def fromJson(json: String): SzorkResult[GameScene] =
-    GameResponseData.fromJson(json) match {
-      case Right(scene: GameScene) => Right(scene)
-      case Right(_: SimpleResponse) => Left(ParseError("Expected GameScene but got SimpleResponse"))
-      case Left(error) => Left(error) // Already a SzorkError
-    }
+    Try(upickle.default.read[GameScene](json)).toEither.left.map(e =>
+      ParseError(s"Failed to read a scene: ${e.getMessage}", Some(e)))
 
-  def toJson(scene: GameScene): String =
-    Obj(
-      "locationId" -> scene.locationId,
-      "locationName" -> scene.locationName,
-      "narrationText" -> scene.narrationText,
-      "imageDescription" -> scene.imageDescription,
-      "musicDescription" -> scene.musicDescription,
-      "musicMood" -> scene.musicMood,
-      "exits" -> scene.exits.map { exit =>
-        val exitObj = Obj(
-          "direction" -> exit.direction,
-          "locationId" -> exit.locationId
-        )
-        exit.description.foreach(desc => exitObj("description") = desc)
-        exitObj
-      },
-      "items" -> scene.items,
-      "npcs" -> scene.npcs
-    ).toString
+  def toJson(scene: GameScene): String = upickle.default.write(scene)
 }

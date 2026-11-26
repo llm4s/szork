@@ -2,8 +2,9 @@ name: Playtest
 
 # A live playtest: each model designs an adventure, plays it and is held to the game's rules
 # (see src/main/scala/org/llm4s/szork/playtest). It calls real models, so it runs on request
-# and once a week, never on a pull request. A provider whose key is not set as a repository
-# secret is skipped.
+# and once a week, never on a pull request. A leg whose provider key is not set as a repository
+# secret is skipped, and says so in a notice and the run summary. When the weekly run fails an issue
+# is opened (or commented on).
 
 on:
   workflow_dispatch:
@@ -37,8 +38,6 @@ jobs:
           - provider: anthropic
             model: claude-sonnet-4-6
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       SZORK_LLM_PROVIDER: ${{ matrix.provider }}
       SZORK_LLM_MODEL: ${{ matrix.model }}
       THEME: ${{ inputs.theme || 'a haunted lighthouse on a storm-battered coast' }}
@@ -46,9 +45,17 @@ jobs:
     steps:
       - name: Check for the provider's key
         id: key
+        env:
+          # Only this leg's key is visible, and only to this step and the playtest
+          OPENAI_API_KEY: ${{ matrix.provider == 'openai' && secrets.OPENAI_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ matrix.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
         run: |
-          if [ "${{ matrix.provider }}" = "openai" ] && [ -n "$OPENAI_API_KEY" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
-          if [ "${{ matrix.provider }}" = "anthropic" ] && [ -n "$ANTHROPIC_API_KEY" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
+          if [ -n "$OPENAI_API_KEY$ANTHROPIC_API_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Playtest skipped::${{ matrix.provider }} / ${{ matrix.model }} was skipped: the ${{ matrix.provider }} API key secret is not set"
+            echo "### ${{ matrix.provider }} / ${{ matrix.model }}: skipped, the ${{ matrix.provider }} API key secret is not set" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/checkout@v4
         if: steps.key.outputs.present == 'true'
       - name: Setup Java
@@ -70,9 +77,16 @@ jobs:
           key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt', 'project/**') }}
       - name: Playtest
         if: steps.key.outputs.present == 'true'
+        env:
+          OPENAI_API_KEY: ${{ matrix.provider == 'openai' && secrets.OPENAI_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ matrix.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
+        # Exit status: 0 the game kept its rules, 1 a finding was made, 2 the playtest could not run or write its report.
+        # sbt reads its arguments as commands, so the theme goes in as a quoted string with backslashes and quotes escaped.
         run: |
           set -o pipefail
-          sbt -batch "runMain org.llm4s.szork.playtest.Playtest --theme \"$THEME\" --turns $TURNS --report playtest-report.json" | tee playtest.log
+          theme=${THEME//\\/\\\\}
+          theme=${theme//\"/\\\"}
+          sbt -batch "runMain org.llm4s.szork.playtest.Playtest --theme \"$theme\" --turns $TURNS --report playtest-report.json" | tee playtest.log
       - name: Summary
         if: always() && steps.key.outputs.present == 'true'
         run: |
@@ -91,3 +105,28 @@ jobs:
             playtest-report.json
             playtest.log
           if-no-files-found: ignore
+
+  # The weekly run is unattended: a failed leg (a finding, or a playtest that could not run) opens an issue,
+  # or adds a comment to the one already open.
+  report-failure:
+    needs: playtest
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open or update the issue
+        run: |
+          title='Weekly playtest failed'
+          gh label create playtest --description 'The live playtest' --color d93f0b 2>/dev/null || true
+          number=$(gh issue list --state open --label playtest --search "$title in:title" --json number --jq '.[0].number // empty')
+          body="The scheduled playtest failed: $RUN_URL (the summary and the per-leg report are on the run)."
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --label playtest --body "$body"
+          fi

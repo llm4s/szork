@@ -184,6 +184,23 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     unread("enhancedTheme").str shouldBe "a market"
   }
 
+  test("a validator's answer is read from the JSON in it; an enhanced theme too long to play is not used") {
+    val verdict =
+      ThemeValidator.readVerdict("""Here: {"valid": true, "enhancedTheme": "Sky pirates"} Enjoy""", "pirates")
+    verdict.map(v => (v.validated, v.valid, v.message, v.enhancedTheme)) shouldBe Some((true, true, "", "Sky pirates"))
+    val tooLong = s"""{"valid": true, "enhancedTheme": "${"x" * (SzorkConfig.MaxThemeChars + 1)}"}"""
+    ThemeValidator.readVerdict(tooLong, "pirates").map(_.enhancedTheme) shouldBe Some("pirates")
+    ThemeValidator.readVerdict("""{"valid": "maybe"}""", "pirates") shouldBe None
+    ThemeValidator.readVerdict("no JSON here", "pirates") shouldBe None
+  }
+
+  test("the server's own page links to the frontends it takes requests from") {
+    val page = requests.get(s"$http/")
+    page.headers("content-type").head should startWith("text/html")
+    page.text() should include("""<a href="http://localhost:3090">""")
+    page.text() should not include s":${config.port}"
+  }
+
   test("theme validation rejects a request without a theme, or one that is not JSON") {
     postJson("/api/game/validate-theme", """{"name": "x"}""")("valid").bool shouldBe false
     postJson("/api/game/validate-theme", """{"theme": "a lighthouse"}""", "text/plain")("status").str shouldBe "error"

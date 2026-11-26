@@ -1,81 +1,66 @@
 # Szork Development Guide
 
-## Build Configuration
+Szork is a standalone Scala 3 project built on llm4s 1.0, with a Vue 3 frontend in `frontend/`.
+[CONTRIBUTING.md](../CONTRIBUTING.md) has the build and test commands CI runs.
 
-Szork is a standalone Scala 3 project built on the LLM4S library (1.0) for its AI features.
-
-## Building and Running
+## Running
 
 ```bash
-# Compile
-sbt compile
-
-# Run the full server (requires LLM configuration)
-sbt "runMain org.llm4s.szork.api.SzorkServer"
-
-# Or use the convenient aliases:
-sbt szorkStart    # Start the server
-sbt szorkStop     # Stop the server
-sbt szorkRestart  # Restart the server
-sbt szorkStatus   # Check status
-
-# For hot reload development (recommended):
-sbt "~szorkStart"  # Auto-restarts on file changes
+./dev.sh                  # the server in watch mode and the frontend together; Ctrl+C stops both
 ```
 
-## IntelliJ IDEA Setup
+Or each on its own:
 
-The szork module should import correctly in IntelliJ. If you encounter any issues:
+```bash
+sbt szorkStart            # the server (sbt "runMain org.llm4s.szork.api.SzorkServer" runs it in the foreground)
+sbt szorkStop             # also szorkRestart, szorkStatus
+cd frontend && npm install && npm run dev   # the frontend on http://localhost:3090
+```
 
-1. File → Invalidate Caches and Restart
-2. After restart, let IntelliJ re-index the project
-3. If needed, refresh the sbt project (View → Tool Windows → sbt → Reload)
-
-## Frontend Development
-
-The frontend is in the `frontend` directory. To develop:
-
-1. Terminal 1: Run the backend server (see above)
-2. Terminal 2: 
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-
-The frontend dev server runs on http://localhost:3090 and proxies API calls to the backend on port 8090.
+The frontend's dev server proxies `/api` to the server's HTTP port (8090) and `/ws` to its WebSocket port (9002).
 
 ## Hot reload
 
 `sbt "~szorkStart"` runs the server with [sbt-revolver](https://github.com/spray/sbt-revolver) and restarts it when a
-Scala file under `src/` changes (Ctrl+C stops watching). The aliases are `szorkStart`, `szorkStop`, `szorkRestart` and
-`szorkStatus`, for revolver's `reStart`, `reStop` and `reStatus`. The server runs with `-Xmx1g
--XX:MaxMetaspaceSize=512m` on ports 8090 (HTTP) and 9002 (WebSocket), bound to 127.0.0.1 unless `SZORK_HOST` is set.
+Scala file under `src/` changes (Ctrl+C stops watching); a change that does not compile prints the error and the
+watch carries on. The aliases are `szorkStart`, `szorkStop`, `szorkRestart` and `szorkStatus`, for revolver's
+`reStart`, `reStop`, `reRestart` and `reStatus`. The server runs with `-Xmx1g -XX:MaxMetaspaceSize=512m` on ports 8090
+(HTTP) and 9002 (WebSocket), bound to 127.0.0.1 unless `SZORK_HOST` is set.
 
 A restart ends the live sessions: a game in the browser is loaded again from its last saved step. Do not run a
 playtest against a server in watch mode while editing.
 
-If the server does not start, check that ports 8090 and 9002 are free, run `sbt compile` to see compilation errors,
-then `sbt szorkStop` and `sbt szorkStart`.
+If the server does not start, read the end of its log: it names a configuration it cannot use (no LLM key, an unknown
+provider or reasoning effort, a bad port). Otherwise check that ports 8090 and 9002 are free and that `sbt compile`
+succeeds (warnings are errors).
+
+## IntelliJ IDEA
+
+The project imports as an sbt project. If it does not resolve: File, Invalidate Caches and Restart; then reload the
+sbt project (View, Tool Windows, sbt, Reload).
 
 ## Testing
 
 ```bash
-sbt test                                   # Backend tests (no network; scripted models drive the engine)
-sbt "testOnly *WebSocketServerSpec"        # One suite
-sbt "runMain org.llm4s.szork.playtest.Playtest"   # A whole adventure against the configured model
-cd frontend && npm test                    # Frontend tests (Vitest)
+sbt test                                   # backend tests (no network; scripted models drive the engine)
+sbt "testOnly *WebSocketServerSpec"        # one suite
+sbt "runMain org.llm4s.szork.playtest.Playtest"   # a whole adventure against the configured model
+cd frontend && npm test                    # frontend tests (Vitest)
 ```
 
 [TESTING.md](TESTING.md) describes the test layers, the playtest and its checks, and what CI runs.
 
 ## Architecture
 
-See the main [README](../README.md#architecture) for the package layout and how a turn works.
+See the main [README](../README.md#how-it-works) for a diagram, how a turn works and the package layout, and
+[CLAUDE.md](../CLAUDE.md) for each part in detail.
 
 ## Dependencies
 
-- **LLM4S 1.0**: `llm4s-agent`, `llm4s-openai`, `llm4s-anthropic`, `llm4s-image`, `llm4s-speech`, `llm4s-observability`
-- **Cask**: HTTP server
-- **Java-WebSocket**: WebSocket server
-- **Vue 3 / Vuetify 3**: frontend
+- **llm4s 1.0**: `llm4s-agent`, `llm4s-openai`, `llm4s-anthropic`, `llm4s-image`, `llm4s-speech`,
+  `llm4s-schema-derivation`, `llm4s-observability`, and `llm4s-testkit` for tests
+- **Cask** on Undertow: the HTTP API
+- **Java-WebSocket**: the game's WebSocket server
+- **requests**: Replicate calls for music
+- **dotenv-java**: reading `.env`
+- **Vue 3, Vuetify, TypeScript, Vite**: the frontend

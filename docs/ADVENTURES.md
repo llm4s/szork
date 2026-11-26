@@ -19,6 +19,17 @@ adventures/
 An adventure's directory is the whole adventure: commit it to ship it, delete it to remove it. Nothing in the library
 expires (the `szork-cache/` media cache, which still holds pictures made for one game alone, does).
 
+The repository ships three adventures, each with a picture of every location in its own art style, and a track for
+every one of the sixteen moods:
+
+| Adventure | Art style |
+| --- | --- |
+| `the-last-toll-of-ravenmoor` | `painting` |
+| `the-bells-of-thalassa-vey` | `pixel` |
+| `the-lighthouse-at-meridian-drift` | `comic` |
+
+So a server with no image or music provider still shows these adventures' pictures and plays music in every game.
+
 ## Playing one
 
 The start screen lists the library under **Ready-Made Adventures**; choosing one starts the game with no designer call.

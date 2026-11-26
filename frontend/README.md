@@ -9,6 +9,7 @@ server running (see the main [README](../README.md#quick-start)).
 npm install          # or npm ci, as CI does
 npm run dev          # the dev server on http://localhost:3090, proxying /api and /ws to the game server
 npm run build        # type-check (vue-tsc) and build into dist/
+npm run typecheck    # type-check alone
 npm run preview      # serve the build, with the same proxy
 npm run lint         # ESLint, fixing what it can
 npm run lint:check   # ESLint, failing on any warning (CI)

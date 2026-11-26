@@ -267,11 +267,6 @@ class WorldStateSpec extends AnyFunSuite with Matchers {
     restored.getWorldState shouldBe engine.getWorldState
     run(restored, "where can I go")
     llm.lastCall.get.messages.last.content should include("Small Hall")
-
-    // a save without a world state starts from the world its outline plans
-    val oldSave = GameStateCodec.toJson(saved)
-    oldSave.obj.remove("worldState")
-    GameStateCodec.fromJson(oldSave).worldState shouldBe WorldSnapshot.fromOutline(Some(outline))
   }
 
   test("after the turn that changed it is pruned, the world state still answers correctly") {

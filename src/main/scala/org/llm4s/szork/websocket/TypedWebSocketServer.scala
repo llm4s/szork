@@ -384,7 +384,7 @@ class TypedWebSocketServer(
 
   /** Loads a game that has no session from its save, and plays it in a new session. */
   private def loadSavedGame(conn: WebSocket, request: LoadGameRequest): Unit =
-    GamePersistence.loadGame(request.gameId) match {
+    StepPersistence.loadLatestStep(request.gameId).map(_.gameState) match {
       case Left(error) =>
         logger.warn(s"Failed to load game ${request.gameId}: ${error.message}")
         send(conn, ErrorMessage("Failed to load game", Some(error.userMessage)))

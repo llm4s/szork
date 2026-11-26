@@ -44,11 +44,7 @@ object GameStateCodec {
       "worldState" -> upickle.default.writeJs(state.worldState)
     )
 
-  private def readTs(v: Value): Long = v match {
-    case Str(s) => s.toLong
-    case Num(n) => n.toLong
-    case _ => 0L
-  }
+  private def readTs(v: Value): Long = v.num.toLong
 
   def fromJson(json: Value): GameState = {
     val adventureOutline = json.obj.get("adventureOutline").flatMap {
@@ -98,11 +94,7 @@ object GameStateCodec {
       adventureId = json.obj.get("adventureId").flatMap(_.strOpt),
       adventureOutline = adventureOutline,
       agentMessages = json("agentMessages").arr.map(MessageCodec.fromJson).toList,
-      // A save from before the world state was kept starts from the world its outline plans
-      worldState = json.obj.get("worldState") match {
-        case None | Some(Null) => WorldSnapshot.fromOutline(adventureOutline)
-        case Some(v) => upickle.default.read[WorldSnapshot](v)
-      }
+      worldState = upickle.default.read[WorldSnapshot](json("worldState"))
     )
   }
 }

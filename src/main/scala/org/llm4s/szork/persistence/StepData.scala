@@ -10,7 +10,7 @@ import ujson.Value
   * state storage.
   */
 
-// Note: GameMetadata is defined in GamePersistence.scala and includes:
+// Note: GameMetadata is defined in GameState.scala and includes:
 // - gameId, theme, artStyle, adventureTitle
 // - createdAt, lastSaved, lastPlayed, totalPlayTime
 // - currentStep, totalSteps (for step-based persistence)
@@ -65,7 +65,7 @@ case class StepMetadata(
   * @param narrationText
   *   Narration text response
   * @param response
-  *   Structured response (GameScene or SimpleResponse)
+  *   The scene the step described, if it described one
   * @param toolCalls
   *   Tool calls executed during this step
   * @param outline
@@ -76,7 +76,7 @@ case class StepData(
   gameState: GameState,
   userCommand: Option[String],
   narrationText: String,
-  response: Option[StepResponse],
+  response: Option[SceneResponse],
   toolCalls: List[ToolCallInfo] = Nil,
   outline: Option[AdventureOutline] = None
 )
@@ -117,17 +117,10 @@ object ToolCallInfo {
   }
 }
 
-/** Structured response recorded with a step: the scene the step described, if any. */
-sealed trait StepResponse {
-  def narrationText: String
-}
-
-/** Full scene response with location details. */
+/** Structured response recorded with a step: the scene the step described. */
 case class SceneResponse(
   scene: GameScene
-) extends StepResponse {
-  override def narrationText: String = scene.narrationText
-}
+)
 
 object StepData {
 
@@ -172,7 +165,7 @@ object StepData {
     gameState: GameState,
     userCommand: String,
     narrationText: String,
-    response: Option[StepResponse],
+    response: Option[SceneResponse],
     toolCalls: List[ToolCallInfo],
     executionTimeMs: Long,
     success: Boolean = true,

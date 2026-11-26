@@ -1,11 +1,11 @@
 #!/bin/bash
-# Pre-commit hook: formatting and a fatal-warnings compile in one sbt invocation (one JVM start), plus
-# the frontend lint when frontend files are staged.
+# Pre-commit hook: formatting and a compile of main and test sources in one sbt invocation (one JVM start;
+# build.sbt makes warnings errors), plus the frontend lint when frontend files are staged.
 
 set -e
 
 echo "Checking formatting and compiling with fatal warnings..."
-if ! sbt -batch scalafmtCheckAll 'set ThisBuild / scalacOptions += "-Werror"' compile Test/compile; then
+if ! sbt -batch scalafmtCheckAll Test/compile; then
     echo ""
     echo "ERROR: Scala files are not formatted, or compilation failed or has warnings."
     echo "Run 'sbt scalafmtAll' to fix formatting; fix all compiler warnings before committing."
@@ -13,11 +13,15 @@ if ! sbt -batch scalafmtCheckAll 'set ThisBuild / scalacOptions += "-Werror"' co
 fi
 
 if git diff --cached --name-only | grep -q '^frontend/'; then
-    echo "Linting the frontend..."
-    if ! (cd frontend && npm run lint:check); then
-        echo ""
-        echo "ERROR: the frontend does not pass lint:check (npm run lint fixes most of it)."
-        exit 1
+    if [ ! -d frontend/node_modules ]; then
+        echo "Skipping the frontend lint: frontend/node_modules is missing (run 'cd frontend && npm ci')."
+    else
+        echo "Linting the frontend..."
+        if ! (cd frontend && npm run lint:check); then
+            echo ""
+            echo "ERROR: the frontend does not pass lint:check (npm run lint fixes most of it)."
+            exit 1
+        fi
     fi
 fi
 

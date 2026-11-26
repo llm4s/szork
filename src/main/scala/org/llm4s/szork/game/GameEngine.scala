@@ -2,7 +2,7 @@ package org.llm4s.szork.game
 
 import org.llm4s.agent.{Agent, AgentResult, AgentStatus, ContextWindowConfig}
 import org.llm4s.agent.events.{AgentEvents, SubagentEvents}
-import org.llm4s.agent.graph.{GraphRuntime, RunConfig, StreamEvent, ThreadId}
+import org.llm4s.agent.graph.{GraphRuntime, StreamEvent}
 import org.llm4s.agent.graph.middleware.{ContextWindowMiddleware, GuardrailMiddleware}
 import org.llm4s.agent.guardrails.InputGuardrail
 import org.llm4s.error.LLMError

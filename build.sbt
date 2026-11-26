@@ -30,7 +30,11 @@ lazy val root = (project in file("."))
     scalacOptions ++= Seq(
       "-feature",
       "-unchecked",
-      "-deprecation"
+      "-deprecation",
+      // Warnings are errors, here and in CI, so a local compile means what CI's does. (Unused parameters and pattern
+      // variables are not checked: some are kept to match an interface.)
+      "-Werror",
+      "-Wunused:imports,privates,locals,implicits"
     ),
     
     // Dependencies

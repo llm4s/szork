@@ -81,6 +81,19 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
     engine.getCurrentScene shouldBe before // the invalid scene is not applied
   }
 
+  test("a save records the places the world state has visited, and a restored game shows the same scene") {
+    val engine = GameEngine.create(ScriptedDm(), sessionId = "visits")
+    engine.initialize().isRight shouldBe true
+    engine.processCommand("go north", generateAudio = false).isRight shouldBe true
+    val saved = engine.getGameState("game-1", None, None)
+    saved.visitedLocations shouldBe Set("cavern_entrance", "hall")
+
+    val restored = GameEngine.create(ScriptedDm(), sessionId = "visits-restored")
+    restored.restoreGameState(saved)
+    restored.getCurrentScene shouldBe engine.getCurrentScene
+    restored.getGameState("game-1", None, None).visitedLocations shouldBe saved.visitedLocations
+  }
+
   test("scene media is requested only when the player moves to a new location") {
     val engine = GameEngine.create(ScriptedDm(), sessionId = "media")
     engine.initialize().isRight shouldBe true

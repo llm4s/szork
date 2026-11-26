@@ -26,14 +26,17 @@ import java.util.concurrent.atomic.AtomicInteger
   * the game - any tool not in `readOnly` - and succeeds starts afresh: after it, reading a location again, or setting
   * an exit back to how it was, runs. The calls a turn has made are forgotten when the next turn starts (`beforeAgent`).
   *
-  * One instance belongs to one game, whose turns run one at a time.
+  * One instance belongs to one game, whose turns run one at a time. The tool calls of one model response run
+  * concurrently (llm4s runs a task per call), so a call is claimed atomically as it starts (`ConcurrentHashMap` key set
+  * `add`): of two identical calls in one response, exactly one runs and the other is answered as a repeat, whose result
+  * sits beside it in the conversation.
   *
   * @param readOnly
   *   The tools that only read the game ([[GameTools.ReadOnly]])
   */
 final class RepeatedToolCallMiddleware(readOnly: Set[String] = GameTools.ReadOnly) extends AgentMiddleware {
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
-  // The calls made since the game last changed (one turn's calls run one at a time)
+  // The calls made since the game last changed; the calls of one response may reach it concurrently
   private val made = ConcurrentHashMap.newKeySet[String]()
 
   val id: MiddlewareId = MiddlewareId(RepeatedToolCallMiddleware.Id)
@@ -75,8 +78,8 @@ object RepeatedToolCallMiddleware {
 
   /** What the model is told when it repeats a call that reads the game, with nothing changed since. */
   val Reread: String =
-    "You already made this exact call this turn and nothing has changed since; its result is above and it was not " +
-      "run again. Give the player your answer now."
+    "You already made this exact call this turn and nothing has changed since; its result is in the conversation " +
+      "and it was not run again. Give the player your answer now."
 
   /** A call's identity: its tool and its arguments, whatever order their fields were written in. */
   private[game] def key(tool: String, arguments: ujson.Value): String =

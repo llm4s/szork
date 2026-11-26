@@ -8,6 +8,7 @@ import org.java_websocket.handshake.ServerHandshake
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
+import scala.concurrent.duration._
 import scala.jdk.CollectionConverters._
 import org.llm4s.testkit.{Reply, ScriptedLLMClient}
 import org.llm4s.szork.api._
@@ -48,8 +49,23 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     case _ => Reply.text("I would rather not say.")
   }
 
+  // The command "wait here" is held at its model call until `turnGate` opens; `turnWaiting` says it got there
+  @volatile private var turnGate = new java.util.concurrent.CountDownLatch(0)
+  @volatile private var turnWaiting = new java.util.concurrent.CountDownLatch(1)
+
   private val engineFactory: EngineFactory = (sessionId, theme, artStyle, outline, _) =>
-    Right(GameEngine.create(ScriptedDm(), sessionId, theme, artStyle, outline))
+    Right(
+      GameEngine.create(
+        ScriptedDm { case ScriptedDm.Command("wait here") =>
+          turnWaiting.countDown()
+          turnGate.await(30, TimeUnit.SECONDS)
+          Reply.text(org.llm4s.szork.stubs.DmAnswers.simple("You wait.", "cavern_entrance", "wait"))
+        },
+        sessionId,
+        theme,
+        artStyle,
+        outline
+      ))
 
   private val app = new SzorkApp(
     config,
@@ -57,7 +73,8 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     Capabilities(tts = false, stt = false, image = false, music = false),
     engineFactory,
     sttClient = None,
-    tracing = None)
+    tracing = None,
+    deleteWait = 1.second)
 
   private val http = s"http://127.0.0.1:${config.port}"
 
@@ -310,6 +327,26 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
 
     c.sendJson("type" -> "command", "command" -> "look")
     c.await("error")("data")("error").str shouldBe "No active session"
+    c.close()
+  }
+
+  test("deleting a game whose turn outlasts the wait answers that the deletion is pending, then deletes it") {
+    turnGate = new java.util.concurrent.CountDownLatch(1)
+    turnWaiting = new java.util.concurrent.CountDownLatch(1)
+    val c = connect()
+    val (_, gameId) = startGame(c)
+    c.sendJson("type" -> "streamCommand", "command" -> "wait here")
+    turnWaiting.await(5, TimeUnit.SECONDS) shouldBe true
+
+    val answer = deleteJson(s"/api/game/$gameId")
+    answer("status").str shouldBe "pending"
+    answer("message").str shouldBe SzorkRoutes.DeletePending
+    StepPersistence.gameExists(gameId) shouldBe true // the turn is still running
+
+    turnGate.countDown()
+    eventually(!StepPersistence.gameExists(gameId))
+    Thread.sleep(200) // the turn's save, had it run after the delete, would have made the directory again
+    Files.exists(saveRoot.resolve("saves").resolve(gameId)) shouldBe false
     c.close()
   }
 

@@ -10,13 +10,13 @@ import org.llm4s.llmconnect.model.{Conversation, SystemMessage, UserMessage}
 import org.llm4s.trace.Tracing
 import scala.concurrent.{Await, ExecutionContext}
 import scala.concurrent.duration._
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 import java.net.InetSocketAddress
 import java.util.concurrent.{ExecutorService, Executors}
 import org.llm4s.szork.adapters.DefaultSTTClient
 import org.llm4s.szork.game._
 import org.llm4s.szork.websocket.TypedWebSocketServer
-import org.llm4s.szork.persistence.GamePersistence
+import org.llm4s.szork.persistence.StepPersistence
 import org.llm4s.szork.error.PersistenceError
 import org.llm4s.szork.media.{MediaCache, SceneImages}
 import org.llm4s.szork.spi.STTClient
@@ -61,7 +61,8 @@ final class SzorkApp(
   engineFactory: EngineFactory,
   sttClient: Option[STTClient],
   tracing: Option[Tracing],
-  adventures: Option[AdventureLibrary] = None
+  adventures: Option[AdventureLibrary] = None,
+  deleteWait: FiniteDuration = SzorkRoutes.DeleteWait
 ) {
   import SzorkConfig.ConfigOps
 
@@ -72,13 +73,16 @@ final class SzorkApp(
   /** The adventure library: the one the engines were given, or the one at `config.adventuresDirectory`. */
   val library: AdventureLibrary = adventures.getOrElse(AdventureLibrary.at(config))
 
-  private def daemonPool(name: String, threads: Int): ExecutorService = Executors.newFixedThreadPool(
-    threads,
-    { (r: Runnable) =>
-      val t = new Thread(r, name)
-      t.setDaemon(true)
-      t
-    })
+  private def daemonPool(name: String, threads: Int): ExecutorService = {
+    val count = new java.util.concurrent.atomic.AtomicInteger(0)
+    Executors.newFixedThreadPool(
+      threads,
+      { (r: Runnable) =>
+        val t = new Thread(r, s"$name-${count.incrementAndGet()}")
+        t.setDaemon(true)
+        t
+      })
+  }
   // Session work (turns, saves) runs here, one task at a time per session; media generation has its own pools so
   // slow image or music providers cannot hold up turns. Music has a pool of its own because each job blocks for up
   // to ~30s while it polls Replicate, which would otherwise hold up images.
@@ -101,7 +105,7 @@ final class SzorkApp(
     library = Some(library)
   )
 
-  val routes: SzorkRoutes = new SzorkRoutes(config, capabilities, llmClient, tracing, wsServer, library)
+  val routes: SzorkRoutes = new SzorkRoutes(config, capabilities, llmClient, tracing, wsServer, library, deleteWait)
 
   private val caskMain = new cask.Main {
     override def allRoutes: Seq[cask.Routes] = Seq(routes)
@@ -181,7 +185,9 @@ object SzorkApp {
         capabilities,
         EngineFactory.default(llmClient, tracing, config, sceneImages, Some(library)),
         Option.when(capabilities.stt)(new DefaultSTTClient(config.speech)),
-        tracing
+        tracing,
+        // The library the engines keep pictures and tracks in is the one the routes serve them from
+        adventures = Some(library)
       )
     }
 
@@ -258,7 +264,8 @@ final class SzorkRoutes(
   llmClient: LLMClient,
   tracing: Option[Tracing],
   wsServer: TypedWebSocketServer,
-  library: AdventureLibrary
+  library: AdventureLibrary,
+  deleteWait: FiniteDuration = SzorkRoutes.DeleteWait
 ) extends cask.Routes {
 
   private val logger = LoggerFactory.getLogger(getClass.getSimpleName)
@@ -366,7 +373,7 @@ final class SzorkRoutes(
 
   @get("/api/games")
   def listSavedGames(): ujson.Value = {
-    val gamesJson = GamePersistence.listGames().map { metadata =>
+    val gamesJson = StepPersistence.listGames().map { metadata =>
       ujson.Obj(
         "gameId" -> metadata.gameId,
         "title" -> metadata.adventureTitle,
@@ -485,29 +492,34 @@ final class SzorkRoutes(
     logger.info(s"Deleting game: $gameId")
 
     // End any live session for the game first, so it cannot save the game again once its files are gone. The files
-    // are deleted after the session's queued work (a turn in progress, say) has finished.
-    val deleteResult =
-      Try(Await.result(wsServer.endGame(gameId)(GamePersistence.deleteGame(gameId)), 2.minutes)).toEither.left
-        .map(e => PersistenceError(s"Failed to delete game: ${e.getMessage}", Some(e), operation = "delete"))
-        .flatten
-
-    deleteResult match {
-      case Right(_) =>
+    // are deleted after the session's turn in progress, if it has one, has finished; that happens whether or not this
+    // request is still waiting for it.
+    val deletion = wsServer.endGame(gameId) {
+      val deleted = StepPersistence.deleteGame(gameId)
+      deleted.foreach { _ =>
         logger.info(s"Deleted game: $gameId")
         // Clearing the media cache is best effort: the game is gone either way
         MediaCache.clearGameCache(gameId).left.foreach { error =>
           logger.warn(s"Failed to clear cache for deleted game $gameId: $error")
         }
-        ujson.Obj(
-          "status" -> "success",
-          "message" -> s"Game deleted: $gameId"
-        )
-      case Left(error) =>
-        logger.error(s"Failed to delete game $gameId: $error")
+      }
+      deleted
+    }
+
+    Try(Await.result(deletion, deleteWait)) match {
+      case Success(Right(_)) =>
+        ujson.Obj("status" -> "success", "message" -> s"Game deleted: $gameId")
+      case Success(Left(error)) =>
+        logger.error(s"Failed to delete game $gameId: ${error.message}")
+        ujson.Obj("status" -> "error", "error" -> error.userMessage)
+      case Failure(_: java.util.concurrent.TimeoutException) =>
+        logger.info(s"Game $gameId will be deleted when its turn in progress ends")
+        ujson.Obj("status" -> "pending", "message" -> SzorkRoutes.DeletePending)
+      case Failure(e) =>
+        logger.error(s"Failed to delete game $gameId", e)
         ujson.Obj(
           "status" -> "error",
-          "error" -> error.userMessage
-        )
+          "error" -> PersistenceError(e.toString, Some(e), operation = "delete").userMessage)
     }
   }
 
@@ -516,6 +528,13 @@ final class SzorkRoutes(
 
 object SzorkRoutes {
   val ThemeTooLong: String = s"The theme can be at most ${SzorkConfig.MaxThemeChars} characters."
+
+  /** How long deleting a game that is being played waits for its turn in progress before answering. */
+  val DeleteWait: FiniteDuration = 2.minutes
+
+  /** The answer to a delete still waiting for the game's turn in progress. */
+  val DeletePending: String =
+    "The game is finishing a turn; it will be deleted as soon as the turn ends. Its session has ended."
 }
 
 /** Starts the server from the environment's configuration (see [[SzorkConfig.load]]). */

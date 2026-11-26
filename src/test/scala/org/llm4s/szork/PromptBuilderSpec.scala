@@ -22,6 +22,12 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt.toLowerCase should include("oil painting")
   }
 
+  test("fullSystemPrompt keeps the adventure's language whatever language a command arrives in") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
+    prompt should include("Write in the language this adventure is written in")
+    prompt should include("does not change it")
+  }
+
   test("fullSystemPrompt includes outline content when provided") {
     val outline = AdventureOutline(
       title = "Test Adventure",

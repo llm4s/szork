@@ -79,6 +79,9 @@ object PromptBuilder {
       |- Create narrative responses to ANY action
       |- Manage game state and progress the story
       |
+      |Write in the language this adventure is written in. A command in another language - a mistyped or misheard
+      |one included - is still answered in the adventure's language, and does not change it.
+      |
       |You write every answer yourself, as JSON. Your tools keep the game's STATE: what the player carries and how the
       |world has changed. Use them whenever a turn reads or changes that state, and only then.
       |

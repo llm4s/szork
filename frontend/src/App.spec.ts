@@ -55,7 +55,7 @@ describe("App", () => {
     const wrapper = await mountAt("/");
     expect(wrapper.find(".intro-screen").exists()).toBe(true);
 
-    await wrapper.find(".begin-adventure-btn").trigger("click");
+    await wrapper.find(".begin-button").trigger("click");
     await flushPromises();
 
     expect(wrapper.find(".intro-screen").exists()).toBe(false);
@@ -69,6 +69,7 @@ describe("App", () => {
       ...flags,
       sessionId: "sess-1",
       gameId: "game-1",
+      title: "The Cave",
       conversation: [{ role: "assistant", content: "You are in a cave." }],
       messageIndex: 1,
     });

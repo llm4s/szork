@@ -84,49 +84,37 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt should include("TOOL RULES:")
     prompt should include("Movement commands (north/south/east/west/up/down/in/out)")
     prompt should include("Movement needs no tool: your fullScene answer moves the player")
-    prompt should include("call set_exit_state")
+    prompt should include("Call set_exit_state with \"open\" in the")
   }
 
-  test("fullSystemPrompt establishes LLM as full game engine") {
+  test("the exit rules are stated once, for every exit state") {
     val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("YOU ARE THE GAME ENGINE. You have FULL capability to:")
-    prompt should include("Generate room descriptions and scenes for ANY location")
-    prompt should include("Process ALL player commands")
-  }
-
-  test("fullSystemPrompt has movement validation workflow") {
-    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("PLAYER MOVEMENT VALIDATION:")
-    prompt should include("Before allowing ANY movement command")
-    prompt should include("Check if exit exists in that direction")
-    prompt should include("Check exit state (open/closed/locked/sealed/blocked/hidden)")
-    prompt should include("If not \"open\", DENY movement and explain obstacle")
-    prompt should include("ONLY generate destination scene if exit is \"open\"")
-    // a plain closed door is opened on the way, and a move needs the exit open first
-    prompt should include("If \"closed\" with no obstacle, the player opens it on the way: call set_exit_state")
-    prompt should include("The player moves ONLY through an exit that is \"open\"")
-    prompt should include("the game rejects a fullScene that takes the player through an exit in any")
-  }
-
-  test("fullSystemPrompt defines all exit states with enforcement rules") {
-    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("EXIT STATE ENFORCEMENT:")
-    prompt should include("\"locked\" = IMPASSABLE until player possesses correct key/item")
-    prompt should include("\"sealed\" = IMPASSABLE until specific tool/action applied")
-    prompt should include("\"blocked\" = IMPASSABLE until cleared")
-    prompt should include("\"closed\" = Shut, but the player can simply open it")
+    def count(text: String) = prompt.sliding(text.length).count(_ == text)
+    count("EXITS - THE GAME ENFORCES THEM:") shouldBe 1
+    count("the player moves ONLY through an exit that is") shouldBe 1
+    count("rejects a fullScene that takes the player through an exit that is not open") shouldBe 1
+    prompt should not include "PLAYER MOVEMENT VALIDATION"
+    prompt should not include "EXIT STATE ENFORCEMENT"
+    // every state the world state keeps is defined
+    prompt should include("- \"open\" = passable")
+    prompt should include("- \"closed\" = shut, but the player can simply open it")
+    prompt should include("""- "locked", "sealed" or "blocked" = IMPASSABLE until the player overcomes its obstacle""")
+    prompt should include("- \"hidden\" = not shown and not usable until discovered")
+    org.llm4s.szork.game.ExitState.names.foreach(state => prompt should include(s"\"$state\""))
+    // a plain closed door is opened on the way, and one with an obstacle stays shut
     prompt should include("With no obstacle: \"open door\", or just moving that way, opens it")
     prompt should include("With an obstacle (stuck, barred, guarded): it stays shut")
-    prompt should include("\"open\" = Freely passable")
-    prompt should include("\"hidden\" = Not visible or mentioned until discovered")
   }
 
-  test("fullSystemPrompt emphasizes mandatory enforcement of game mechanics") {
+  test("objects are told apart by prominence, not by repeating them in a short narration") {
     val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
-    prompt should include("GAME MECHANICS & OBSTACLES - MANDATORY ENFORCEMENT:")
-    prompt should include("CRITICAL: You MUST respect the exit states")
-    prompt should include("Physical barriers are ABSOLUTE until explicitly overcome")
-    prompt should include("NEVER allow movement through locked, sealed, or blocked passages")
+    prompt should not include "mentioned 3 times"
+    prompt should include("Show importance by prominence, not repetition")
+  }
+
+  test("the prompt's guidance is wrapped: only its quoted example narrations run long") {
+    val prompt = PromptBuilder.fullSystemPrompt(None, None, None)
+    prompt.linesIterator.filterNot(_.trim.startsWith("• \"")).filter(_.length > 120).toList shouldBe Nil
   }
 
   test("fullSystemPrompt leaves the answer's JSON format to the output schema llm4s states") {

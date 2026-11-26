@@ -32,6 +32,15 @@ describe("ThemePicker", () => {
     expect(wrapper.emitted("select")).toEqual([[PREDEFINED_THEMES[1].id], [CUSTOM_THEME_ID]]);
   });
 
+  it("stops a custom description at the server's limit, and counts only near it", async () => {
+    const wrapper = mountThemes(CUSTOM_THEME_ID);
+    const input = wrapper.find(".custom-theme-input input");
+    expect(input.attributes("maxlength")).toBe("2000");
+    expect(wrapper.find(".custom-theme-input .v-counter").exists()).toBe(false);
+    await wrapper.setProps({ customTheme: "x".repeat(1900) });
+    expect(wrapper.find(".custom-theme-input .v-counter").text()).toContain("1900 / 2000");
+  });
+
   it("is a radio group that can be chosen from with the keyboard", async () => {
     const wrapper = mountThemes("space");
     const cards = wrapper.findAll(".theme-card");

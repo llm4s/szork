@@ -5,8 +5,7 @@
  * queues messages sent while disconnected, and routes server messages to typed handlers.
  */
 
-import type { ClientMessage, ServerMessage, FeatureRequest } from "@/types/WebSocketProtocol";
-import type { AdventureOutline } from "@/types/api";
+import type { ClientMessage, ServerMessage, FeatureRequest, NewGameRequest } from "@/types/WebSocketProtocol";
 
 /** The server message with the given `type`. */
 export type ServerMessageOf<K extends ServerMessage["type"]> = Extract<ServerMessage, { type: K }>;
@@ -167,6 +166,15 @@ export class WebSocketClient {
     this.ws.send(JSON.stringify(message));
   }
 
+  /**
+   * Whether a message of one of these types is queued, to be sent when the connection opens. A connection
+   * listener can ask this before the queue is flushed, to tell a message still to go from one sent on the
+   * connection that dropped.
+   */
+  hasQueued(...types: ClientMessage["type"][]): boolean {
+    return this.messageQueue.some((m) => types.includes(m.type));
+  }
+
   /** Register a handler for a server message type. */
   on<K extends ServerMessage["type"]>(type: K, handler: (message: ServerMessageOf<K>) => void): void {
     if (!this.messageHandlers.has(type)) this.messageHandlers.set(type, new Set());
@@ -222,16 +230,11 @@ export class WebSocketClient {
 
   // ============= Convenience methods =============
 
-  newGame(
-    theme?: string,
-    artStyle?: string,
-    adventureOutline?: AdventureOutline | null,
-    features?: FeatureRequest,
-    adventureId?: string
-  ): void {
+  newGame(request: Omit<NewGameRequest, "type">): void {
     // A library adventure is played from the server's copy of its outline
-    if (adventureId) this.send({ type: "newGame", theme, artStyle, adventureId, ...features });
-    else this.send({ type: "newGame", theme, artStyle, adventureOutline, ...features });
+    const { adventureOutline, ...rest } = request;
+    if (request.adventureId) this.send({ type: "newGame", ...rest });
+    else this.send({ type: "newGame", ...rest, adventureOutline });
   }
 
   loadGame(gameId: string, features?: FeatureRequest): void {
@@ -246,7 +249,7 @@ export class WebSocketClient {
     this.send({ type: "streamCommand", command, imageGeneration });
   }
 
-  sendAudio(audioBase64: string, imageGeneration?: boolean): void {
-    this.send({ type: "audioCommand", audio: audioBase64, imageGeneration });
+  sendAudio(audioBase64: string, imageGeneration?: boolean, mimeType?: string): void {
+    this.send({ type: "audioCommand", audio: audioBase64, imageGeneration, mimeType });
   }
 }

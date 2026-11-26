@@ -192,7 +192,7 @@ final class SzorkRoutes(
     // End any live session for the game first, so it cannot save the game again once its files are gone. The files
     // are deleted after the session's turn in progress, if it has one, has finished; that happens whether or not this
     // request is still waiting for it.
-    val deletion = wsServer.endGame(gameId) {
+    val deletion = wsServer.deleteGame(gameId) {
       val deleted = StepPersistence.deleteGame(gameId)
       deleted.foreach { _ =>
         logger.info(s"Deleted game: $gameId")

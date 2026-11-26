@@ -307,6 +307,30 @@ class GameSessionsSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll 
     c.close()
   }
 
+  test("a client that resumes while its turn is being played is told the turn is in progress, and gets its answer") {
+    turnGate = new CountDownLatch(1)
+    turnWaiting = new CountDownLatch(1)
+    val c = connect(gatedPort)
+    c.sendJson("type" -> "newGame", "theme" -> "caves")
+    val sessionId = c.await("gameStarted")("data")("sessionId").str
+    c.sendJson("type" -> "streamCommand", "command" -> "wait here")
+    turnWaiting.await(5, TimeUnit.SECONDS) shouldBe true
+    c.closeBlocking()
+
+    val back = connect(gatedPort)
+    back.sendJson("type" -> "resumeSession", "sessionId" -> sessionId)
+    back.await("sessionResumed")("data")("turnInProgress").bool shouldBe true
+    turnGate.countDown()
+    back.await("streamComplete")("data")("text").str shouldBe "You wait."
+
+    // Once the turn's save after its answer is done too
+    eventually {
+      back.sendJson("type" -> "resumeSession", "sessionId" -> sessionId)
+      !back.await("sessionResumed")("data")("turnInProgress").bool
+    }
+    back.close()
+  }
+
   test("commands beyond the pending-turn limit are refused while a turn runs; the ones accepted are played") {
     turnGate = new CountDownLatch(1)
     turnWaiting = new CountDownLatch(1)

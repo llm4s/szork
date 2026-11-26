@@ -19,7 +19,10 @@ export interface FeatureRequest {
 
 export interface NewGameRequest extends FeatureRequest {
   type: "newGame";
+  /** The theme's prompt: what the Dungeon Master is told the adventure is about (a custom theme's description). */
   theme?: string;
+  /** The theme's display name, what the game is listed and saved as (the prompt when absent). */
+  themeName?: string;
   artStyle?: string;
   adventureOutline?: AdventureOutline | null;
   /** A library adventure to play: the server uses its outline, theme and art style. */
@@ -52,6 +55,8 @@ export interface AudioCommandRequest {
   type: "audioCommand";
   audio: string; // Base64 encoded audio
   imageGeneration?: boolean;
+  /** The recorder's format (MediaRecorder.mimeType, e.g. "audio/mp4" in Safari); WebM when absent. */
+  mimeType?: string;
 }
 
 export interface PingMessage {
@@ -91,6 +96,8 @@ export interface GameStartedMessage {
   data: SessionFeatureFlags & {
     sessionId: string;
     gameId: string;
+    /** The adventure's title, or "Untitled Adventure" for a game without a designed adventure. */
+    title: string;
     text: string;
     messageIndex: number;
     scene?: SceneData;
@@ -106,6 +113,8 @@ export interface GameLoadedMessage {
   data: SessionFeatureFlags & {
     sessionId: string;
     gameId: string;
+    /** The adventure's title, or "Untitled Adventure" for a game without a designed adventure. */
+    title: string;
     /** The session's message index, as in sessionResumed. */
     messageIndex: number;
     conversation: ConversationEntry[];
@@ -114,12 +123,26 @@ export interface GameLoadedMessage {
   };
 }
 
+/**
+ * Answers resumeSession. A `messageIndex` larger than the client's last means it missed a response (check that
+ * first). `turnInProgress` says whether a turn is running or queued on the server: if so its answer is still to come;
+ * if not, a turn the client is waiting for never reached the server.
+ */
 export interface SessionResumedMessage {
   type: "sessionResumed";
   data: {
     sessionId: string;
     gameId: string;
     messageIndex: number;
+    turnInProgress: boolean;
+  };
+}
+
+/** The game this connection plays was deleted: its session has ended, and commands for it are refused. */
+export interface GameDeletedMessage {
+  type: "gameDeleted";
+  data: {
+    gameId: string;
   };
 }
 
@@ -245,6 +268,7 @@ export type ServerMessage =
   | GameLoadedMessage
   | SessionResumedMessage
   | SessionTakenOverMessage
+  | GameDeletedMessage
   | GameEndedMessage
   | CommandResponseMessage
   | TextChunkMessage

@@ -12,7 +12,6 @@ import org.llm4s.toolapi.ToolRegistry
 import org.llm4s.trace.Tracing
 import org.llm4s.types.Result
 import org.slf4j.LoggerFactory
-import org.llm4s.szork.core.{CoreEngine, CoreState}
 import org.llm4s.szork.spi.{Clock, SystemClock, TTSClient, ImageClient, MusicClient}
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
@@ -135,7 +134,8 @@ class GameEngine(
       buildAgents(PromptBuilder.fullSystemPrompt(theme, artStyle, outline, subagents)),
       clock)
 
-  private var coreState: CoreState = CoreState()
+  // The scene the player is in, kept up to date with what the turns since change in it
+  private var currentScene: Option[GameScene] = None
   // What the last turn did, for the server to act on: reset when a turn starts and when a game is restored
   private var lastValidationIssues: Option[List[String]] = None
   // Whether the last turn moved the player to a new location (or opened the first scene);
@@ -161,7 +161,7 @@ class GameEngine(
 
     inventory.replaceWith(Nil)
     world.replaceWith(WorldSnapshot.fromOutline(outline))
-    coreState = CoreState()
+    currentScene = None
 
     // A new game is a new thread, opened with the init adventure prompt as its first turn
     // (the trigger message is not shown to the user)
@@ -208,11 +208,11 @@ class GameEngine(
             // An input guardrail refused the command before the model saw it: the game is as it was, and the Dungeon
             // Master answers in character
             val audio = if (generateAudio) media.narrate(PlayerInputGuardrail.Refusal) else None
-            Right(GameResponse(PlayerInputGuardrail.Refusal, audio, coreState.currentScene, refused = true))
+            Right(GameResponse(PlayerInputGuardrail.Refusal, audio, currentScene, refused = true))
           case _ =>
             val outcome = completeTurn(result)
             val audio = if (generateAudio) media.narrate(outcome.narration) else None
-            Right(GameResponse(outcome.narration, audio, outcome.scene.orElse(coreState.currentScene), refused = false))
+            Right(GameResponse(outcome.narration, audio, outcome.scene.orElse(currentScene), refused = false))
         }
 
       case Left(error) =>
@@ -330,31 +330,28 @@ class GameEngine(
     lastValidationIssues = interpreted.issues
     interpreted.issues.foreach(issues => logger.warn(s"[$sessionId] Response issues: ${issues.mkString("; ")}"))
 
-    val previousLocation = coreState.currentScene.map(_.locationId)
+    val previousLocation = currentScene.map(_.locationId)
     val scene = interpreted.data.collect { case scene: GameScene => scene }
     scene.foreach { s =>
-      coreState = CoreEngine.applyScene(coreState, s)
+      currentScene = Some(s)
       world.enter(s.locationId, s.locationName, s.exits.map(e => (e.direction, e.locationId)))
     }
     // An action that is not a scene may still change what is here (an item taken, a character appearing): the
     // current scene, which every response carries to the player, is kept up to date with it
     interpreted.data.collect { case simple: SimpleResponse => simple }.foreach { simple =>
-      coreState.currentScene.filter(_.locationId == simple.locationId).foreach { current =>
-        val updated =
-          current.copy(items = simple.items.getOrElse(current.items), npcs = simple.npcs.getOrElse(current.npcs))
-        if (updated != current) coreState = coreState.copy(currentScene = Some(updated))
+      currentScene = currentScene.map { current =>
+        if (current.locationId != simple.locationId) current
+        else current.copy(items = simple.items.getOrElse(current.items), npcs = simple.npcs.getOrElse(current.npcs))
       }
     }
     // What the player carries is not lying in the scene: a model often lists an item there on the turn it is taken
-    coreState.currentScene.foreach { current =>
-      val carried = inventory.list.map(_.trim.toLowerCase).toSet
-      val lying = current.items.filterNot(item => carried(item.trim.toLowerCase))
-      if (lying != current.items) coreState = coreState.copy(currentScene = Some(current.copy(items = lying)))
-    }
+    val carried = inventory.list.map(_.trim.toLowerCase).toSet
+    currentScene = currentScene.map(current =>
+      current.copy(items = current.items.filterNot(item => carried(item.trim.toLowerCase))))
     lastTurnChangedLocation = scene.exists(s => !previousLocation.contains(s.locationId))
     lastTurnImageUpdate = interpreted.imageUpdate
 
-    TurnOutcome(interpreted.narration, scene.flatMap(_ => coreState.currentScene))
+    TurnOutcome(interpreted.narration, scene.flatMap(_ => currentScene))
   }
 
   /** Narrates `text` with the configured text-to-speech client, if there is one. */
@@ -503,7 +500,7 @@ class GameEngine(
   /** How the player's location looks now, when the Dungeon Master's last answer said its picture is out of date. */
   def imageUpdateLastTurn: Option[String] = lastTurnImageUpdate
 
-  def getCurrentScene: Option[GameScene] = coreState.currentScene
+  def getCurrentScene: Option[GameScene] = currentScene
 
   /** Extracts complete game state for persistence.
     *
@@ -527,8 +524,9 @@ class GameEngine(
       theme = gameTheme,
       artStyle = gameArtStyle,
       adventureOutline = outline, // Include the full adventure outline
-      currentScene = coreState.currentScene,
-      visitedLocations = coreState.visitedLocations,
+      currentScene = currentScene,
+      // the places the world state records as visited (it saves them itself too)
+      visitedLocations = world.snapshot.locations.filter(_.visited).map(_.id).toSet,
       inventory = inventory.list,
       worldState = world.snapshot,
       createdAt = createdAt,
@@ -552,7 +550,8 @@ class GameEngine(
     *   Saved game state to restore
     */
   def restoreGameState(state: GameState): Unit = {
-    coreState = coreState.copy(currentScene = state.currentScene, visitedLocations = state.visitedLocations)
+    // the places visited are restored with the world state
+    currentScene = state.currentScene
     inventory.replaceWith(state.inventory)
     world.replaceWith(state.worldState)
     createdAt = state.createdAt

@@ -37,4 +37,22 @@ class StreamingParsersSpec extends AnyFunSuite with Matchers {
     narration shouldBe "He said \"hi\" été\nOK"
     emitted.mkString shouldBe narration
   }
+
+  test("an answer in a code fence, or after prose with braces of its own, streams its narration") {
+    stream("```json\n{\"narr", "ationText\":\"A fenced hall.\"}\n```")._2 shouldBe "A fenced hall."
+    stream("A note {of sorts}: {\"narrationText\":\"A ", "noted hall.\"}")._1 shouldBe List("A ", "noted hall.")
+  }
+
+  test("narration stops at text that is not JSON, such as a malformed escape, and the rest is not read") {
+    val (emitted, narration) = stream("""{"narrationText":"Dark \u00zz hall","locationId":"hall"}""")
+    narration shouldBe "Dark "
+    emitted shouldBe List("Dark ")
+  }
+
+  test("once a later field has begun, the narration is whole and later chunks are not read") {
+    val p = new StreamingJsonParser()
+    p.processChunk("""{"narrationText":"Done.","responseType":"sim""") shouldBe Some("Done.")
+    p.processChunk("""ple","narrationText":"again"}""") shouldBe None
+    p.narration shouldBe "Done."
+  }
 }

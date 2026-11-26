@@ -8,29 +8,28 @@
 import type { ClientMessage, ServerMessage, FeatureRequest } from "@/types/WebSocketProtocol";
 import type { AdventureOutline } from "@/types/api";
 
-/** Callback handler for server messages of a specific type. */
-export type MessageHandler<T extends ServerMessage> = (message: T) => void;
-
-/** Called when the connection opens (`reconnected` is true after an unexpected close) or closes. */
-export type ConnectionListener = (connected: boolean, reconnected: boolean) => void;
+/** The server message with the given `type`. */
+export type ServerMessageOf<K extends ServerMessage["type"]> = Extract<ServerMessage, { type: K }>;
 
 /**
- * Derives the WebSocket URL based on environment and location.
- * Checks VITE_WS_URL env var, then dev proxy, then defaults to port 9002.
+ * Where the connection stands: `connecting` to a first connection (or one the player asked for),
+ * `open`, `reconnecting` after an unexpected close, or `closed` (closed deliberately, or given up on).
+ */
+export type ConnectionState = "connecting" | "open" | "reconnecting" | "closed";
+
+/** Called whenever the connection state changes; `reconnected` is true when it opens after an unexpected close. */
+export type ConnectionListener = (state: ConnectionState, reconnected: boolean) => void;
+
+/**
+ * The WebSocket URL: VITE_WS_URL when it is set, otherwise `/ws` on the page's own origin. The Vite
+ * server (dev and preview) proxies `/ws` to the game server's WebSocket port, as it does `/api` to its
+ * HTTP port, so the page and both APIs share one origin.
  */
 function deriveWsUrl(): string {
   const envWs = import.meta.env.VITE_WS_URL;
   if (envWs && envWs.trim().length > 0) return envWs.trim();
-
-  try {
-    const { protocol, hostname, port } = window.location;
-    const wsScheme = protocol === "https:" ? "wss:" : "ws:";
-    // Vite dev server proxies '/ws' to the backend WS server
-    if (port === "3090") return `${wsScheme}//${hostname}:${port}/ws`;
-    return `${wsScheme}//${hostname}:9002`;
-  } catch {
-    return "ws://localhost:9002";
-  }
+  const { protocol, host } = window.location;
+  return `${protocol === "https:" ? "wss:" : "ws:"}//${host}/ws`;
 }
 
 export class WebSocketClient {
@@ -40,17 +39,18 @@ export class WebSocketClient {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private messageHandlers = new Map<string, Set<MessageHandler<ServerMessage>>>();
+  private messageHandlers = new Map<string, Set<(message: ServerMessage) => void>>();
   private connectionListeners = new Set<ConnectionListener>();
-  private isConnecting = false;
-  private isConnected = false;
+  private state: ConnectionState = "closed";
+  // The connection being opened, so a second connect() waits for the same one
+  private pendingConnect: Promise<void> | null = null;
   // Set by disconnect(): a deliberate close must not trigger reconnection
   private closedIntentionally = false;
   private wasConnected = false;
   private messageQueue: ClientMessage[] = [];
   private pingInterval: ReturnType<typeof setInterval> | null = null;
 
-  private debug = import.meta.env.MODE !== "production";
+  private debug = import.meta.env.DEV;
 
   constructor(url?: string) {
     this.url = url ?? deriveWsUrl();
@@ -61,58 +61,63 @@ export class WebSocketClient {
    * After an unexpected close the client reconnects automatically (up to 5 attempts).
    */
   connect(): Promise<void> {
-    if (this.isConnected || this.isConnecting) return Promise.resolve();
+    if (this.state === "open") return Promise.resolve();
+    if (this.pendingConnect) return this.pendingConnect;
     // Connecting now supersedes a scheduled reconnection attempt
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
     this.closedIntentionally = false;
-    this.isConnecting = true;
+    // An attempt made while reconnecting is still part of reconnecting
+    this.setState(this.state === "reconnecting" ? "reconnecting" : "connecting");
 
-    return new Promise((resolve, reject) => {
+    const connecting = new Promise<void>((resolve, reject) => {
       let opened = false;
       let ws: WebSocket;
       try {
         if (this.debug) console.log(`[WebSocketClient] Connecting to ${this.url}`);
         ws = new WebSocket(this.url);
       } catch (error) {
-        this.isConnecting = false;
+        this.pendingConnect = null;
+        this.setState("closed");
         reject(error);
         return;
       }
       this.ws = ws;
 
       ws.onopen = () => {
+        // A socket this client has since let go of (disconnect() closed it while it was opening)
+        if (this.ws !== ws) return;
         opened = true;
         const reconnected = this.wasConnected;
-        this.isConnecting = false;
-        this.isConnected = true;
+        this.pendingConnect = null;
         this.wasConnected = true;
         this.reconnectAttempts = 0;
         this.startPingInterval();
         // Listeners run before queued messages are flushed, so a reconnecting session can
         // resume itself before any command queued while it was offline reaches the server.
-        this.connectionListeners.forEach((l) => l(true, reconnected));
+        this.setState("open", reconnected);
         const queued = this.messageQueue.splice(0);
         queued.forEach((m) => this.send(m));
         resolve();
       };
 
-      ws.onmessage = (event) => this.handleMessage(event.data);
+      ws.onmessage = (event) => {
+        if (this.ws === ws) this.handleMessage(event.data);
+      };
 
       ws.onerror = (error) => {
         console.error("[WebSocketClient] Error:", error);
       };
 
       ws.onclose = () => {
-        if (this.ws === ws) this.ws = null;
-        const wasOpen = this.isConnected;
-        this.isConnecting = false;
-        this.isConnected = false;
-        this.stopPingInterval();
-        if (wasOpen) this.connectionListeners.forEach((l) => l(false, false));
         if (!opened) reject(new Error("WebSocket closed before it opened"));
+        // Only the current socket's close says anything about the connection
+        if (this.ws !== ws) return;
+        this.ws = null;
+        this.pendingConnect = null;
+        this.stopPingInterval();
 
         if (!this.closedIntentionally && this.wasConnected && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
@@ -123,9 +128,16 @@ export class WebSocketClient {
               /* onclose schedules the next attempt */
             });
           }, this.reconnectDelay * this.reconnectAttempts);
+          this.setState("reconnecting");
+        } else {
+          // Given up: what was queued for the connection is not sent on a later one
+          this.messageQueue = [];
+          this.setState("closed");
         }
       };
     });
+    this.pendingConnect = connecting;
+    return connecting;
   }
 
   /** Close the connection for good: no reconnection, queued messages are dropped. */
@@ -137,16 +149,16 @@ export class WebSocketClient {
     }
     this.stopPingInterval();
     this.messageQueue = [];
+    this.pendingConnect = null;
     const ws = this.ws;
     this.ws = null;
-    this.isConnected = false;
-    this.isConnecting = false;
+    this.setState("closed");
     ws?.close();
   }
 
   /** Send a message; queued until the connection (re)opens if not connected. */
   send(message: ClientMessage): void {
-    if (!this.isConnected || !this.ws) {
+    if (this.state !== "open" || !this.ws) {
       if (this.debug) console.log("[WS-QUEUE] Message queued:", message.type);
       this.messageQueue.push(message);
       return;
@@ -156,18 +168,21 @@ export class WebSocketClient {
   }
 
   /** Register a handler for a server message type. */
-  on<T extends ServerMessage>(type: T["type"], handler: MessageHandler<T>): void {
+  on<K extends ServerMessage["type"]>(type: K, handler: (message: ServerMessageOf<K>) => void): void {
     if (!this.messageHandlers.has(type)) this.messageHandlers.set(type, new Set());
-    this.messageHandlers.get(type)?.add(handler as MessageHandler<ServerMessage>);
+    // Messages are routed by their type, so this handler only ever receives a ServerMessageOf<K>
+    this.messageHandlers.get(type)?.add(handler as (message: ServerMessage) => void);
   }
 
-  off<T extends ServerMessage>(type: T["type"], handler: MessageHandler<T>): void {
-    this.messageHandlers.get(type)?.delete(handler as MessageHandler<ServerMessage>);
-  }
-
-  /** Register a listener for the connection opening or closing. */
+  /** Register a listener for changes of the connection state. */
   onConnectionChange(listener: ConnectionListener): void {
     this.connectionListeners.add(listener);
+  }
+
+  private setState(state: ConnectionState, reconnected = false): void {
+    if (state === this.state) return;
+    this.state = state;
+    this.connectionListeners.forEach((l) => l(state, reconnected));
   }
 
   private handleMessage(data: string): void {
@@ -194,7 +209,7 @@ export class WebSocketClient {
   private startPingInterval(): void {
     this.stopPingInterval();
     this.pingInterval = setInterval(() => {
-      if (this.isConnected) this.send({ type: "ping", timestamp: Date.now() });
+      if (this.state === "open") this.send({ type: "ping", timestamp: Date.now() });
     }, 30000);
   }
 
@@ -203,10 +218,6 @@ export class WebSocketClient {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
     }
-  }
-
-  get connected(): boolean {
-    return this.isConnected;
   }
 
   // ============= Convenience methods =============
@@ -229,10 +240,6 @@ export class WebSocketClient {
 
   resumeSession(sessionId: string): void {
     this.send({ type: "resumeSession", sessionId });
-  }
-
-  sendCommand(command: string): void {
-    this.send({ type: "command", command });
   }
 
   sendStreamCommand(command: string, imageGeneration?: boolean): void {

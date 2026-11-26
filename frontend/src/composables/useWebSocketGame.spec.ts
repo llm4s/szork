@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useWebSocketGame } from "./useWebSocketGame";
+import { TURN_TIMEOUT_MS, useWebSocketGame } from "./useWebSocketGame";
 import { FakeWebSocket } from "@/test/FakeWebSocket";
 import { SESSION_EXPIRED } from "@/types/WebSocketProtocol";
 
@@ -10,9 +11,9 @@ const flags = { ttsEnabled: false, sttEnabled: true, imageEnabled: true, musicEn
 /** A connected game whose opening response had message index 2. */
 async function startedGame() {
   const game = useWebSocketGame();
-  const connecting = game.connect();
+  const starting = game.startNewGame("caves");
   latest().open();
-  await connecting;
+  await starting;
   latest().receive("gameStarted", {
     ...flags,
     sessionId: "sess-1",
@@ -259,46 +260,40 @@ describe("useWebSocketGame", () => {
   });
 
   it("plays music and narration through the callbacks", async () => {
-    const game = useWebSocketGame();
+    const game = await startedGame();
     const music = vi.fn();
     const narration = vi.fn();
     game.setPlayBackgroundMusicCallback(music);
     game.setPlayAudioNarrationCallback(narration);
-    const connecting = game.connect();
-    latest().open();
-    await connecting;
 
     latest().receive("commandResponse", {
       text: "Hello",
-      messageIndex: 2,
+      messageIndex: 4,
       command: "hi",
       audio: "c3BlZWNo",
       hasImage: false,
       hasMusic: true,
     });
-    latest().receive("musicReady", { messageIndex: 2, music: "bXVzaWM=", mood: "calm" });
+    latest().receive("musicReady", { messageIndex: 4, music: "bXVzaWM=", mood: "calm" });
 
     expect(narration).toHaveBeenCalledWith("c3BlZWNo");
     expect(music).toHaveBeenCalledWith("data:audio/mpeg;base64,bXVzaWM=", "calm");
   });
 
   it("shows and plays the adventure library's media from its URLs", async () => {
-    const game = useWebSocketGame();
+    const game = await startedGame();
     const music = vi.fn();
     game.setPlayBackgroundMusicCallback(music);
-    const connecting = game.connect();
-    latest().open();
-    await connecting;
 
     latest().receive("commandResponse", {
       text: "A hall",
-      messageIndex: 2,
+      messageIndex: 4,
       command: "go north",
       hasImage: true,
       hasMusic: true,
     });
-    latest().receive("imageReady", { messageIndex: 2, url: "/api/library/adventures/a/images/hall.pixel.jpg?v=1" });
-    latest().receive("musicReady", { messageIndex: 2, mood: "mystery", url: "/api/library/music/mystery.mp3?v=1" });
+    latest().receive("imageReady", { messageIndex: 4, url: "/api/library/adventures/a/images/hall.pixel.jpg?v=1" });
+    latest().receive("musicReady", { messageIndex: 4, mood: "mystery", url: "/api/library/music/mystery.mp3?v=1" });
 
     expect(game.messages.value.at(-1)?.image).toBe("/api/library/adventures/a/images/hall.pixel.jpg?v=1");
     expect(music).toHaveBeenCalledWith("/api/library/music/mystery.mp3?v=1", "mystery");
@@ -319,9 +314,9 @@ describe("useWebSocketGame", () => {
     const loading = game.loadGame("missing");
     latest().open();
     await loading;
-    latest().receive("error", { error: "Game not found", details: "missing" });
+    latest().receive("error", { error: "Failed to load game", details: "missing" });
 
-    expect(game.loadFailed.value).toBe("Game not found: missing");
+    expect(game.loadFailed.value).toBe("Failed to load game: missing");
     expect(game.messages.value).toEqual([]);
     expect(game.errorSnackbar.value).toBe(true);
 
@@ -443,5 +438,197 @@ describe("useWebSocketGame", () => {
     latest().receive("sessionTakenOver", { sessionId: "sess-old", gameId: "game-0" });
     expect(game.sessionTakenOver.value).toBe(false);
     expect(game.sessionId.value).toBe("sess-1");
+  });
+
+  describe("after the server restarted", () => {
+    /** A command typed while offline reaches a server that no longer has the session. */
+    async function commandToExpiredSession() {
+      const game = await startedGame();
+      latest().drop();
+      const sending = game.sendCommand("look");
+      latest().open();
+      await sending;
+      expect(latest().sentTypes()).toEqual(["resumeSession", "streamCommand"]);
+      latest().receive("error", { error: "Session expired", details: SESSION_EXPIRED });
+      latest().receive("error", { error: "No active session" });
+      await vi.advanceTimersByTimeAsync(0); // the reload is sent asynchronously
+      return game;
+    }
+
+    it("reloads the game and sends the unanswered command again, without failing the load", async () => {
+      const game = await commandToExpiredSession();
+      expect(game.loadFailed.value).toBeNull();
+      expect(game.messages.value.map((m) => m.text)).not.toContain("Error: No active session");
+      expect(latest().sentTypes()).toEqual(["resumeSession", "streamCommand", "loadGame"]);
+
+      latest().receive("gameLoaded", {
+        ...flags,
+        sessionId: "sess-2",
+        gameId: "game-1",
+        messageIndex: 2,
+        conversation: [{ role: "assistant", content: "You are in a cave." }],
+      });
+      await vi.advanceTimersByTimeAsync(0); // the command is sent again asynchronously
+      expect(latest().sentMessages().at(-1)).toEqual({ type: "streamCommand", command: "look", imageGeneration: true });
+      expect(game.awaitingResponse.value).toBe(true);
+      expect(game.messages.value.map((m) => m.text)).toEqual(["You are in a cave.", "look", ""]);
+    });
+
+    it("does not send the command again when the save shows it was played", async () => {
+      const game = await commandToExpiredSession();
+      latest().receive("gameLoaded", {
+        ...flags,
+        sessionId: "sess-2",
+        gameId: "game-1",
+        messageIndex: 4,
+        conversation: [
+          { role: "assistant", content: "You are in a cave." },
+          { role: "user", content: "look" },
+          { role: "assistant", content: "It is dark." },
+        ],
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        latest()
+          .sentTypes()
+          .filter((t) => t === "streamCommand")
+      ).toHaveLength(1);
+      expect(game.awaitingResponse.value).toBe(false);
+    });
+
+    it("takes only the load's own error for a failed load", async () => {
+      const game = await commandToExpiredSession();
+      latest().receive("error", { error: "Failed to load game", details: "Game not found" });
+      expect(game.loadFailed.value).toBe("Failed to load game: Game not found");
+    });
+  });
+
+  it("ends the turn with an error when the client gives up reconnecting", async () => {
+    const game = await startedGame();
+    await game.sendCommand("go north");
+    latest().drop();
+    expect(game.connectionState.value).toBe("reconnecting");
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await vi.advanceTimersByTimeAsync(1_000 * attempt);
+      latest().drop();
+    }
+
+    expect(game.connectionState.value).toBe("closed");
+    expect(game.awaitingResponse.value).toBe(false);
+    expect(game.isStreaming.value).toBe(false);
+    expect(game.messages.value.at(-1)?.text).toBe("Error: Lost the connection to the server.");
+    expect(game.errorSnackbar.value).toBe(true);
+  });
+
+  it("stops waiting for an answer that does not come, and shows it if it comes late", async () => {
+    const game = await startedGame();
+    await game.sendCommand("go north");
+    await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS - 1_000);
+    latest().receive("textChunk", { text: "You go ", chunkNumber: 1 }); // a word from the server restarts the wait
+    await vi.advanceTimersByTimeAsync(TURN_TIMEOUT_MS - 1_000);
+    expect(game.awaitingResponse.value).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(game.awaitingResponse.value).toBe(false);
+    expect(game.messages.value.at(-1)?.text).toBe("Error: The server did not answer. Please try again.");
+
+    latest().receive("streamComplete", {
+      text: "You go north.",
+      messageIndex: 4,
+      totalChunks: 1,
+      duration: 10,
+      hasImage: false,
+      hasMusic: false,
+    });
+    expect(game.messages.value.at(-1)?.text).toBe("You go north.");
+  });
+
+  it("ignores answers, pictures and music for a game the player has left", async () => {
+    const game = await startedGame();
+    const music = vi.fn();
+    game.setPlayBackgroundMusicCallback(music);
+    await game.sendCommand("go north");
+    game.clearMessages();
+
+    latest().receive("streamComplete", {
+      text: "You go north.",
+      messageIndex: 4,
+      totalChunks: 1,
+      duration: 10,
+      hasImage: true,
+      hasMusic: true,
+    });
+    latest().receive("musicReady", { messageIndex: 4, mood: "calm", url: "/api/library/music/calm.mp3" });
+    latest().receive("gameStarted", {
+      ...flags,
+      sessionId: "sess-9",
+      gameId: "game-9",
+      text: "Late.",
+      messageIndex: 2,
+      hasImage: false,
+      hasMusic: false,
+    });
+
+    expect(game.messages.value).toEqual([]);
+    expect(game.sessionId.value).toBeNull();
+    expect(music).not.toHaveBeenCalled();
+  });
+
+  it("reports a game that cannot be started through startFailed", async () => {
+    const game = await startedGame();
+    game.clearMessages();
+    const starting = game.startNewGame("caves");
+    await starting;
+    latest().receive("error", { error: "Failed to start game", details: "No outline" });
+    expect(game.startFailed.value).toBe("Failed to start game: No outline");
+    expect(game.messages.value).toEqual([]);
+  });
+
+  it("plays no music for a musicReady that carries no track", async () => {
+    const game = await startedGame();
+    const music = vi.fn();
+    game.setPlayBackgroundMusicCallback(music);
+    latest().receive("musicReady", { messageIndex: 2, mood: "calm" });
+    expect(music).not.toHaveBeenCalled();
+  });
+
+  it("shows a picture that arrives for the latest answer of a loaded game", async () => {
+    const game = useWebSocketGame();
+    const loading = game.loadGame("game-1");
+    latest().open();
+    await loading;
+    latest().receive("gameLoaded", {
+      ...flags,
+      sessionId: "sess-2",
+      gameId: "game-1",
+      messageIndex: 3,
+      conversation: [
+        { role: "user", content: "look" },
+        { role: "assistant", content: "A hall." },
+      ],
+    });
+    latest().receive("imageReady", { messageIndex: 3, url: "/pictures/hall.jpg" });
+    expect(game.messages.value[1].image).toBe("/pictures/hall.jpg");
+  });
+
+  it("stops showing pictures as on their way after a reconnection", async () => {
+    const game = await startedGame();
+    latest().receive("commandResponse", {
+      text: "A hall",
+      messageIndex: 4,
+      command: "n",
+      hasImage: true,
+      hasMusic: false,
+    });
+    expect(game.messages.value.at(-1)?.imageLoading).toBe(true);
+
+    latest().drop();
+    await reconnect();
+    latest().receive("sessionResumed", { sessionId: "sess-1", gameId: "game-1", messageIndex: 4 });
+    expect(game.messages.value.at(-1)?.imageLoading).toBe(false);
+
+    // A picture still being drawn is shown when it arrives
+    latest().receive("imageReady", { messageIndex: 4, url: "/pictures/hall.jpg" });
+    expect(game.messages.value.at(-1)?.image).toBe("/pictures/hall.jpg");
   });
 });

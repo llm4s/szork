@@ -2,30 +2,11 @@
  * Composable for WebSocket-based game communication
  */
 
-import { ref, onUnmounted, nextTick, getCurrentInstance } from "vue";
-import { WebSocketClient } from "@/services/WebSocketClient";
+import { ref, computed, onUnmounted, nextTick, getCurrentInstance } from "vue";
+import { WebSocketClient, type ConnectionState } from "@/services/WebSocketClient";
 import { SESSION_EXPIRED } from "@/types/WebSocketProtocol";
 import type { AdventureOutline } from "@/types/api";
-import type {
-  SceneData,
-  ConversationEntry,
-  FeatureRequest,
-  SessionFeatureFlags,
-  GameStartedMessage,
-  GameLoadedMessage,
-  SessionResumedMessage,
-  SessionTakenOverMessage,
-  GameEndedMessage,
-  GameOutcome,
-  CommandResponseMessage,
-  TextChunkMessage,
-  StreamCompleteMessage,
-  TranscriptionMessage,
-  ImageReadyMessage,
-  MusicReadyMessage,
-  MediaFailedMessage,
-  ErrorMessage,
-} from "@/types/WebSocketProtocol";
+import type { SceneData, FeatureRequest, SessionFeatureFlags, GameOutcome } from "@/types/WebSocketProtocol";
 
 export interface GameMessage {
   text: string;
@@ -40,6 +21,19 @@ export interface GameMessage {
   isStreaming?: boolean;
 }
 
+/** The `error` the server answers a loadGame with when it cannot load the game. */
+export const LOAD_FAILED = "Failed to load game";
+/** The `error` the server answers a newGame with when it cannot start the game. */
+export const START_FAILED = "Failed to start game";
+/** The `error` answering a command sent to a session the server no longer has. */
+const NO_ACTIVE_SESSION = "No active session";
+
+/**
+ * How long a turn may go without a word from the server (its first chunk, the next one, or the answer)
+ * before the player is told it failed. Long enough for a slow model; a lost answer is not waited for forever.
+ */
+export const TURN_TIMEOUT_MS = 120_000;
+
 /** What an <img> shows for a picture sent as a library `url` or as Base64 `image`; undefined when there is neither. */
 function pictureSource(image?: string, url?: string): string | undefined {
   if (url) return url;
@@ -49,11 +43,13 @@ function pictureSource(image?: string, url?: string): string | undefined {
 }
 
 export function useWebSocketGame() {
-  const wsClient = ref<WebSocketClient | null>(null);
+  // Not reactive: a Vue proxy would wrap the client's own socket, and its identity checks would fail
+  let wsClient: WebSocketClient | null = null;
   const sessionId = ref<string | null>(null);
   const gameId = ref<string | null>(null);
   const messages = ref<GameMessage[]>([]);
-  const isConnected = ref(false);
+  const connectionState = ref<ConnectionState>("closed");
+  const isConnected = computed(() => connectionState.value === "open");
   const isStreaming = ref(false);
   // True from sending a command (typed or spoken) until its response or an error arrives
   const awaitingResponse = ref(false);
@@ -63,6 +59,8 @@ export function useWebSocketGame() {
   const errorMessage = ref("");
   // Set when a requested game could not be loaded
   const loadFailed = ref<string | null>(null);
+  // Set when a new game could not be started
+  const startFailed = ref<string | null>(null);
   // Set when another tab or window loaded this game and took its session; cleared by loading it again
   const sessionTakenOver = ref(false);
   // How the adventure ended, once it has (the player may keep exploring); null while it is still to be won or lost
@@ -76,16 +74,27 @@ export function useWebSocketGame() {
   let scrollCallback: (() => void) | null = null;
   let playBackgroundMusicCallback: ((musicSource: string, mood: string) => void) | null = null;
   let playAudioNarrationCallback: ((audioBase64: string) => void) | null = null;
+  // From asking for a game (new or loaded) until leaving it: messages about a game are ignored outside one,
+  // so a late answer or picture after the player went back to the menu changes nothing
+  let playing = false;
   let pendingLoad: string | null = null;
+  let pendingStart = false;
   // The server's message index after the last response (or load) we received; null until then.
   // A larger index on resume means we missed a response.
   let lastMessageIndex: number | null = null;
+  // Sends the turn being waited for again (it went to a session that has since expired)
+  let pendingTurn: (() => Promise<void>) | null = null;
+  let turnTimer: ReturnType<typeof setTimeout> | null = null;
+  // Set while the game is reloaded after its session expired: the turn sent to the expired session is
+  // answered with "No active session", and is sent again (unless the save shows it was played) once loaded
+  let reloadingExpired = false;
+  let resendAfterReload: (() => Promise<void>) | null = null;
   // Set once the owning component unmounts: late callbacks must not open a new connection
   let disposed = false;
 
-  const log = (message: string, ...args: unknown[]) => {
-    console.log(`[Game] ${message}`, ...args);
-  };
+  const log = import.meta.env.DEV
+    ? (message: string, ...args: unknown[]) => console.log(`[Game] ${message}`, ...args)
+    : () => {};
 
   const scroll = () => {
     if (scrollCallback) nextTick(() => scrollCallback!());
@@ -111,9 +120,32 @@ export function useWebSocketGame() {
     image: imageEnabled.value,
   });
 
+  const clearTurnTimer = () => {
+    if (turnTimer) clearTimeout(turnTimer);
+    turnTimer = null;
+  };
+
+  /** (Re)start the wait for the server's next word on the current turn. */
+  const armTurnTimer = () => {
+    clearTurnTimer();
+    turnTimer = setTimeout(() => {
+      turnTimer = null;
+      if (awaitingResponse.value) failTurn("The server did not answer. Please try again.");
+    }, TURN_TIMEOUT_MS);
+  };
+
+  /** Starts waiting for the answer to a command; `resend` sends the command again. */
+  const startTurn = (resend: () => Promise<void>) => {
+    awaitingResponse.value = true;
+    pendingTurn = resend;
+    armTurnTimer();
+  };
+
   /** Ends the in-progress response (streamed or not), dropping a streamed one if nothing arrived. */
   const endStreaming = () => {
     awaitingResponse.value = false;
+    pendingTurn = null;
+    clearTurnTimer();
     const streaming = currentStreamingMessage.value;
     if (streaming) {
       streaming.isStreaming = false;
@@ -121,6 +153,14 @@ export function useWebSocketGame() {
     }
     currentStreamingMessage.value = null;
     isStreaming.value = false;
+  };
+
+  /** Ends the turn being waited for, telling the player why. */
+  const failTurn = (text: string) => {
+    endStreaming();
+    messages.value.push({ text: `Error: ${text}`, isUser: false, timestamp: new Date() });
+    scroll();
+    showError(text);
   };
 
   const responseMessage = (text: string, messageIndex: number, hasImage: boolean, scene?: SceneData): GameMessage => ({
@@ -139,21 +179,25 @@ export function useWebSocketGame() {
    */
   const connect = async (): Promise<void> => {
     if (disposed) return;
-    let client = wsClient.value;
+    let client = wsClient;
     if (!client) {
       const created = new WebSocketClient();
       setupMessageHandlers(created);
-      created.onConnectionChange((connected) => {
-        isConnected.value = connected;
+      created.onConnectionChange((state) => {
+        connectionState.value = state;
         // Whenever a connection opens while we have a session, re-attach to it. This runs before
         // queued messages are sent, so a command typed while offline reaches the resumed session.
         // A session another tab took over is forgotten, so it is not taken back here.
-        if (connected && sessionId.value) {
+        if (state === "open" && sessionId.value) {
           log(`Connected; resuming session ${sessionId.value}`);
           created.resumeSession(sessionId.value);
         }
+        // The client has given up reconnecting: the answer being waited for will not come
+        if (state === "closed" && awaitingResponse.value && !disposed) {
+          failTurn("Lost the connection to the server.");
+        }
       });
-      wsClient.value = created;
+      wsClient = created;
       client = created;
     }
     await client.connect();
@@ -161,11 +205,19 @@ export function useWebSocketGame() {
 
   /** Load the current game again, with the features this session had. */
   const reloadCurrentGame = () => {
-    if (gameId.value) loadGame(gameId.value, currentFeatures());
+    if (gameId.value) loadGame(gameId.value, currentFeatures()).catch((error) => log("Reload failed:", error));
   };
 
   const setupMessageHandlers = (client: WebSocketClient) => {
-    client.on<GameStartedMessage>("gameStarted", ({ data }) => {
+    /** Handle a message about the game being played, ignoring it when no game is. */
+    const onGame: WebSocketClient["on"] = (type, handler) =>
+      client.on(type, (message) => {
+        if (playing) handler(message);
+        else log(`Ignoring ${type}: no game is being played`);
+      });
+
+    onGame("gameStarted", ({ data }) => {
+      pendingStart = false;
       sessionTakenOver.value = false;
       gameOutcome.value = null;
       sessionId.value = data.sessionId;
@@ -177,7 +229,12 @@ export function useWebSocketGame() {
       scroll();
     });
 
-    client.on<GameLoadedMessage>("gameLoaded", ({ data }) => {
+    onGame("gameLoaded", ({ data }) => {
+      // The turn sent to an expired session is sent again, unless the save shows it was played
+      const resend = resendAfterReload && (lastMessageIndex === null || data.messageIndex <= lastMessageIndex);
+      const turn = resendAfterReload;
+      resendAfterReload = null;
+      reloadingExpired = false;
       pendingLoad = null;
       sessionTakenOver.value = false;
       // The server says so again, after this message, if the loaded game has ended
@@ -187,36 +244,49 @@ export function useWebSocketGame() {
       lastMessageIndex = data.messageIndex;
       applyFlags(data);
       endStreaming();
-      // History's entries carry no message index (nothing more arrives for them), but come with their pictures
-      messages.value = data.conversation.map((entry: ConversationEntry) => ({
+      messages.value = data.conversation.map((entry) => ({
         text: entry.content,
         isUser: entry.role === "user",
         timestamp: new Date(),
         image: pictureSource(entry.image, entry.url),
       }));
       const lastMessage = messages.value[messages.value.length - 1];
-      if (data.currentScene && lastMessage && !lastMessage.isUser) lastMessage.scene = data.currentScene;
+      if (lastMessage && !lastMessage.isUser) {
+        if (data.currentScene) lastMessage.scene = data.currentScene;
+        // The latest answer's picture may still be being drawn: it arrives tagged with this index
+        lastMessage.messageIndex = data.messageIndex;
+        lastMessage.hasImage = true;
+      }
       scroll();
-    });
-
-    client.on<SessionResumedMessage>("sessionResumed", ({ data }) => {
-      log(`Session ${data.sessionId} resumed at message ${data.messageIndex}`);
-      // The response we are waiting for was sent while we were disconnected, so it is lost:
-      // stop waiting and load the game again to show it
-      if (awaitingResponse.value && lastMessageIndex !== null && data.messageIndex > lastMessageIndex) {
-        log("Missed the response while disconnected; reloading the game");
-        endStreaming();
-        reloadCurrentGame();
+      if (resend && turn) {
+        log("Sending the command the expired session did not answer again");
+        turn().catch((error) => log("Could not send the command again:", error));
       }
     });
 
-    client.on<GameEndedMessage>("gameEnded", ({ data }) => {
+    onGame("sessionResumed", ({ data }) => {
+      log(`Session ${data.sessionId} resumed at message ${data.messageIndex}`);
+      // A picture sent while we were disconnected is lost: stop showing it as on its way (one still
+      // being drawn is shown when it arrives)
+      messages.value.forEach((m) => (m.imageLoading = false));
+      // A response sent while we were disconnected is lost: stop waiting and load the game again to show it
+      if (lastMessageIndex !== null && data.messageIndex > lastMessageIndex) {
+        log("Missed a response while disconnected; reloading the game");
+        endStreaming();
+        reloadCurrentGame();
+      } else if (awaitingResponse.value) {
+        // The turn is still being played: wait for it afresh
+        armTurnTimer();
+      }
+    });
+
+    onGame("gameEnded", ({ data }) => {
       log(`The adventure is over: ${data.outcome}`);
       gameOutcome.value = data.outcome;
       scroll();
     });
 
-    client.on<SessionTakenOverMessage>("sessionTakenOver", ({ data }) => {
+    onGame("sessionTakenOver", ({ data }) => {
       // From a connection we have since left for another session: nothing to do
       if (data.sessionId !== sessionId.value) return;
       log(`Session ${data.sessionId} was taken over by another tab`);
@@ -227,21 +297,22 @@ export function useWebSocketGame() {
       sessionTakenOver.value = true;
     });
 
-    client.on<CommandResponseMessage>("commandResponse", ({ data }) => {
-      awaitingResponse.value = false;
+    onGame("commandResponse", ({ data }) => {
+      endStreaming();
       lastMessageIndex = data.messageIndex;
       messages.value.push(responseMessage(data.text, data.messageIndex, data.hasImage, data.scene));
       if (data.audio) playAudioNarration(data.audio);
       scroll();
     });
 
-    client.on<TextChunkMessage>("textChunk", ({ data }) => {
+    onGame("textChunk", ({ data }) => {
       if (!currentStreamingMessage.value) return;
+      armTurnTimer();
       currentStreamingMessage.value.text += data.text;
       scroll();
     });
 
-    client.on<StreamCompleteMessage>("streamComplete", ({ data }) => {
+    onGame("streamComplete", ({ data }) => {
       lastMessageIndex = data.messageIndex;
       const streaming = currentStreamingMessage.value;
       if (streaming) {
@@ -250,17 +321,22 @@ export function useWebSocketGame() {
         streaming.messageIndex = data.messageIndex;
         streaming.hasImage = data.hasImage;
         streaming.imageLoading = data.hasImage;
+      } else {
+        // The answer to a turn the player stopped waiting for: show it after all
+        messages.value.push(responseMessage(data.text, data.messageIndex, data.hasImage, data.scene));
       }
       endStreaming();
       if (data.audio) playAudioNarration(data.audio);
+      scroll();
     });
 
-    client.on<TranscriptionMessage>("transcription", ({ data }) => {
+    onGame("transcription", ({ data }) => {
+      if (awaitingResponse.value) armTurnTimer();
       messages.value.push({ text: data.text, isUser: true, timestamp: new Date() });
       scroll();
     });
 
-    client.on<ImageReadyMessage>("imageReady", ({ data }) => {
+    onGame("imageReady", ({ data }) => {
       const message = messages.value.find((m) => m.messageIndex === data.messageIndex);
       if (message?.hasImage) {
         message.image = pictureSource(data.image, data.url);
@@ -268,40 +344,50 @@ export function useWebSocketGame() {
       }
     });
 
-    client.on<MusicReadyMessage>("musicReady", ({ data }) => {
+    onGame("musicReady", ({ data }) => {
+      const source = data.url ?? (data.music ? `data:audio/mpeg;base64,${data.music}` : undefined);
       // Played, not kept: holding every track's base64 would grow memory for the whole session
-      if (playBackgroundMusicCallback) {
-        playBackgroundMusicCallback(data.url ?? `data:audio/mpeg;base64,${data.music}`, data.mood);
-      }
+      if (source && playBackgroundMusicCallback) playBackgroundMusicCallback(source, data.mood);
     });
 
-    client.on<MediaFailedMessage>("mediaFailed", ({ data }) => {
+    onGame("mediaFailed", ({ data }) => {
       if (data.kind === "image") {
         const message = messages.value.find((m) => m.messageIndex === data.messageIndex);
         if (message) message.imageLoading = false;
       }
     });
 
-    client.on<ErrorMessage>("error", ({ data }) => {
+    onGame("error", ({ data }) => {
       // The session ended while we were away (e.g. the server restarted): load the game again
       if (data.details === SESSION_EXPIRED) {
         if (gameId.value) {
           log(`Session expired; reloading game ${gameId.value}`);
+          // A command in flight went to the expired session: send it again once the game is loaded
+          resendAfterReload = awaitingResponse.value ? pendingTurn : null;
+          reloadingExpired = true;
+          endStreaming();
           reloadCurrentGame();
         }
         return;
       }
+      // The answer to a command queued behind the resume, which the reload sends again
+      if (reloadingExpired && data.error === NO_ACTIVE_SESSION) return;
 
-      endStreaming();
       const text = data.details ? `${data.error}: ${data.details}` : data.error;
-      if (pendingLoad) {
+      if (pendingLoad && data.error === LOAD_FAILED) {
         pendingLoad = null;
+        reloadingExpired = false;
+        resendAfterReload = null;
+        endStreaming();
         loadFailed.value = text;
+        showError(text);
+      } else if (pendingStart && data.error === START_FAILED) {
+        pendingStart = false;
+        startFailed.value = text;
+        showError(text);
       } else {
-        messages.value.push({ text: `Error: ${text}`, isUser: false, timestamp: new Date() });
-        scroll();
+        failTurn(text);
       }
-      showError(text);
     });
   };
 
@@ -315,7 +401,10 @@ export function useWebSocketGame() {
   ) => {
     await connect();
     clearMessages();
-    wsClient.value?.newGame(
+    playing = true;
+    pendingStart = true;
+    startFailed.value = null;
+    wsClient?.newGame(
       theme,
       artStyle,
       adventureOutline,
@@ -332,41 +421,43 @@ export function useWebSocketGame() {
 
   const loadGame = async (gameIdToLoad: string, features?: FeatureRequest) => {
     await connect();
+    playing = true;
     loadFailed.value = null;
     pendingLoad = gameIdToLoad;
-    wsClient.value?.loadGame(gameIdToLoad, features);
+    wsClient?.loadGame(gameIdToLoad, features);
   };
 
-  /** Send a command; streaming shows the response as it is generated. */
-  const sendCommand = async (command: string, streaming = true, imageGeneration = true) => {
+  /** Send a typed command; the response streams in as it is generated. */
+  const sendCommand = async (command: string, imageGeneration = true) => {
     // This tab no longer plays the game; the server would refuse the command
     if (sessionTakenOver.value) return;
     await connect();
     messages.value.push({ text: command, isUser: true, timestamp: new Date() });
 
-    awaitingResponse.value = true;
-    if (streaming) {
-      currentStreamingMessage.value = { text: "", isUser: false, timestamp: new Date(), isStreaming: true };
-      messages.value.push(currentStreamingMessage.value);
-      isStreaming.value = true;
-      wsClient.value?.sendStreamCommand(command, imageGeneration && imageEnabled.value);
-    } else {
-      wsClient.value?.sendCommand(command);
-    }
+    startTurn(() => sendCommand(command, imageGeneration));
+    currentStreamingMessage.value = { text: "", isUser: false, timestamp: new Date(), isStreaming: true };
+    messages.value.push(currentStreamingMessage.value);
+    isStreaming.value = true;
+    wsClient?.sendStreamCommand(command, imageGeneration && imageEnabled.value);
   };
 
   /** Send a recorded voice command; the transcription and response arrive as messages. */
   const sendAudioCommand = async (audioBase64: string, imageGeneration = true) => {
     if (sessionTakenOver.value) return;
     await connect();
-    if (!wsClient.value) return;
-    awaitingResponse.value = true;
-    wsClient.value.sendAudio(audioBase64, imageGeneration && imageEnabled.value);
+    if (!wsClient) return;
+    startTurn(() => sendAudioCommand(audioBase64, imageGeneration));
+    wsClient.sendAudio(audioBase64, imageGeneration && imageEnabled.value);
   };
 
   /** Forget the current game's messages and session (e.g. when returning to game selection). */
   const clearMessages = () => {
     endStreaming();
+    playing = false;
+    pendingLoad = null;
+    pendingStart = false;
+    reloadingExpired = false;
+    resendAfterReload = null;
     messages.value = [];
     sessionId.value = null;
     gameId.value = null;
@@ -382,9 +473,10 @@ export function useWebSocketGame() {
   };
 
   const disconnect = () => {
-    wsClient.value?.disconnect();
-    wsClient.value = null;
-    isConnected.value = false;
+    clearTurnTimer();
+    wsClient?.disconnect();
+    wsClient = null;
+    connectionState.value = "closed";
   };
 
   const playAudioNarration = (audioBase64: string) => {
@@ -416,6 +508,7 @@ export function useWebSocketGame() {
     sessionId,
     gameId,
     messages,
+    connectionState,
     isConnected,
     isStreaming,
     awaitingResponse,
@@ -424,6 +517,7 @@ export function useWebSocketGame() {
     musicEnabled,
     imageEnabled,
     loadFailed,
+    startFailed,
     sessionTakenOver,
     gameOutcome,
 

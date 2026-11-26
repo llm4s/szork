@@ -22,6 +22,7 @@
     <!-- Adventure Setup Screen -->
     <AdventureSetup
       v-else-if="setupStarted && !gameStarted"
+      :previous="previousSetup"
       @adventure-ready="onAdventureReady"
       @back-to-selection="goBackToSelection"
     />
@@ -49,6 +50,25 @@
 
           <MessageList ref="messageList" :messages="messages" :loading="loading" :opening="openingText" />
 
+          <!-- The connection dropped: reconnecting by itself, or given up until the player retries -->
+          <v-alert
+            v-if="connectionState === 'reconnecting' || connectionState === 'closed'"
+            class="connection-alert mx-4 mb-2"
+            :type="connectionState === 'reconnecting' ? 'info' : 'error'"
+            variant="tonal"
+            density="compact"
+            role="status"
+          >
+            {{
+              connectionState === "reconnecting"
+                ? "Lost the connection to the server. Reconnecting..."
+                : "Not connected to the server."
+            }}
+            <template v-if="connectionState === 'closed'" v-slot:append>
+              <v-btn variant="text" size="small" class="retry-connection" @click="retryConnection">Retry</v-btn>
+            </template>
+          </v-alert>
+
           <!-- The adventure is over; the player may keep exploring -->
           <v-alert
             v-if="gameOutcome"
@@ -73,6 +93,7 @@
               v-model="userInput"
               @keyup.enter="sendCommand"
               placeholder="Enter your command..."
+              aria-label="Your command"
               :disabled="sessionTakenOver"
               variant="outlined"
               density="compact"
@@ -85,6 +106,14 @@
                   <template v-slot:activator="{ props }">
                     <button
                       v-bind="props"
+                      type="button"
+                      aria-label="Hold to speak a command"
+                      :aria-pressed="recording"
+                      @keydown.space.prevent="startRecording"
+                      @keydown.enter.prevent="startRecording"
+                      @keyup.space.prevent="stopRecording"
+                      @keyup.enter.prevent="stopRecording"
+                      @blur="stopRecording"
                       @mousedown.prevent="startRecording"
                       @mouseup.prevent="stopRecording"
                       @mouseleave.prevent="stopRecording"
@@ -107,6 +136,7 @@
                       color="primary"
                       variant="text"
                       icon="mdi-send"
+                      aria-label="Send command"
                       :disabled="!userInput.trim() || loading || sessionTakenOver"
                       :loading="loading"
                     ></v-btn>
@@ -147,6 +177,9 @@ import { useAudioPlayback } from "@/composables/useAudioPlayback";
 import { blobToBase64, useVoiceRecorder } from "@/composables/useVoiceRecorder";
 import type { AdventureConfig, AdventureOutline, AdventureSummary, StyleChoice, ThemeChoice } from "@/types/api";
 
+/** What the player is told when the game server cannot be reached. */
+const UNREACHABLE = "Could not reach the game server. Please try again.";
+
 export default defineComponent({
   name: "GameView",
   components: {
@@ -169,6 +202,7 @@ export default defineComponent({
     const {
       gameId: currentGameId,
       messages,
+      connectionState,
       isStreaming,
       awaitingResponse,
       ttsEnabled,
@@ -186,6 +220,7 @@ export default defineComponent({
       clearMessages,
       addLocalMessage,
       loadFailed,
+      startFailed,
       sessionTakenOver,
       gameOutcome,
       takeBackSession,
@@ -214,6 +249,8 @@ export default defineComponent({
     const adventureTheme = ref<ThemeChoice | null>(null);
     const artStyle = ref<StyleChoice | null>(null);
     const adventureOutline = ref<AdventureOutline | null>(null);
+    // The setup choices of the game being started, so a start that fails returns to them rather than to a fresh setup
+    const previousSetup = ref<AdventureConfig | null>(null);
     // Shown while a game is opening and its first scene has not arrived
     const openingText = ref("Starting your adventure...");
     // The library adventure being started, if the game is of one
@@ -227,10 +264,11 @@ export default defineComponent({
     // Use the log function from the composable
     const log = wsLog;
 
-    const scrollToBottom = async () => {
+    /** Show the latest message; unless forced, only when the player has not scrolled up to read. */
+    const scrollToBottom = async (force = false) => {
       // The list may only appear on the next render (e.g. right after a game is loaded)
       await nextTick();
-      await messageList.value?.scrollToBottom();
+      await messageList.value?.scrollToBottom(force);
     };
 
     const beginSelection = () => {
@@ -238,6 +276,7 @@ export default defineComponent({
     };
 
     const startNewGame = () => {
+      previousSetup.value = null;
       selectionStarted.value = false;
       setupStarted.value = true;
     };
@@ -270,11 +309,13 @@ export default defineComponent({
 
     const goBackToSelection = () => {
       // Reset from AdventureSetup to GameSelection
+      previousSetup.value = null;
       setupStarted.value = false;
       selectionStarted.value = true;
     };
 
     const onAdventureReady = (config: AdventureConfig) => {
+      previousSetup.value = config;
       adventureTheme.value = config.theme;
       artStyle.value = config.style;
       adventureOutline.value = config.outline;
@@ -296,6 +337,7 @@ export default defineComponent({
 
     /** Start a game of a ready-made adventure: the server has its outline, theme and art style. */
     const playAdventure = (adventure: AdventureSummary) => {
+      previousSetup.value = null;
       adventureTheme.value = null;
       artStyle.value = null;
       adventureOutline.value = null;
@@ -309,28 +351,53 @@ export default defineComponent({
       });
     };
 
+    /** Open a saved game; one that cannot be loaded returns to the selection screen with the error. */
     const loadGame = async (gameId: string) => {
       log(`Loading game: ${gameId}`);
       openingText.value = "Loading your adventure...";
       requestedGameId = gameId;
       stopBackgroundMusic();
-      // The server answers with gameLoaded, or an error that sets loadFailed
-      await wsLoadGame(gameId);
+      try {
+        // The server answers with gameLoaded, or an error that sets loadFailed
+        await wsLoadGame(gameId);
+      } catch (error) {
+        log("Could not connect to load the game:", error);
+        showError(UNREACHABLE);
+        backToSelection();
+        return;
+      }
       gameStarted.value = true;
       setupStarted.value = false;
       selectionStarted.value = false;
       if (route.params.gameId !== gameId) router.push(`/game/${gameId}`);
-      await scrollToBottom();
+      await scrollToBottom(true);
     };
 
-    // A game that cannot be loaded (deleted, or an invalid link) returns to the start screen
+    // A game that cannot be loaded (deleted, or an invalid link) returns to the selection screen
     watch(loadFailed, (failure) => {
       if (!failure) return;
       log("Error loading game:", failure);
-      gameStarted.value = false;
-      setupStarted.value = false;
-      selectionStarted.value = false;
-      router.push("/");
+      backToSelection();
+    });
+
+    /**
+     * Leave a game that could not be started: a designed adventure returns to its setup with the choices
+     * and the outline kept, so it can be started again without designing it again; a library one to the list.
+     */
+    const abandonStart = () => {
+      const setup = previousSetup.value;
+      resetGame();
+      if (setup) {
+        previousSetup.value = setup;
+        selectionStarted.value = false;
+        setupStarted.value = true;
+      }
+    };
+
+    watch(startFailed, (failure) => {
+      if (!failure) return;
+      log("Error starting game:", failure);
+      abandonStart();
     });
 
     // Once a new game has an id, put it in the URL so a refresh returns to it
@@ -354,12 +421,8 @@ export default defineComponent({
     const startGame = async () => {
       try {
         log(
-          "Starting game with theme:",
-          adventureTheme.value,
-          "and style:",
-          artStyle.value,
-          "and outline:",
-          adventureOutline.value
+          `Starting game: theme ${adventureTheme.value?.id}, style ${artStyle.value?.id},`,
+          adventureId.value ? `library adventure ${adventureId.value}` : `outline "${adventureOutline.value?.title}"`
         );
 
         // Clean up any existing audio when starting a new game
@@ -385,11 +448,19 @@ export default defineComponent({
           adventureTitle.value = adventureOutline.value.title;
         }
       } catch (error) {
-        log("Error starting game:", error);
-        showError("Failed to start game. Please try again.");
-        // Go back to setup screen
-        gameStarted.value = false;
-        setupStarted.value = true;
+        log("Could not connect to start the game:", error);
+        showError(UNREACHABLE);
+        abandonStart();
+      }
+    };
+
+    /** Try the connection again after the client gave up reconnecting; the session resumes when it opens. */
+    const retryConnection = async () => {
+      try {
+        await connect();
+      } catch (error) {
+        log("Retrying the connection failed:", error);
+        showError(UNREACHABLE);
       }
     };
 
@@ -403,16 +474,15 @@ export default defineComponent({
       // One command at a time, so responses cannot arrive out of order
       if (!command || loading.value) return;
 
-      // Clear input
       userInput.value = "";
-
       try {
-        await scrollToBottom();
-        // Send command via WebSocket (streaming is default)
-        await wsSendCommand(command, true, imageGenerationEnabled.value);
-        await scrollToBottom();
+        await wsSendCommand(command, imageGenerationEnabled.value);
+        await scrollToBottom(true);
       } catch (error) {
+        // Not sent: give the command back to the player to send again
         log("Error sending command:", error);
+        if (!userInput.value) userInput.value = command;
+        showError(UNREACHABLE);
       }
     };
 
@@ -425,17 +495,14 @@ export default defineComponent({
       }
 
       try {
-        await scrollToBottom();
-
         const base64Audio = await blobToBase64(audioBlob);
-
-        // Send via WebSocket - the transcription and response will come via WebSocket events
+        // The transcription and response will come via WebSocket events
         await wsSendAudioCommand(base64Audio, imageGenerationEnabled.value);
       } catch (error) {
-        addLocalMessage("Error processing audio. Please try again.");
+        addLocalMessage("Error sending the recording. Please try again.");
         log("Error sending audio:", error);
       } finally {
-        await scrollToBottom();
+        await scrollToBottom(true);
       }
     };
 
@@ -446,7 +513,7 @@ export default defineComponent({
     });
 
     onMounted(async () => {
-      // Set up auto-scroll callback for streaming
+      // Follow new text as it arrives, unless the player has scrolled up to read
       setScrollCallback(() => {
         scrollToBottom();
       });
@@ -460,6 +527,7 @@ export default defineComponent({
         await connect();
         log("WebSocket connected successfully");
       } catch (error) {
+        // Not fatal here: each request connects again, and says so if it cannot
         log("Failed to connect to WebSocket:", error);
       }
 
@@ -478,6 +546,9 @@ export default defineComponent({
 
     return {
       messages,
+      connectionState,
+      retryConnection,
+      previousSetup,
       userInput,
       messageList,
       sendCommand,

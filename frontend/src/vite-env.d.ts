@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_BACKEND_URL?: string;
+  /** The game server's WebSocket URL, when it is not proxied at `/ws` on the page's own origin. */
   readonly VITE_WS_URL?: string;
 }
 

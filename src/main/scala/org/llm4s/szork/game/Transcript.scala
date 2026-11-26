@@ -9,7 +9,8 @@ import org.llm4s.llmconnect.model.{AssistantMessage, Message, UserMessage}
   * structured answer, shown as its narration). Left out:
   *   - the hidden first turn, [[GameConstants.Prompts.INIT_ADVENTURE]] (its narration, the opening scene, is shown)
   *   - tool calls and their results
-  *   - commands an input guardrail refused, and turns that failed: neither is stored in the thread
+  *   - commands an input guardrail refused, and turns that did not complete (failed, cut off at a limit, or discarded):
+  *     neither is kept in the conversation
   *   - llm4s's request to correct an invalid answer, which is never stored either
   */
 object Transcript {

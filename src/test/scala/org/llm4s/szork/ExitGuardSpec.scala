@@ -275,16 +275,16 @@ class ExitGuardSpec extends AnyFunSuite with Matchers {
     stillAtTheMarket(engine)
   }
 
-  test("a move the middleware could not read is still not recorded: the engine overrules it") {
-    // llm4s finds the JSON after prose with braces of its own; the middleware reads only plain or simply wrapped JSON
-    val llm = dm { case ScriptedDm.Command("go east") => Reply.text(s"A note {of sorts}: $ThroughTheArch") }
+  test("an answer with prose and braces of its own round its JSON is checked as the JSON llm4s takes from it") {
+    val llm = dm {
+      case ScriptedDm.Command("go east") => Reply.text(s"A note {of sorts}: $ThroughTheArch")
+      case c if corrected(c) => Reply.text(ArchAsks)
+    }
     val engine = started(llm)
 
-    val text = play(engine, "go east", streaming = false)._1.text
-    text should include("locked")
-    text should include(Riddle)
+    play(engine, "go east", streaming = false)._1.text shouldBe "The arch asks its riddle; you have no answer."
     stillAtTheMarket(engine)
-    turnCalls(llm) shouldBe 1
+    turnCalls(llm) shouldBe 2
   }
 
   test("a move refused after two rounds of tool calls is still offered the tools to open the way") {

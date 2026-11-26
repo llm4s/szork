@@ -3,7 +3,6 @@ package org.llm4s.szork.persistence
 import org.llm4s.szork.api.{GameTheme, ArtStyle}
 import org.llm4s.szork.game.{GameScene, AdventureOutline, WorldSnapshot}
 import org.llm4s.llmconnect.model.Message
-import org.llm4s.szork.error.ErrorHandling._
 
 case class GameState(
   gameId: String,
@@ -36,23 +35,3 @@ case class GameMetadata(
   currentStep: Int = 1,
   totalSteps: Int = 1
 )
-
-object GamePersistence {
-  def listGames(): List[GameMetadata] =
-    // Delegate to StepPersistence
-    StepPersistence.listGames()
-
-  def deleteGame(gameId: String): SzorkResult[Unit] =
-    // Delegate to StepPersistence
-    StepPersistence.deleteGame(gameId)
-
-  /** Load a game from step-based persistence.
-    *
-    * @param gameId
-    *   Game identifier
-    * @return
-    *   GameState or error
-    */
-  def loadGame(gameId: String): SzorkResult[GameState] =
-    StepPersistence.loadLatestStep(gameId).map(_.gameState)
-}

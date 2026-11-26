@@ -23,11 +23,10 @@ import scala.jdk.CollectionConverters._
   *   game.json              # GameMetadata
   *   step-0001/
   *     metadata.json        # StepMetadata
-  *     state.json           # GameState
+  *     state.json           # GameState, with the agent's whole conversation (agentMessages)
   *     command.txt          # User command (if any)
   *     response.txt         # Narration text
-  *     response.json        # Structured response
-  *     messages.json        # Agent messages
+  *     response.json        # The scene described (if any)
   *     tool-calls.json      # Tool calls (if any)
   *     outline.json         # Adventure outline (step 1 only)
   *   step-0002/
@@ -177,15 +176,10 @@ object StepPersistence {
     saveText(stepDir.resolve("response.txt"), stepData.narrationText)
 
     // Save structured response (if present)
-    stepData.response.foreach { resp =>
-      val responseJson = resp match {
-        case SceneResponse(scene) =>
-          ujson.Obj(
-            "type" -> "scene",
-            "scene" -> ujson.read(GameScene.toJson(scene))
-          )
-      }
-      saveJson(stepDir.resolve("response.json"), responseJson)
+    stepData.response.foreach { response =>
+      saveJson(
+        stepDir.resolve("response.json"),
+        ujson.Obj("type" -> "scene", "scene" -> ujson.read(GameScene.toJson(response.scene))))
     }
 
     // Save tool calls (if any)

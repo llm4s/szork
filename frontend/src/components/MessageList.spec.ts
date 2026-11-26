@@ -68,7 +68,7 @@ describe("MessageList", () => {
         },
       },
     ]);
-    expect(wrapper.find(".exits-info").text()).toBe("Exits:north (to the forest),east");
+    expect(wrapper.find(".exits-info").text()).toBe("Exits: north (to the forest), east");
   });
 
   it("shows a streaming cursor, then the scene image or its spinner", () => {

@@ -3,7 +3,7 @@
     <div class="selection-content">
       <h1 class="selection-title">SZork Adventures</h1>
       <!-- Capability Badges -->
-      <div class="capabilities" v-if="featureFlagsLoaded">
+      <div class="capabilities" v-if="featureFlags">
         <v-chip class="mr-2 mb-2" :color="featureFlags.llm.available ? 'primary' : 'grey'" variant="outlined" label>
           LLM: {{ featureFlags.llm.provider || "Unavailable" }}
         </v-chip>
@@ -86,6 +86,14 @@
         <v-progress-circular indeterminate color="primary" size="40" width="3"></v-progress-circular>
       </div>
 
+      <div v-else-if="gamesError" class="games-error" role="alert">
+        <p>Could not fetch your saved adventures.</p>
+        <v-btn variant="outlined" class="retry-games" @click="loadSavedGames">
+          <v-icon start>mdi-refresh</v-icon>
+          Try again
+        </v-btn>
+      </div>
+
       <div v-else-if="savedGames.length > 0" class="saved-games-section">
         <h2 class="section-title">Continue Your Adventures</h2>
         <div class="games-grid">
@@ -116,7 +124,14 @@
                 <v-icon end>mdi-play</v-icon>
               </v-btn>
               <v-spacer></v-spacer>
-              <v-btn variant="text" color="error" icon @click.stop="confirmDelete(game)" title="Delete Save">
+              <v-btn
+                variant="text"
+                color="error"
+                icon
+                @click.stop="confirmDelete(game)"
+                title="Delete Save"
+                :aria-label="`Delete ${game.title}`"
+              >
                 <v-icon>mdi-delete</v-icon>
               </v-btn>
             </v-card-actions>
@@ -144,13 +159,27 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-snackbar v-model="errorSnackbar" color="error" :timeout="6000" location="top">
+      {{ errorMessage }}
+      <template v-slot:actions>
+        <v-btn variant="text" @click="errorSnackbar = false">Close</v-btn>
+      </template>
+    </v-snackbar>
   </div>
 </template>
 
 <script lang="ts">
 import { defineComponent, ref, onMounted } from "vue";
 import axios from "axios";
-import type { AdventureSummary, FeatureFlags, SavedGameSummary } from "@/types/api";
+import { useFeatureFlags } from "@/composables/useFeatureFlags";
+import type {
+  AdventureSummary,
+  AdventuresResponse,
+  DeleteGameResponse,
+  GamesResponse,
+  SavedGameSummary,
+} from "@/types/api";
 
 export default defineComponent({
   name: "GameSelection",
@@ -160,29 +189,32 @@ export default defineComponent({
     // The adventure library: adventures kept to be played again
     const adventures = ref<AdventureSummary[]>([]);
     const loading = ref(true);
-    const featureFlagsLoaded = ref(false);
-    const featureFlags = ref<FeatureFlags>({
-      llm: { provider: "", available: false },
-      image: { enabled: true, provider: "", available: false },
-      music: { enabled: true, available: false },
-      tts: { enabled: true, available: false },
-      stt: { enabled: true, available: false },
-    });
+    // The saved games could not be fetched (rather than there being none)
+    const gamesError = ref(false);
+    const { flags: featureFlags, load: loadFeatureFlags } = useFeatureFlags();
     const deleteDialog = ref(false);
     const gameToDelete = ref<SavedGameSummary | null>(null);
+    const errorSnackbar = ref(false);
+    const errorMessage = ref("");
+
+    const showError = (text: string) => {
+      errorMessage.value = text;
+      errorSnackbar.value = true;
+    };
 
     const loadSavedGames = async () => {
+      loading.value = true;
+      gamesError.value = false;
       try {
-        loading.value = true;
-        const response = await axios.get("/api/games");
-        if (response.data.status === "success") {
-          savedGames.value = (response.data.games as SavedGameSummary[]).map((game) => ({
-            ...game,
-            title: game.title || "Untitled Adventure",
-          }));
-        }
+        const response = await axios.get<GamesResponse>("/api/games");
+        if (response.data.status !== "success") throw new Error(response.data.message ?? "The server refused");
+        savedGames.value = response.data.games.map((game) => ({
+          ...game,
+          title: game.title || "Untitled Adventure",
+        }));
       } catch (error) {
         console.error("Error loading saved games:", error);
+        gamesError.value = true;
       } finally {
         loading.value = false;
       }
@@ -190,8 +222,8 @@ export default defineComponent({
 
     const loadAdventures = async () => {
       try {
-        const response = await axios.get("/api/adventures");
-        if (response.data.status === "success") adventures.value = response.data.adventures as AdventureSummary[];
+        const response = await axios.get<AdventuresResponse>("/api/adventures");
+        if (response.data.status === "success") adventures.value = response.data.adventures;
       } catch (error) {
         console.warn("Unable to fetch the adventure library:", error);
       }
@@ -199,17 +231,6 @@ export default defineComponent({
 
     const playAdventure = (adventure: AdventureSummary) => {
       emit("play-adventure", adventure);
-    };
-
-    const loadFeatureFlags = async () => {
-      try {
-        const resp = await axios.get("/api/feature-flags");
-        featureFlags.value = resp.data;
-        featureFlagsLoaded.value = true;
-      } catch (e) {
-        console.warn("Unable to fetch feature flags:", e);
-        featureFlagsLoaded.value = false;
-      }
     };
 
     const formatDate = (timestamp: number) => {
@@ -258,19 +279,19 @@ export default defineComponent({
     };
 
     const deleteGame = async () => {
-      if (!gameToDelete.value) return;
+      // The dialog may be closed (clearing gameToDelete) while the request is on its way
+      const gameId = gameToDelete.value?.gameId;
+      if (!gameId) return;
 
       try {
-        // Call the backend to delete the game
-        await axios.delete(`/api/game/${gameToDelete.value.gameId}`);
-
-        // Remove from the frontend list
-        savedGames.value = savedGames.value.filter((g) => g.gameId !== gameToDelete.value!.gameId);
+        const response = await axios.delete<DeleteGameResponse>(`/api/game/${encodeURIComponent(gameId)}`);
+        if (response.data.status !== "success") throw new Error(response.data.error);
+        savedGames.value = savedGames.value.filter((g) => g.gameId !== gameId);
         deleteDialog.value = false;
         gameToDelete.value = null;
       } catch (error) {
         console.error("Error deleting game:", error);
-        alert("Failed to delete the game. Please try again.");
+        showError("Failed to delete the game. Please try again.");
       }
     };
 
@@ -285,9 +306,12 @@ export default defineComponent({
       adventures,
       playAdventure,
       loading,
+      gamesError,
+      loadSavedGames,
       deleteDialog,
-      featureFlagsLoaded,
       featureFlags,
+      errorSnackbar,
+      errorMessage,
       gameToDelete,
       formatDate,
       formatRelativeDate,
@@ -433,6 +457,17 @@ export default defineComponent({
 .adventure-quest {
   margin-bottom: 0.75rem;
   opacity: 0.85;
+}
+
+.games-error {
+  text-align: center;
+  padding: 2rem;
+  color: #ef9a9a;
+}
+
+.games-error p {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
 }
 
 .no-games {

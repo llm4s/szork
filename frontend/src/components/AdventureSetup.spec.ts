@@ -37,6 +37,7 @@ async function mountSetup() {
 describe("AdventureSetup", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(axios.get).mockResolvedValue({ data: flags });
     vi.mocked(axios.post).mockResolvedValue({ data: { status: "success", outline } });
   });
@@ -116,6 +117,83 @@ describe("AdventureSetup", () => {
 
     const [[config]] = wrapper.emitted("adventure-ready") as [[AdventureConfig]];
     expect(config.theme).toEqual({ id: "custom", name: "Custom Adventure", prompt: "An enhanced airship adventure" });
+  });
+
+  it("continues with a custom theme on the click that ends its editing", async () => {
+    let finishValidation: (value: unknown) => void = () => {};
+    vi.mocked(axios.post).mockImplementation(
+      (url: string) =>
+        new Promise((resolve) =>
+          url === "/api/game/validate-theme"
+            ? (finishValidation = resolve)
+            : resolve({ data: { status: "success", outline } })
+        )
+    );
+    const wrapper = await mountSetup();
+    await wrapper.find(".custom-theme").trigger("click");
+    const input = wrapper.find(".custom-theme-input input");
+    await input.setValue("A steampunk airship exploring islands");
+    await input.trigger("blur"); // starts the validation
+    expect(wrapper.find(".continue-btn").attributes("disabled")).toBeUndefined();
+
+    await wrapper.find(".continue-btn").trigger("click");
+    finishValidation({ data: { valid: true } });
+    await flushPromises();
+    expect(wrapper.find(".style-card").exists()).toBe(true);
+    expect(vi.mocked(axios.post).mock.calls.filter(([url]) => url === "/api/game/validate-theme")).toHaveLength(1);
+  });
+
+  it("says when the adventure cannot be designed, and lets the player try again", async () => {
+    vi.mocked(axios.post).mockRejectedValueOnce(new Error("Network Error"));
+    const wrapper = await mountSetup();
+    await wrapper.findAll(".theme-card")[0].trigger("click");
+    await wrapper.find(".continue-btn").trigger("click");
+    await wrapper.findAll(".style-card")[1].trigger("click");
+    await wrapper.find(".begin-adventure-btn").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".generation-failed").text()).toContain("Network Error");
+    expect(wrapper.emitted("adventure-ready")).toBeUndefined();
+
+    await wrapper.find(".retry-generation").trigger("click");
+    await flushPromises();
+    await vi.runAllTimersAsync();
+    const [[config]] = wrapper.emitted("adventure-ready") as [[AdventureConfig]];
+    expect(config.outline).toEqual(outline);
+  });
+
+  it("lets the player play without a designed adventure when it cannot be designed", async () => {
+    vi.mocked(axios.post).mockResolvedValue({ data: { status: "error", message: "The designer gave up" } });
+    const wrapper = await mountSetup();
+    await wrapper.findAll(".theme-card")[0].trigger("click");
+    await wrapper.find(".continue-btn").trigger("click");
+    await wrapper.findAll(".style-card")[1].trigger("click");
+    await wrapper.find(".begin-adventure-btn").trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".generation-failed").text()).toContain("The designer gave up");
+
+    await wrapper.find(".play-without-outline").trigger("click");
+    const [[config]] = wrapper.emitted("adventure-ready") as [[AdventureConfig]];
+    expect(config.outline).toBeNull();
+  });
+
+  it("resumes from a game that could not be started, without designing it again", async () => {
+    const previous: AdventureConfig = {
+      theme: { id: "underground", name: "Underground Realm", prompt: "Caves" },
+      style: { id: "illustration", name: "Pencil Art" },
+      outline,
+      adventureId: "the-lost-mine",
+      sessionFeatures: { image: false, music: false, tts: false, stt: true },
+    };
+    const wrapper = mountWithVuetify(AdventureSetup, { props: { previous } });
+    await flushPromises();
+    expect(wrapper.find(".style-card.selected").exists()).toBe(true);
+
+    await wrapper.find(".begin-adventure-btn").trigger("click");
+    await flushPromises();
+    expect(axios.post).not.toHaveBeenCalled();
+    const [[config]] = wrapper.emitted("adventure-ready") as [[AdventureConfig]];
+    expect(config).toEqual({ ...previous, theme: expect.objectContaining({ id: "underground" }) });
   });
 
   it("goes back to game selection", async () => {

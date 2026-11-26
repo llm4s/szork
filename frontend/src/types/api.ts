@@ -74,6 +74,15 @@ export interface SavedGameSummary {
   totalPlayTime: number;
 }
 
+/** The `/api/games` response. */
+export type GamesResponse = { status: "success"; games: SavedGameSummary[] } | { status: "error"; message?: string };
+
+/** The `DELETE /api/game/:gameId` response. */
+export type DeleteGameResponse = { status: "success"; message: string } | { status: "error"; error: string };
+
+/** The `/api/adventures` response. */
+export type AdventuresResponse = { status: "success"; adventures: AdventureSummary[] } | { status: "error" };
+
 /** A ready-made adventure in the `/api/adventures` response. */
 export interface AdventureSummary {
   id: string;
@@ -112,7 +121,7 @@ export interface SessionFeatures {
 export interface AdventureConfig {
   theme: ThemeChoice;
   style: StyleChoice;
-  /** Null when generation failed: the game starts without an outline. */
+  /** Null when the player chose to play without a designed adventure (after its design failed). */
   outline: AdventureOutline | null;
   /** The library adventure to play, when the outline was kept in (or came from) the adventure library. */
   adventureId?: string;

@@ -199,7 +199,7 @@ with the Dungeon Master) and the cached `ImageClient` over it; speech clients co
 - **Ports**: 8090 (HTTP), 9002 (WebSocket), bound to `127.0.0.1` unless `SZORK_HOST` is set
 - **Hot Reload**: sbt-revolver (`sbt "~szorkStart"`)
 - **Tracing**: `TRACING_MODE=console|langfuse` (off by default)
-- **Frontend**: Vue 3 + TypeScript + Vuetify 3, Vite dev server on port 3090 proxying `/api` and `/ws`
+- **Frontend**: Vue 3 + TypeScript + Vuetify 4, Vite dev server on port 3090 proxying `/api` and `/ws`
 
 ## Testing
 

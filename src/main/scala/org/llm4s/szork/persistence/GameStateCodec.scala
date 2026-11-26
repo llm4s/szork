@@ -2,7 +2,7 @@ package org.llm4s.szork.persistence
 
 import org.llm4s.szork.api.{GameTheme, ArtStyle}
 import org.llm4s.szork.game.{GameScene, AdventureGenerator, Exit, WorldSnapshot}
-import ujson._
+import ujson.*
 
 object GameStateCodec {
   private def ts(n: Long): Num = Num(n.toDouble)

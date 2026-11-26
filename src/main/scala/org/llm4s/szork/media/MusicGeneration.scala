@@ -3,8 +3,8 @@ package org.llm4s.szork.media
 import org.llm4s.szork.config.{ConfigReader, EnvLoader}
 import org.llm4s.security.Secret
 import org.llm4s.szork.api.{MediaNetworkConfig, MusicPollConfig}
-import org.llm4s.szork.error._
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.error.*
+import org.llm4s.szork.error.ErrorHandling.*
 import org.llm4s.szork.game.DungeonMasterOutput
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -19,24 +19,18 @@ import scala.util.{Failure, Success, Try}
   * prediction does not succeed (the wait times out, polling keeps failing, the thread is interrupted) it is cancelled,
   * so it does not keep running and being billed.
   *
-  * @param replicateApiKey
-  *   the Replicate key (None: music is unavailable)
-  * @param net
-  *   timeouts for the Replicate calls
-  * @param poll
-  *   how long to wait for a prediction: `maxAttempts` intervals of `pollIntervalMs`, as a deadline (a poll that is
-  *   itself slow does not stretch it)
-  * @param baseUrl
-  *   Replicate's API (a local server in tests)
+  * Without a `replicateApiKey` music is unavailable. `net` sets the timeouts of the Replicate calls; `poll` is how long
+  * to wait for a prediction (`maxAttempts` intervals of `pollIntervalMs`, as a deadline: a slow poll does not stretch
+  * it). `baseUrl` is Replicate's API, a local server in tests.
   */
 class MusicGeneration(
   replicateApiKey: Option[Secret],
   net: MediaNetworkConfig,
   poll: MusicPollConfig,
   baseUrl: String = MusicGeneration.ReplicateApi) {
-  import MusicGeneration._
+  import MusicGeneration.*
 
-  private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   def isAvailable: Boolean = replicateApiKey.isDefined
 

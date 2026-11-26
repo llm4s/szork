@@ -6,7 +6,7 @@ import org.llm4s.llmconnect.model.CompletionOptions
 import org.llm4s.toolapi.{ObjectSchema, Schema}
 import upickle.default.ReadWriter
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 
 /** What the Dungeon Master asks the NPC dialogue subagent: who is spoken to, what the player says, and the scene. */
 final case class NpcDialogueRequest(character: String, playerSays: String, situation: String) derives ReadWriter

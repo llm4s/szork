@@ -1,21 +1,20 @@
 package org.llm4s.szork.persistence
 
 import org.llm4s.szork.game.{GameScene, AdventureGenerator}
-import org.llm4s.szork.error._
-import org.llm4s.szork.error.ErrorHandling._
-import ujson._
+import org.llm4s.szork.error.*
+import org.llm4s.szork.error.ErrorHandling.*
+import ujson.*
 import org.llm4s.szork.game.IdGenerator
 import org.llm4s.szork.media.AtomicFiles
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.nio.charset.StandardCharsets
 import org.slf4j.{Logger, LoggerFactory}
 import scala.util.{Try, Using}
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 
 /** Step-based game persistence.
   *
-  * Unified persistence layer for both regular gameplay and debug sessions. Each game is stored as a directory with
-  * numbered step subdirectories.
+  * Each game is stored as a directory with numbered step subdirectories.
   *
   * Directory structure:
   * ```
@@ -34,7 +33,7 @@ import scala.jdk.CollectionConverters._
   * ```
   */
 object StepPersistence {
-  private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
   // Where games are saved: the server's SzorkConfig.savesDirectory, set at startup. Tests use a temporary directory.
   @volatile private var saveRoot: Path = Paths.get("szork-saves")
 

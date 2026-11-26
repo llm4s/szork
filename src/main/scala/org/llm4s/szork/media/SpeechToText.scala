@@ -9,15 +9,15 @@ import org.llm4s.speech.config.STTConfig
 import org.llm4s.szork.api.SpeechConfig
 import org.llm4s.speech.SpeechProviderSelector
 import org.llm4s.speech.stt.{SpeechToText => SttClient}
-import org.llm4s.szork.error._
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.error.*
+import org.llm4s.szork.error.ErrorHandling.*
 
 /** Voice commands via llm4s-speech's speech-to-text client (OpenAI Whisper), chosen by `SpeechProviderSelector`.
   *
   * Configured by OPENAI_API_KEY and the [[SpeechConfig]] model.
   */
 final class SpeechToText private (client: SttClient) {
-  private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   /** Transcribes a browser recording. The bytes are uploaded as a file named like `filename`, so Whisper reads the
     * recording's real format (usually webm) rather than treating it as WAV.

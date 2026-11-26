@@ -1,8 +1,8 @@
 package org.llm4s.szork.game
 
-import org.llm4s.toolapi._
+import org.llm4s.toolapi.*
 import org.llm4s.types.Result
-import upickle.default._
+import upickle.default.*
 import org.slf4j.{Logger, LoggerFactory}
 
 /** A player's inventory. Each game has its own; tool calls and saves may touch it from different threads, so every
@@ -48,7 +48,7 @@ object PlayerInventory {
   * [[WorldState]].
   */
 object GameTools {
-  private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
+  private val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
   /** The tools that only read the game: calling one changes nothing. */
   val ReadOnly: Set[String] = Set("list_inventory", "get_location_state", "get_world_summary")
@@ -71,8 +71,8 @@ object GameTools {
     inventory: List[String]
   )
 
-  implicit val inventoryListResultRW: ReadWriter[InventoryListResult] = macroRW
-  implicit val inventoryModifyResultRW: ReadWriter[InventoryModifyResult] = macroRW
+  given inventoryListResultRW: ReadWriter[InventoryListResult] = macroRW
+  given inventoryModifyResultRW: ReadWriter[InventoryModifyResult] = macroRW
 
   private val listInventorySchema: ObjectSchema[Map[String, Any]] = Schema
     .`object`[Map[String, Any]]("Simple returns the list of items in your inventory")
@@ -160,12 +160,12 @@ object GameTools {
     quests: List[QuestView]
   )
 
-  implicit val exitViewRW: ReadWriter[ExitView] = macroRW
-  implicit val locationViewRW: ReadWriter[LocationView] = macroRW
-  implicit val worldChangeResultRW: ReadWriter[WorldChangeResult] = macroRW
-  implicit val npcViewRW: ReadWriter[NpcView] = macroRW
-  implicit val questViewRW: ReadWriter[QuestView] = macroRW
-  implicit val worldSummaryRW: ReadWriter[WorldSummary] = macroRW
+  given exitViewRW: ReadWriter[ExitView] = macroRW
+  given locationViewRW: ReadWriter[LocationView] = macroRW
+  given worldChangeResultRW: ReadWriter[WorldChangeResult] = macroRW
+  given npcViewRW: ReadWriter[NpcView] = macroRW
+  given questViewRW: ReadWriter[QuestView] = macroRW
+  given worldSummaryRW: ReadWriter[WorldSummary] = macroRW
 
   /** An optional string parameter (llm4s's `getOptionalString`: absent or null is None), and blank is None too. */
   private def optionalString(params: SafeParameterExtractor, name: String): Either[ToolParameterError, Option[String]] =

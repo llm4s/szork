@@ -1,6 +1,6 @@
 package org.llm4s.szork.spi
 
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.error.ErrorHandling.*
 
 trait Clock {
   def now(): Long

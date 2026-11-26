@@ -2,7 +2,7 @@ package org.llm4s.szork.adventures
 
 import org.llm4s.szork.adapters.DefaultMusicClient
 import org.llm4s.szork.api.{ArtStyle, GameTheme, SzorkConfig}
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.error.ErrorHandling.*
 import org.llm4s.szork.game.{AdventureGenerator, ArtDirector, DungeonMasterOutput, SceneMedia}
 import org.llm4s.szork.media.{MediaPlanner, SceneImages}
 import org.llm4s.szork.spi.{ImageClient, MusicClient}

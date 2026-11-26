@@ -11,7 +11,7 @@ object ErrorHandling {
   object Logging {
 
     /** Log an error if present, pass through the result unchanged */
-    def logError[T](operation: String)(result: SzorkResult[T])(implicit logger: Logger): SzorkResult[T] = {
+    def logError[T](operation: String)(result: SzorkResult[T])(using logger: Logger): SzorkResult[T] = {
       result.left.foreach { error =>
         error.cause match {
           case Some(throwable) => logger.error(s"$operation failed: ${error.message}", throwable)

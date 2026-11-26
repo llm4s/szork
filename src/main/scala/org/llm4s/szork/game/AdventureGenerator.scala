@@ -2,8 +2,8 @@ package org.llm4s.szork.game
 
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.ReasoningEffort
-import org.llm4s.szork.error._
-import org.llm4s.szork.error.ErrorHandling._
+import org.llm4s.szork.error.*
+import org.llm4s.szork.error.ErrorHandling.*
 import org.llm4s.trace.Tracing
 import org.slf4j.LoggerFactory
 import upickle.default.ReadWriter
@@ -275,7 +275,7 @@ object AdventureGenerator {
     */
   def failureReason(error: org.llm4s.error.LLMError): String = {
     import org.llm4s.agent.graph.GraphError
-    import org.llm4s.error._
+    import org.llm4s.error.*
     error match {
       case GraphError.NodeFailed(_, _, cause) => failureReason(cause)
       case GraphError.ToolFailed(_, _, cause) => failureReason(cause)

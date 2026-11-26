@@ -1,6 +1,6 @@
 package org.llm4s.szork.game
 
-import upickle.default._
+import upickle.default.*
 
 /** Whether an exit can be passed. The adventure outline states it as a string (one of
   * [[AdventureOutlineSchema.ExitStates]]); the world state keeps it as this enum.

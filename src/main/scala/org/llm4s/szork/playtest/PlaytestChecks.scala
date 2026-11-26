@@ -2,7 +2,9 @@ package org.llm4s.szork.playtest
 
 import org.llm4s.szork.game.{AdventureOutline, GameEngine, GameScene, OutlineMap, WorldSnapshot}
 
-/** One turn of a playtest: what the player typed, what came back, and the game's state on either side of it. */
+/** One turn of a playtest: what the player typed, what came back, and the game's state on either side of it.
+  * `playerError` is why the player could not choose a command, when it could not (it then looked around).
+  */
 final case class PlayedTurn(
   number: Int,
   command: String,
@@ -13,7 +15,8 @@ final case class PlayedTurn(
   inventory: List[String],
   refused: Boolean = false,
   usage: Option[GameEngine.TurnUsage] = None,
-  error: Option[String] = None
+  error: Option[String] = None,
+  playerError: Option[String] = None
 )
 
 /** Something a playtest found. A `hard` finding is a broken rule of the game (the playtest fails); a soft one is a sign
@@ -48,7 +51,7 @@ object PlaytestChecks {
   /** What is wrong with `turn`, given the turns `earlier` in the game. */
   def turn(turn: PlayedTurn, earlier: Seq[PlayedTurn]): List[Finding] = {
     def finding(check: String, hard: Boolean, detail: String) = Finding(check, hard, detail, Some(turn.number))
-    turn.error match {
+    turn.playerError.map(finding("player-failed", hard = false, _)).toList ++ (turn.error match {
       case Some(error) => List(finding("turn-failed", hard = true, error))
       case None =>
         val text = turn.narration.trim
@@ -73,16 +76,22 @@ object PlaytestChecks {
             .filter(_.modelCalls > ManyModelCalls)
             .map(usage => finding("many-model-calls", hard = false, s"the turn took ${usage.modelCalls} model calls"))
         ).flatten
-    }
+    })
   }
 
-  /** What is wrong with the game as a whole. */
+  /** What is wrong with the game as a whole. A playtest whose player never chose a command has tested nothing, which is
+    * a hard finding.
+    */
   def game(turns: Seq[PlayedTurn]): List[Finding] = {
     val visited = turns.flatMap(_.after.currentLocation).distinct
-    Option
-      .when(turns.sizeIs >= 10 && visited.sizeIs <= 1)(
-        Finding("never-left-the-start", hard = false, s"${turns.size} turns were all played at ${visited.mkString}"))
-      .toList
+    List(
+      Option.when(turns.sizeIs >= 10 && visited.sizeIs <= 1)(
+        Finding("never-left-the-start", hard = false, s"${turns.size} turns were all played at ${visited.mkString}")),
+      Option.when(turns.nonEmpty && turns.forall(_.playerError.isDefined))(Finding(
+        "player-never-played",
+        hard = true,
+        s"the player could not choose a command on any of the ${turns.size} turns: ${turns.head.playerError.mkString}"))
+    ).flatten
   }
 
   /** The move `turn` made through an exit that was not open once the turn was over (an exit the Dungeon Master opened

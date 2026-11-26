@@ -1,35 +1,60 @@
 package org.llm4s.szork.playtest
 
 import org.llm4s.llmconnect.LLMClient
-import org.llm4s.llmconnect.model.{Conversation, ReasoningEffort, SystemMessage, UserMessage}
-import org.llm4s.szork.api.{AgentTracing, SzorkConfig}
-import org.llm4s.szork.adventures.AdventureLibrary
+import org.llm4s.llmconnect.model.{CompletionOptions, Conversation, ReasoningEffort, SystemMessage, UserMessage}
+import org.llm4s.szork.api.{AgentTracing, EngineFactory, SessionFeatures, SzorkConfig}
+import org.llm4s.szork.adventures.{Adventure, AdventureLibrary}
 import org.llm4s.szork.error.ErrorHandling.SzorkResult
-import org.llm4s.szork.error.NotFoundError
+import org.llm4s.szork.error.{ConfigurationError, NotFoundError}
 import org.llm4s.szork.game.{AdventureGenerator, AdventureOutline, ExitState, GameEngine, GameScene, IdGenerator}
 import org.llm4s.trace.Tracing
 
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Files, Path, Paths}
+import scala.util.Try
 
 /** Chooses the player's next command in a playtest. */
 trait Player {
-  def next(narration: String, scene: Option[GameScene], inventory: List[String], played: Seq[PlayedTurn]): String
+
+  /** The player's next command, or why the player could not choose one (the playtest then looks around, and reports
+    * it).
+    */
+  def next(
+    narration: String,
+    scene: Option[GameScene],
+    inventory: List[String],
+    played: Seq[PlayedTurn]): Either[String, String]
 }
 
 object Player {
 
+  /** The most tokens the model player may answer with: one short command, and room for a model that reasons first
+    * (llm4s's Anthropic default leaves a Claude 5 model too little).
+    */
+  val MaxOutputTokens: Int = 4000
+
   /** A player that types `commands` in order, then looks around. */
   def scripted(commands: String*): Player = new Player {
     private val remaining = commands.iterator
-    def next(narration: String, scene: Option[GameScene], inventory: List[String], played: Seq[PlayedTurn]): String =
-      if (remaining.hasNext) remaining.next() else "look"
+    def next(
+      narration: String,
+      scene: Option[GameScene],
+      inventory: List[String],
+      played: Seq[PlayedTurn]): Either[String, String] =
+      Right(if (remaining.hasNext) remaining.next() else "look")
   }
 
   /** A player played by a model: it reads the latest narration, the exits and what it carries, and types one terse
-    * command. A call that fails looks around instead, so the game goes on.
+    * command, reasoning with effort `reasoning` on a model that reasons. A call that fails, or answers with no command,
+    * is reported as the player's failure.
     */
-  def model(llm: LLMClient): Player = new Player {
-    def next(narration: String, scene: Option[GameScene], inventory: List[String], played: Seq[PlayedTurn]): String = {
+  def model(llm: LLMClient, reasoning: Option[ReasoningEffort] = None): Player = new Player {
+    private val options = CompletionOptions().withMaxTokens(MaxOutputTokens).withReasoning(reasoning)
+
+    def next(
+      narration: String,
+      scene: Option[GameScene],
+      inventory: List[String],
+      played: Seq[PlayedTurn]): Either[String, String] = {
       val recent = played.takeRight(8).map(t => s"> ${t.command}\n${t.narration}").mkString("\n\n")
       val exits = scene.toList.flatMap(_.exits).map(_.direction).mkString(", ")
       val prompt =
@@ -51,11 +76,15 @@ object Player {
       val conversation =
         Conversation(
           Seq(SystemMessage("You answer with the player's next command and nothing else."), UserMessage(prompt)))
-      llm
-        .complete(conversation)
-        .toOption
-        .flatMap(_.content.linesIterator.map(_.trim.stripPrefix(">").trim).find(_.nonEmpty))
-        .fold("look")(_.take(80).toLowerCase)
+      llm.complete(conversation, options) match {
+        case Left(error) => Left(s"the player model failed: ${error.message}")
+        case Right(completion) =>
+          completion.content.linesIterator
+            .map(_.trim.stripPrefix(">").trim)
+            .find(_.nonEmpty)
+            .map(_.take(80).toLowerCase)
+            .toRight("the player model answered with no command")
+      }
     }
   }
 }
@@ -68,14 +97,17 @@ object Player {
   *   The most turns the player takes (the playtest ends sooner if the adventure does)
   * @param probeExits
   *   Whether to walk at the start location's locked and sealed exits in games of their own, to see that they hold
-  * @param reasoning
-  *   How hard the designer and the Dungeon Master reason, on a model that reasons (None: the model's default)
+  * @param artStyle
+  *   The art style the Dungeon Master is told pictures are drawn in (None: the default)
+  * @param adventureId
+  *   The adventure library's id of the adventure played, if it is one (see [[Playtest.playAdventure]])
   */
 final case class PlaytestConfig(
   theme: String,
   turns: Int = 25,
   probeExits: Boolean = true,
-  reasoning: Option[ReasoningEffort] = None)
+  artStyle: Option[String] = None,
+  adventureId: Option[String] = None)
 
 /** What a playtest did and found. */
 final case class PlaytestReport(
@@ -142,32 +174,59 @@ final case class PlaytestReport(
 /** Designs an adventure, plays it with a [[Player]] and holds every turn to [[PlaytestChecks]].
   *
   * It is what `sbt test` cannot be: the designer, the Dungeon Master, the tools, the world state and the exit guard
-  * together, against whichever model is configured. With scripted clients it runs in the test suite too.
+  * together, against whichever model is configured. With scripted clients it runs in the test suite too. Its games are
+  * made as the server makes them ([[EngineFactory.default]]), from the same settings: the Dungeon Master's context
+  * window, input guardrail, subagents and reasoning effort - text only.
   *
   * {{{
   * sbt "runMain org.llm4s.szork.playtest.Playtest --theme 'a haunted lighthouse' --turns 30 --report playtest.json"
   * }}}
   *
   * The exit status is 0 when the game kept its rules, 1 when a hard finding was made, and 2 when the playtest could not
-  * run (no model configured, or the adventure could not be designed or started).
+  * run (no model configured, or the adventure could not be designed or started) or its report could not be written.
   */
 object Playtest {
 
   /** The most locked exits probed: each is a game of its own (an opening turn and one command). */
   val MaxProbes: Int = 2
 
-  /** Designs the adventure for `config.theme` and plays it. */
+  /** What a playtest's games have: text only, and nothing saved. */
+  private val TextOnly = SessionFeatures(tts = false, stt = false, image = false, music = false, autoSave = false)
+
+  /** Designs the adventure for `config.theme` and plays it, with the designer and the games set up by `settings`. */
   def run(
     config: PlaytestConfig,
     llm: LLMClient,
     player: Player,
     model: String = "scripted",
     tracing: Option[Tracing] = None,
-    log: String => Unit = _ => ()
+    log: String => Unit = _ => (),
+    settings: SzorkConfig = SzorkConfig()
   ): SzorkResult[PlaytestReport] =
     AdventureGenerator
-      .generateAdventureOutline(config.theme, tracing, config.reasoning)(using llm)
-      .flatMap(outline => play(config, outline, llm, player, model, tracing, log))
+      .generateAdventureOutline(config.theme, tracing, settings.reasoningEffort)(using llm)
+      .flatMap(outline => play(config, outline, llm, player, model, tracing, log, settings))
+
+  /** Plays the library's `adventure` as a game of it is played: under its own theme and art style, as that adventure
+    * (`config`'s theme and art style are replaced by the adventure's; an adventure with no theme is played under its
+    * title).
+    */
+  def playAdventure(
+    adventure: Adventure,
+    config: PlaytestConfig,
+    llm: LLMClient,
+    player: Player,
+    model: String = "scripted",
+    tracing: Option[Tracing] = None,
+    log: String => Unit = _ => (),
+    settings: SzorkConfig = SzorkConfig()
+  ): SzorkResult[PlaytestReport] = {
+    val own = config.copy(
+      theme = adventure.theme.fold(adventure.outline.title)(_.prompt),
+      artStyle = adventure.artStyle.map(_.id),
+      adventureId = Some(adventure.id))
+    play(own, adventure.outline, llm, player, model, tracing, log, settings)
+  }
 
   /** Plays `outline` and reports what was found. */
   def play(
@@ -177,19 +236,28 @@ object Playtest {
     player: Player,
     model: String = "scripted",
     tracing: Option[Tracing] = None,
-    log: String => Unit = _ => ()
+    log: String => Unit = _ => (),
+    settings: SzorkConfig = SzorkConfig()
   ): SzorkResult[PlaytestReport] = {
     log(s"Adventure: ${outline.title} (${outline.keyLocations.size} locations)")
-    val engine = newGame(outline, config, llm, tracing)
-    engine.initialize().map { opening =>
+    val engines = EngineFactory.default(llm, tracing, settings, imageClient = None)
+    for {
+      engine <- newGame(outline, config, engines)
+      opening <- engine.initialize()
+    } yield {
       log(s"\n$opening\n")
 
       @annotation.tailrec
-      def loop(narration: String, played: Vector[PlayedTurn], findings: List[Finding])
-        : (Vector[PlayedTurn], List[Finding]) =
+      def loop(
+        narration: String,
+        played: Vector[PlayedTurn],
+        findings: List[Finding]): (Vector[PlayedTurn], List[Finding]) =
         if (played.size >= config.turns || engine.ending.isDefined) (played, findings)
         else {
-          val command = player.next(narration, engine.getCurrentScene, engine.getInventory, played)
+          // A player that cannot choose looks around, and the failure is a finding of the turn
+          val chosen = player.next(narration, engine.getCurrentScene, engine.getInventory, played)
+          chosen.left.foreach(why => log(s"[the player could not choose: $why; looking around]"))
+          val command = chosen.getOrElse("look")
           val before = engine.getWorldState
           val result = engine.processCommand(command, generateAudio = false)
           val turn = PlayedTurn(
@@ -202,7 +270,8 @@ object Playtest {
             inventory = engine.getInventory,
             refused = result.exists(_.refused),
             usage = result.toOption.flatMap(_ => engine.lastTurnUsage),
-            error = result.left.toOption.map(_.message)
+            error = result.left.toOption.map(_.message),
+            playerError = chosen.left.toOption
           )
           val found = PlaytestChecks.turn(turn, played)
           log(s"> $command\n${turn.error.fold(turn.narration)(e => s"[failed: $e]")}")
@@ -213,7 +282,7 @@ object Playtest {
         }
 
       val (turns, found) = loop(opening, Vector.empty, Nil)
-      val probed = if (config.probeExits) probeExits(outline, config, llm, tracing, log) else Nil
+      val probed = if (config.probeExits) probeExits(outline, config, engines, log) else Nil
       PlaytestReport(
         model,
         config.theme,
@@ -230,15 +299,14 @@ object Playtest {
   private def probeExits(
     outline: AdventureOutline,
     config: PlaytestConfig,
-    llm: LLMClient,
-    tracing: Option[Tracing],
+    engines: EngineFactory,
     log: String => Unit): List[Finding] = {
     val shut = Set(ExitState.Locked.wire, ExitState.Sealed.wire)
     val exits = outline.keyLocations.headOption.toList.flatMap(_.exits).filter(exit => shut(exit.state)).take(MaxProbes)
     exits.flatMap { exit =>
-      val engine = newGame(outline, config, llm, tracing)
       val command = s"go ${exit.direction}"
       val outcome = for {
+        engine <- newGame(outline, config, engines)
         _ <- engine.initialize()
         start = engine.getWorldState.currentLocation
         _ <- engine.processCommand(command, generateAudio = false)
@@ -260,18 +328,26 @@ object Playtest {
     }
   }
 
+  /** A new game of `outline`, made by `engines` as the server makes one. */
   private def newGame(
     outline: AdventureOutline,
     config: PlaytestConfig,
-    llm: LLMClient,
-    tracing: Option[Tracing]): GameEngine =
-    GameEngine.create(
-      llmClient = llm,
-      sessionId = IdGenerator.sessionId(),
-      theme = Some(config.theme),
-      adventureOutline = Some(outline),
-      tracing = tracing,
-      reasoning = config.reasoning)
+    engines: EngineFactory): SzorkResult[GameEngine] =
+    engines
+      .create(IdGenerator.sessionId(), Some(config.theme), config.artStyle, Some(outline), TextOnly)
+      .left
+      .map(error => ConfigurationError(s"The game could not be started: $error"))
+      .map { engine =>
+        config.adventureId.foreach(engine.playAdventure)
+        engine
+      }
+
+  /** Writes `report`'s JSON to `path`, making the directories it needs, or says why it could not. */
+  def writeReport(report: PlaytestReport, path: Path): Either[String, Path] =
+    Try {
+      Option(path.toAbsolutePath.getParent).foreach(Files.createDirectories(_))
+      Files.writeString(path, ujson.write(report.toJson, indent = 2))
+    }.toEither.left.map(e => s"${e.getClass.getSimpleName}: ${e.getMessage}")
 
   private final case class Arguments(
     theme: String,
@@ -303,28 +379,30 @@ object Playtest {
           println(s"$problem\n$Usage")
           2
         case Right(arguments) =>
-          val model =
-            SzorkConfig.instance.llmConfig.fold("no model")(c => s"${c.provider}/${c.model.getOrElse("default")}")
+          val settings = SzorkConfig.instance
+          val model = settings.llmConfig.fold("no model")(c => s"${c.provider}/${c.model.getOrElse("default")}")
           SzorkConfig.getLLMClient() match {
             case Left(error) =>
               println(s"No LLM client: $error")
               2
             case Right(llm) =>
               val tracing = AgentTracing.fromEnvironment
-              val config =
-                PlaytestConfig(arguments.theme, arguments.turns, arguments.probe, SzorkConfig.instance.reasoningEffort)
-              println(
-                s"Playtest on $model, reasoning effort ${config.reasoning.fold("default")(_.name)}: ${config.theme} " +
-                  s"(up to ${config.turns} turns)")
+              val config = PlaytestConfig(arguments.theme, arguments.turns, arguments.probe)
+              val player = Player.model(llm, settings.reasoningEffort)
               // A library adventure is the same outline every run, so runs on different models compare like for like
-              val result = arguments.adventure match {
-                case None => run(config, llm, Player.model(llm), model, tracing, println)
-                case Some(id) =>
-                  AdventureLibrary.at(SzorkConfig.instance).load(id) match {
-                    case Some(adventure) =>
-                      play(config, adventure.outline, llm, Player.model(llm), model, tracing, println)
-                    case None => Left(NotFoundError(s"No adventure '$id' in the adventure library"))
-                  }
+              val adventure = arguments.adventure.map(id =>
+                AdventureLibrary
+                  .at(settings)
+                  .load(id)
+                  .toRight(NotFoundError(s"No adventure '$id' in the adventure library")))
+              println(
+                s"Playtest on $model, reasoning effort ${settings.reasoningEffort.fold("default")(_.name)}: " +
+                  s"${adventure.flatMap(_.toOption).fold(config.theme)(a => s"${a.outline.title} (${a.id})")} " +
+                  s"(up to ${config.turns} turns)")
+              val result = adventure match {
+                case None => run(config, llm, player, model, tracing, println, settings)
+                case Some(found) =>
+                  found.flatMap(a => playAdventure(a, config, llm, player, model, tracing, println, settings))
               }
               tracing.foreach(_.close())
               result match {
@@ -333,11 +411,17 @@ object Playtest {
                   2
                 case Right(report) =>
                   println(report.summary)
-                  arguments.report.foreach { path =>
-                    Files.writeString(Paths.get(path), ujson.write(report.toJson, indent = 2))
-                    println(s"Report written to $path")
+                  val written = arguments.report.forall { path =>
+                    writeReport(report, Paths.get(path)) match {
+                      case Right(_) =>
+                        println(s"Report written to $path")
+                        true
+                      case Left(why) =>
+                        println(s"The report could not be written to $path: $why")
+                        false
+                    }
                   }
-                  if (report.passed) 0 else 1
+                  if (!written) 2 else if (report.passed) 0 else 1
               }
           }
       }

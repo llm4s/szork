@@ -294,8 +294,9 @@ export interface ExitData {
   description: string;
 }
 
+/** A line of a loaded game's transcript: the player's command ("user") or the Dungeon Master's narration. */
 export interface ConversationEntry {
-  role: string;
+  role: "user" | "assistant";
   content: string;
   /** The picture the line was shown with: Base64 (made for this game) or a library URL. */
   image?: string;

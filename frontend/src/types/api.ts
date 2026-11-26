@@ -27,12 +27,18 @@ export interface LocationOutline {
   secrets: string | null;
 }
 
-/** An exit the designer planned: `state` is open, closed, locked, sealed or hidden. */
+/**
+ * The states an exit may be in (the server's ExitState): open is passable; closed the player can open; locked,
+ * sealed and blocked are impassable until their obstacle is overcome; hidden until it is discovered.
+ */
+export type ExitState = "open" | "closed" | "locked" | "sealed" | "blocked" | "hidden";
+
+/** An exit the designer planned. */
 export interface ExitOutline {
   direction: string;
   targetId: string;
   description: string;
-  state: string;
+  state: ExitState;
   obstacle: string | null;
 }
 

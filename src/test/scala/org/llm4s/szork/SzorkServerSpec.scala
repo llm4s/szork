@@ -193,6 +193,38 @@ class SzorkServerSpec extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     themeLLM.calls.size shouldBe calls
   }
 
+  test("the HTTP API answers only to its own host names and to allowed browser origins") {
+    val port = config.port
+    // What the Vite dev proxy sends: the backend's address as the Host, and the dev frontend's Origin
+    raw("GET", "/api/feature-flags", Seq("Origin: http://localhost:3090"))._1 shouldBe 200
+    raw("GET", "/api/health", Nil, host = s"localhost:$port")._1 shouldBe 200
+    raw("GET", "/api/health", Nil, host = s"[::1]:$port")._1 shouldBe 200
+
+    // A DNS rebinding: another site's name pointed at this machine
+    val (rebound, body) = raw("GET", "/api/games", Nil, host = s"evil.example:$port")
+    rebound shouldBe 403
+    ujson.read(body)("message").str should include("evil.example")
+    raw("GET", "/api/health", Nil, host = s"localhost:${port + 1}")._1 shouldBe 403
+    // A page on another site
+    raw("DELETE", s"/api/game/${IdGenerator.gameId()}", Seq("Origin: https://evil.example"))._1 shouldBe 403
+    raw("GET", "/api/games", Seq("Origin: null"))._1 shouldBe 403
+  }
+
+  test("a server on every interface checks the Host only against the names it is given") {
+    def refused(c: SzorkConfig, host: String) = SzorkApp.refusal(c, Some(host), None, -1).map(_._1)
+    val everywhere = SzorkConfig(host = "0.0.0.0", port = 8090)
+    everywhere.httpHosts shouldBe None
+    refused(everywhere, "game.example:8090") shouldBe None
+    val named = everywhere.copy(allowedHosts = Set("game.example"))
+    refused(named, "game.example:8090") shouldBe None
+    refused(named, "GAME.example") shouldBe None
+    refused(named, "localhost:8090") shouldBe None
+    refused(named, "evil.example:8090") shouldBe Some(403)
+    SzorkApp.refusal(SzorkConfig(), None, None, -1).map(_._1) shouldBe Some(403)
+    SzorkConfig.isLoopback("127.0.0.1") shouldBe true
+    SzorkConfig.isLoopback("0.0.0.0") shouldBe false
+  }
+
   test("adventure generation rejects a malformed request without asking the LLM") {
     val calls = themeLLM.calls.size
     postJson("/api/game/generate-adventure", """{"theme": "not an object"}""")("status").str shouldBe "error"

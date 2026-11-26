@@ -111,7 +111,9 @@ final class SzorkApp(
   // Requests are checked before Cask sees them (see SzorkApp.refusal). Undertow also cuts off a body larger than the
   // limit that does not declare its length.
   private val guarded: HttpHandler = { exchange =>
-    SzorkApp.refusal(config, exchange.getRequestContentLength) match {
+    def header(name: io.undertow.util.HttpString) =
+      Option(exchange.getRequestHeaders.getFirst(name)).map(_.trim).filter(_.nonEmpty)
+    SzorkApp.refusal(config, header(Headers.HOST), header(Headers.ORIGIN), exchange.getRequestContentLength) match {
       case Some((status, message)) =>
         logger.warn(s"Refused ${exchange.getRequestMethod} ${exchange.getRequestPath}: $message")
         exchange.setStatusCode(status)
@@ -132,6 +134,7 @@ final class SzorkApp(
     wsServer.start()
     http.start()
     SzorkApp.logFeatures(logger, config, capabilities)
+    SzorkApp.warnIfExposed(logger, config)
     logger.info(s"Adventure Library: ${library.list.size} adventures in ${config.adventuresDirectory}")
     logger.info("=== Network Endpoints ===")
     logger.info(s"HTTP        : http://${config.host}:${config.port}")
@@ -182,12 +185,52 @@ object SzorkApp {
       )
     }
 
-  /** Why an HTTP request is refused, as its status and message, if it is: a body larger than
+  /** Why an HTTP request is refused, as its status and message, if it is: a Host header that is not one of
+    * [[SzorkConfig.httpHosts]] (which defeats DNS rebinding), an Origin header that is not one of the allowed origins
+    * (requests without one, such as the browser's same-origin GETs and its image loads, pass), or a body larger than
     * [[SzorkConfig.MaxRequestBytes]] (`contentLength` is -1 when the request does not declare it).
+    *
+    * The Vite dev server's proxy sends the backend's own address as the Host and passes the page's Origin (the dev
+    * frontend, allowed by default) through.
     */
-  private[api] def refusal(config: SzorkConfig, contentLength: Long): Option[(Int, String)] =
-    Option.when(contentLength > SzorkConfig.MaxRequestBytes)(
-      413 -> s"The request is too large: at most ${SzorkConfig.MaxRequestBytes / 1024} KB.")
+  private[szork] def refusal(
+    config: SzorkConfig,
+    host: Option[String],
+    origin: Option[String],
+    contentLength: Long): Option[(Int, String)] =
+    if (!config.httpHosts.forall(allowed => host.exists(hostAllowed(_, allowed))))
+      Some(403 -> s"This server does not answer to the host ${host.getOrElse("(none)").take(100)}.")
+    else if (!TypedWebSocketServer.originAllowed(origin, Some(config.allowedOrigins)))
+      Some(403 -> s"Requests from ${origin.getOrElse("").take(100)} are not allowed (see SZORK_ALLOWED_ORIGINS).")
+    else
+      Option.when(contentLength > SzorkConfig.MaxRequestBytes)(
+        413 -> s"The request is too large: at most ${SzorkConfig.MaxRequestBytes / 1024} KB.")
+
+  /** Whether the Host header `host` is one of `allowed`: a `name:port` entry matches exactly, a bare name on any port.
+    */
+  private def hostAllowed(host: String, allowed: Set[String]): Boolean = {
+    val h = host.trim.toLowerCase
+    val withPort = """(.*):\d+""".r
+    val name = h match {
+      case withPort(n) => n
+      case _ => h
+    }
+    allowed.contains(h) || allowed.contains(name)
+  }
+
+  /** Warns, loudly, that a server listening beyond this machine can be played (on its API keys) by anyone who reaches
+    * it.
+    */
+  private[api] def warnIfExposed(logger: Logger, config: SzorkConfig): Unit =
+    if (!SzorkConfig.isLoopback(config.host)) {
+      val line = "!" * 100
+      logger.warn(line)
+      logger.warn(s"SZORK_HOST=${config.host}: the server is reachable from other machines, and anyone who reaches it")
+      logger.warn("can play on this server's API keys. Szork has no login; expose it only on a network you trust.")
+      if (config.httpHosts.isEmpty)
+        logger.warn("The HTTP API's Host header is not checked: set SZORK_ALLOWED_HOSTS to the names it is reached by.")
+      logger.warn(line)
+    }
 
   /** Logs which optional features the server provides, and why any it does not are off. */
   private[api] def logFeatures(logger: Logger, config: SzorkConfig, capabilities: Capabilities): Unit = {

@@ -96,13 +96,30 @@ case class SzorkConfig(
   // How long a session with no connection lives before it expires
   sessionTtlMinutes: Int = SzorkConfig.DefaultSessionTtlMinutes,
 
-  // Browser origins allowed to open the WebSocket
+  // Browser origins allowed to open the WebSocket and to call the HTTP API
   allowedOrigins: Set[String] = SzorkConfig.defaultOrigins(8090),
+  // Names (or name:port) the HTTP API answers to besides this machine's loopback names (SZORK_ALLOWED_HOSTS)
+  allowedHosts: Set[String] = Set.empty,
 
   // Settings that were given but cannot be used; `validate` reports them
   problems: List[String] = Nil
 ) {
   def sessionTtlMillis: Long = sessionTtlMinutes.toLong * 60 * 1000
+
+  /** The Host headers the HTTP API answers to, as `name:port` (or a bare name, for any port); None when any is allowed.
+    *
+    * A server on a loopback address answers only to the loopback names, so a web page whose name a DNS rebinding points
+    * at 127.0.0.1 cannot use the API. A server listening on every interface (SZORK_HOST=0.0.0.0) cannot know the names
+    * it is reached by, so it checks the Host only when SZORK_ALLOWED_HOSTS lists them.
+    */
+  def httpHosts: Option[Set[String]] =
+    if (SzorkConfig.isWildcard(host) && allowedHosts.isEmpty) None
+    else {
+      val own = if (SzorkConfig.isWildcard(host)) Set.empty[String] else Set(host)
+      Some(
+        (SzorkConfig.LoopbackNames ++ own).map(name => s"${SzorkConfig.bracketed(name)}:$port".toLowerCase) ++
+          allowedHosts.map(_.toLowerCase))
+    }
 }
 
 case class LLMConfig(
@@ -206,9 +223,27 @@ object SzorkConfig {
   /** How many turns a session may have running or waiting at once; a command sent beyond them is refused. */
   val MaxPendingTurns: Int = 3
 
+  // ============= Hosts and origins =============
+
+  /** The names this machine's loopback interface answers to. */
+  val LoopbackNames: Set[String] = Set("localhost", "127.0.0.1", "::1")
+
   /** The browser origins allowed by default: the dev frontend (Vite, port 3090) and this server's own port. */
   def defaultOrigins(port: Int): Set[String] =
     Set(3090, port).flatMap(p => Set(s"http://localhost:$p", s"http://127.0.0.1:$p"))
+
+  /** Whether `host` is a loopback address or name: a server bound to it is reachable only from this machine. */
+  def isLoopback(host: String): Boolean = {
+    val h = host.trim.toLowerCase.stripPrefix("[").stripSuffix("]")
+    LoopbackNames.contains(h) || h.startsWith("127.")
+  }
+
+  /** Whether `host` means every interface. */
+  def isWildcard(host: String): Boolean = Set("0.0.0.0", "::", "[::]", "*").contains(host.trim)
+
+  /** An IPv6 address in brackets, as it appears in a Host header; other names as they are. */
+  private[api] def bracketed(name: String): String =
+    if (name.contains(":") && !name.startsWith("[")) s"[$name]" else name
 
   /** Whether a flag's value turns it off: `false`, `off`, `0` or `no`, in any case. */
   def isOff(value: String): Boolean = Set("false", "off", "0", "no").contains(value.trim.toLowerCase)
@@ -264,8 +299,9 @@ object SzorkConfig {
       port = port,
       wsPort = int("SZORK_WS_PORT").getOrElse(9002),
       host = setting("SZORK_HOST").getOrElse("127.0.0.1"),
-      // Browser origins allowed to open the WebSocket; defaults to the dev frontend and this server
+      // Browser origins allowed to open the WebSocket and call the API; defaults to the dev frontend and this server
       allowedOrigins = list("SZORK_ALLOWED_ORIGINS").getOrElse(defaultOrigins(port)),
+      allowedHosts = list("SZORK_ALLOWED_HOSTS").getOrElse(Set.empty),
       imageGenerationEnabled = flag(env, "SZORK_IMAGE_GENERATION_ENABLED"),
       imageProvider = setting("SZORK_IMAGE_PROVIDER").map(ImageProvider.fromString).getOrElse(ImageProvider.None),
       imageModel = setting("SZORK_IMAGE_MODEL"),
@@ -410,6 +446,7 @@ object SzorkConfig {
       logger.info(s"Adventure Library: ${config.adventuresDirectory}")
       logger.info(s"Session TTL: ${config.sessionTtlMinutes} minutes")
       logger.info(s"Allowed origins: ${config.allowedOrigins.toList.sorted.mkString(", ")}")
+      logger.info(s"HTTP hosts: ${config.httpHosts.fold("any (not checked)")(_.toList.sorted.mkString(", "))}")
       logger.info("========================")
     }
   }

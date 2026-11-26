@@ -1,7 +1,8 @@
 package org.llm4s.szork
 
+import org.llm4s.llmconnect.config.OpenAIConfig
 import org.llm4s.szork.config.ConfigReader
-import org.llm4s.szork.api._
+import org.llm4s.szork.api.*
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 
@@ -163,5 +164,45 @@ class SzorkConfigSpec extends AnyFunSuite with Matchers {
       Some(LLMConfig("llama", "not-required", Some("mistral"), Some("http://gpu:8000/v1")))
     // A named provider without its key is not configured
     load("SZORK_LLM_PROVIDER" -> "anthropic", "OPENAI_API_KEY" -> "sk-oa").llmConfig shouldBe None
+  }
+
+  test("a provider Szork does not know is an error, not an exception") {
+    LLMConfig("gemini", "key").toProviderConfig shouldBe Left("Unknown LLM provider: gemini")
+  }
+
+  private def llamaBaseUrl(env: (String, String)*): String =
+    SzorkConfig.loadLLMConfig(FakeReader(env.toMap)).toOption.flatten.map(_.toProviderConfig) match {
+      case Some(Right(c: OpenAIConfig)) => c.baseUrl.asUrl
+      case other => fail(s"expected an OpenAI-compatible config, got $other")
+    }
+
+  test("llama without LLAMA_BASE_URL uses the local server's /v1 API") {
+    llamaBaseUrl("SZORK_LLM_PROVIDER" -> "llama") shouldBe "http://localhost:11434/v1"
+  }
+
+  test("llama uses LLAMA_BASE_URL when it is set") {
+    llamaBaseUrl("SZORK_LLM_PROVIDER" -> "llama", "LLAMA_BASE_URL" -> "http://gpu:8000/v1") shouldBe
+      "http://gpu:8000/v1"
+  }
+
+  test("media timeouts and music polling are read, and each falls back alone when its value does not parse") {
+    def net(env: (String, String)*) = MediaNetworkConfig.load(FakeReader(env.toMap))
+    def poll(env: (String, String)*) = MusicPollConfig.load(FakeReader(env.toMap))
+
+    net() shouldBe MediaNetworkConfig(connectTimeoutMs = 10000, readTimeoutMs = 30000)
+    net("SZORK_MEDIA_CONNECT_TIMEOUT_MS" -> "1234", "SZORK_MEDIA_READ_TIMEOUT_MS" -> "56789") shouldBe
+      MediaNetworkConfig(1234, 56789)
+    net("SZORK_MEDIA_CONNECT_TIMEOUT_MS" -> "abc", "SZORK_MEDIA_READ_TIMEOUT_MS" -> "56789") shouldBe
+      MediaNetworkConfig(10000, 56789)
+    net("SZORK_MEDIA_CONNECT_TIMEOUT_MS" -> "1234", "SZORK_MEDIA_READ_TIMEOUT_MS" -> "xyz") shouldBe
+      MediaNetworkConfig(1234, 30000)
+
+    poll() shouldBe MusicPollConfig(maxAttempts = 30, pollIntervalMs = 1000)
+    poll("SZORK_MUSIC_POLL_MAX_ATTEMPTS" -> "7", "SZORK_MUSIC_POLL_INTERVAL_MS" -> "250") shouldBe
+      MusicPollConfig(7, 250)
+    poll("SZORK_MUSIC_POLL_MAX_ATTEMPTS" -> "abc", "SZORK_MUSIC_POLL_INTERVAL_MS" -> "250") shouldBe
+      MusicPollConfig(30, 250)
+    poll("SZORK_MUSIC_POLL_MAX_ATTEMPTS" -> "7", "SZORK_MUSIC_POLL_INTERVAL_MS" -> "xyz") shouldBe
+      MusicPollConfig(7, 1000)
   }
 }

@@ -89,7 +89,8 @@ class WorldInvariantsSpec extends AnyFunSuite with Matchers {
         after,
         engine.getCurrentScene,
         engine.getInventory,
-        error = result.left.toOption.map(_.message))
+        error = result.left.toOption.map(_.message)
+      )
 
       withClue(s"turn $number: ") {
         // no move through an exit that is not open, a narration every turn, and scene and world in the same place

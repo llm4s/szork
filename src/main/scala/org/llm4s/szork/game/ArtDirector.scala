@@ -111,8 +111,8 @@ object ArtDirector {
 
   /** `outline` with `briefs` (by location id) as its locations' picture briefs. */
   def withBriefs(outline: AdventureOutline, briefs: Map[String, String]): AdventureOutline =
-    outline.copy(keyLocations = outline.keyLocations.map(place =>
-      briefs.get(place.id).fold(place)(brief => place.copy(image = Some(brief)))))
+    outline.copy(keyLocations =
+      outline.keyLocations.map(place => briefs.get(place.id).fold(place)(brief => place.copy(image = Some(brief)))))
 
   /** Whether every location of `outline` has a picture brief. */
   def isDirected(outline: AdventureOutline): Boolean =

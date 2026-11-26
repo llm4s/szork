@@ -67,8 +67,10 @@ class WireFormatSpec extends AnyFunSuite with Matchers {
 
       val opening = api.requests.head
       FakeAnthropic.systemOf(opening) should include("The Wire")
-      FakeAnthropic.toolsOf(
-        opening) should contain allOf ("add_inventory_item", "set_exit_state", "update_quest_progress")
+      FakeAnthropic.toolsOf(opening) should contain allOf (
+        "add_inventory_item",
+        "set_exit_state",
+        "update_quest_progress")
       opening.obj.keySet should not contain "temperature"
       opening("max_tokens").num.toInt should be >= 1024
 

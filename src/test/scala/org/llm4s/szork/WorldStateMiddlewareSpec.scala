@@ -213,8 +213,7 @@ class WorldStateMiddlewareSpec extends AnyFunSuite with Matchers {
     steps shouldBe Vector(Seq("set_exit_state", "update_quest_progress"))
     engine.getMessages.collect { case a: AssistantMessage =>
       a.toolCalls.map(_.name)
-    }.flatten should contain noneOf ("list_inventory",
-    "get_location_state")
+    }.flatten should contain noneOf ("list_inventory", "get_location_state")
     engine.getWorldState.location(Some("cavern_entrance")).get.exits.find(_.direction == "north").get.state shouldBe
       ExitState.Open
     engine.getWorldState.quest("side-1").map(_.status) shouldBe Some(QuestStatus.Active)

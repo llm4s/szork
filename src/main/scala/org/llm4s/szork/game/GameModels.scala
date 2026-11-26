@@ -34,8 +34,7 @@ case class GameScene(
   exits: List[Exit], // Available exits from this location
   items: List[String] = Nil, // Items present in this location
   npcs: List[String] = Nil // NPCs present in this location
-) extends GameResponseData
-    derives ReadWriter
+) extends GameResponseData derives ReadWriter
 
 /** Any other answer: the player stays where they are. */
 case class SimpleResponse(

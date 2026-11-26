@@ -109,7 +109,11 @@ class GameEngine(
   // context window: what happened in turns the model is no longer sent is still there.
   private val inventory = new PlayerInventory()
   private val world = WorldState.seededFrom(outline)
-  private val toolRegistry = ToolRegistry.of(GameTools.forInventory(inventory) ++ GameTools.forWorld(world))
+  private val toolRegistry: Result[ToolRegistry] = for {
+    inventoryTools <- GameTools.forInventory(inventory)
+    worldTools <- GameTools.forWorld(world)
+    registry <- ToolRegistry.of(inventoryTools ++ worldTools)
+  } yield registry
   // The subagents the Dungeon Master delegates to: their briefs read this game's outline, world and inventory
   // What every model call of this game asks for besides its messages
   private val modelOptions = GameEngine.completionOptions(reasoning)
@@ -352,7 +356,7 @@ class GameEngine(
     * records either with `update_quest_progress`. The player may play on after it.
     */
   def ending: Option[String] =
-    world.snapshot.quest(WorldState.MainQuest).map(_.status).collect {
+    world.snapshot.quests.find(_.id == WorldState.MainQuest).map(_.status).collect {
       case QuestStatus.Completed => QuestStatus.Completed.wire
       case QuestStatus.Failed => QuestStatus.Failed.wire
     }

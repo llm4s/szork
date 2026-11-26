@@ -136,7 +136,7 @@ class WorldStateSpec extends AnyFunSuite with Matchers {
   }
 
   test("optional tool parameters may be null, as a strict schema (every property required) needs") {
-    val tools = GameTools.forWorld(WorldState.seededFrom(Some(outline)))
+    val tools = GameTools.forWorld(WorldState.seededFrom(Some(outline))).toOption.get
     tools.foreach { tool =>
       val params = tool.toolDefinition(strict = true)("function")("parameters")
       val loose = tool.toolDefinition(strict = false)("function")("parameters")("required").arr.map(_.str).toSet
@@ -296,5 +296,117 @@ class WorldStateSpec extends AnyFunSuite with Matchers {
     north("passable").bool shouldBe true
     // and the whole conversation is still in the thread
     engine.getMessages.exists(_.content.contains("unlock gate")) shouldBe true
+  }
+
+  test("a quest is found by its id, its description, or a phrase only one description has; main only by its id") {
+    val world = WorldState.seededFrom(Some(outline))
+    world.snapshot.quest("main quest").map(_.id) shouldBe Some("main")
+    world.snapshot.quest("The Main Quest").map(_.id) shouldBe Some("main")
+    world.snapshot.quest("light the lamps").map(_.id) shouldBe Some("side-1")
+    world.snapshot.quest("cat").map(_.id) shouldBe Some("side-2")
+    world.snapshot.quest("the").map(_.id) shouldBe None // in more than one
+    world.snapshot.quest("amp") shouldBe None // not a whole word
+    world.updateQuest("main quest", QuestStatus.Completed, None)
+    world.snapshot.quest("main").map(_.status) shouldBe Some(QuestStatus.Completed)
+
+    // without an outline, a quest that mentions "main" is not the main quest, and does not end the game
+    val bare = new WorldState()
+    bare.updateQuest("Bury the remains", QuestStatus.Completed, None)
+    bare.updateQuest("Explore the main hall", QuestStatus.Completed, None)
+    bare.snapshot.quest("main") shouldBe None
+    bare.updateQuest("main", QuestStatus.Active, None)
+    bare.snapshot.quests.map(q => q.id -> q.status) shouldBe List(
+      "quest-1" -> QuestStatus.Completed,
+      "quest-2" -> QuestStatus.Completed,
+      "main" -> QuestStatus.Active)
+
+    val ends: PartialFunction[Conversation, Reply] = { case ScriptedDm.Command("bury them") =>
+      Reply.toolCall("update_quest_progress", """{"quest": "Bury the remains", "status": "completed", "note": null}""")
+    }
+    val engine = GameEngine.create(llmClient = ScriptedDm(ends), sessionId = "no-main")
+    engine.initialize().isRight shouldBe true
+    run(engine, "bury them")
+    engine.ending shouldBe None
+  }
+
+  test("a location a tool names before any scene is a placeholder, which the first scene there fills in") {
+    val world = WorldState.seededFrom(Some(outline))
+    world.enter("cavern_entrance", "Cavern Entrance")
+    world.setFlag(Some("Riddle Gate"), "riddle", "unanswered").isRight shouldBe true
+    world.setExitState(Some("Riddle Gate"), "west", ExitState.Locked, Some("Cavern Entrance"), Some("a riddle"))
+    world.setFlag(Some("!!!"), "nothing", "here") shouldBe a[Left[?, ?]]
+    val placeholder = world.snapshot.location(Some("riddle_gate")).get
+    placeholder.name shouldBe "riddle_gate"
+    placeholder.isPlaceholder shouldBe true
+    placeholder.exits shouldBe List(ExitRecord("west", "cavern_entrance", ExitState.Locked, Some("a riddle")))
+
+    world.enter("riddle_gate", "Riddle Gate", List("west" -> "cavern_entrance", "north" -> "tower"))
+    val gate = world.snapshot.location(Some("riddle_gate")).get
+    gate.name shouldBe "Riddle Gate"
+    gate.flags shouldBe Map("riddle" -> "unanswered")
+    // the exit a tool recorded keeps its state; the scene adds the ways it did not know of
+    gate.exits shouldBe List(
+      ExitRecord("west", "cavern_entrance", ExitState.Locked, Some("a riddle")),
+      ExitRecord("north", "tower", ExitState.Open, None))
+    world.snapshot.locations.map(_.id).count(_ == "riddle_gate") shouldBe 1
+  }
+
+  test("the way back is the exit in the opposite direction, or the only one; an unlocked exit loses its obstacle") {
+    def place(id: String, exits: ExitRecord*) = LocationRecord(id, id.capitalize, exits.toList, Map.empty, false)
+    val locked = ExitState.Locked
+    val world = new WorldState(
+      WorldSnapshot(
+        Some("yard"),
+        List(
+          place(
+            "yard",
+            ExitRecord("east", "tower", locked, Some("a padlock")),
+            ExitRecord("north", "well", locked, None)),
+          place("tower", ExitRecord("up", "yard", locked, Some("a hatch")), ExitRecord("west", "yard", locked, None)),
+          place("well", ExitRecord("up", "yard", locked, None), ExitRecord("east", "yard", locked, None))
+        ),
+        Nil,
+        Nil
+      ))
+    world.setExitState(None, "east", ExitState.Closed, None, None).isRight shouldBe true
+    val tower = world.snapshot.location(Some("tower")).get.exits
+    tower.find(_.direction == "west").map(e => (e.state, e.obstacle)) shouldBe Some((ExitState.Closed, None))
+    tower.find(_.direction == "up").map(e => (e.state, e.obstacle)) shouldBe Some((locked, Some("a hatch")))
+    def yardEast = world.snapshot.location(Some("yard")).get.exits.find(_.direction == "east").get
+    yardEast shouldBe ExitRecord("east", "tower", ExitState.Closed, None)
+
+    // two ways back from the well, neither the opposite of north: neither is changed
+    world.setExitState(None, "north", ExitState.Open, None, None).isRight shouldBe true
+    world.snapshot.location(Some("well")).get.exits.map(_.state) shouldBe List(locked, locked)
+
+    // locking again keeps a barred exit's obstacle when none is given
+    world.setExitState(None, "east", locked, None, Some("a new padlock"))
+    world.setExitState(None, "east", ExitState.Sealed, None, None)
+    yardEast.obstacle shouldBe Some("a new padlock")
+  }
+
+  test("a character's short name finds the one outline character it names") {
+    val cast = outline.copy(keyCharacters = List(
+      CharacterOutline("Mara Vance", "keeper", "stern"),
+      CharacterOutline("Old Tom", "ferryman", "gruff"),
+      CharacterOutline("Tom Reed", "thief", "sly")
+    ))
+    val world = WorldState.seededFrom(Some(cast))
+    world.recordNpcMet("Mara", None, Some("guards the lamp"))
+    world.snapshot.npcs
+      .map(n => n.name -> n.met) shouldBe List("Mara Vance" -> true, "Old Tom" -> false, "Tom Reed" -> false)
+    world.snapshot.npc("mara").map(_.notes) shouldBe Some(List("guards the lamp"))
+    world.snapshot.npc("Mar") shouldBe None // not a whole word
+
+    // two characters are called Tom: the short name names neither, until one has been met
+    world.snapshot.npc("Tom") shouldBe None
+    world.recordNpcMet("Tom Reed", None, None)
+    world.snapshot.npc("Tom").map(_.name) shouldBe Some("Tom Reed")
+  }
+
+  test("an exit state the outline does not know is kept impassable: locked") {
+    val odd = outline.copy(keyLocations =
+      List(LocationOutline("a", "A", "", "", exits = List(ExitOutline("north", "b", "A jammed door", "jammed")))))
+    WorldSnapshot.fromOutline(Some(odd)).locations.head.exits.head.state shouldBe ExitState.Locked
   }
 }

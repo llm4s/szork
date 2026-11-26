@@ -1,200 +1,163 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# One-command development start: the backend with hot reload (sbt "~szorkStart") and the frontend dev server.
+#
+#   ./dev.sh            start both, wait until they answer, print the URL to open
+#   Ctrl+C              stop both
+#
+# Needs Java 21+, sbt, Node 22+ and a .env (copy .env.example). Runs `npm ci` when frontend/node_modules is
+# missing. Refuses to start when a port is taken; it never kills anything it did not start.
+# Logs: backend.log and frontend.log in the repository root. SZORK_DEV_TIMEOUT (seconds, default 600) is how long
+# to wait for a cold sbt start.
 
-# Szork Development Server Script
-# Starts backend (hot-reload) and frontend (dev mode) with clean shutdown
+set -euo pipefail
 
-set -e
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Configuration
 BACKEND_PORT=8090
 WEBSOCKET_PORT=9002
 FRONTEND_PORT=3090
 FRONTEND_URL="http://localhost:${FRONTEND_PORT}"
-FRONTEND_DIR="frontend"
+TIMEOUT="${SZORK_DEV_TIMEOUT:-600}"
 
-# Process tracking
+if [ -t 1 ]; then
+    RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'; NC=$'\033[0m'
+else
+    RED=""; GREEN=""; YELLOW=""; NC=""
+fi
+say() { printf '%s\n' "${GREEN}$*${NC}"; }
+warn() { printf '%s\n' "${YELLOW}$*${NC}"; }
+die() { printf '%s\n' "${RED}ERROR: $*${NC}" >&2; exit 1; }
+
 BACKEND_PID=""
 FRONTEND_PID=""
 
-# Kill the processes listening on a TCP port; clients connected to it (such as a browser) are left alone
-kill_listeners() {
-    local port=$1
-    local pids
-    pids=$(lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null || true)
-    # $pids is deliberately unquoted: it can hold several PIDs
-    # shellcheck disable=SC2086
-    if [ -n "$pids" ]; then
-        kill -TERM $pids 2>/dev/null || true
-        sleep 1
-        pids=$(lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null || true)
-        if [ -n "$pids" ]; then
-            kill -9 $pids 2>/dev/null || true
-        fi
+# ---- prerequisites -------------------------------------------------------------------------------------------
+
+command -v java > /dev/null 2>&1 || die "java not found. Install JDK 21 or newer."
+java_major=$(java -version 2>&1 | sed -n '1s/.*version "\([0-9]*\).*/\1/p')
+[ "${java_major:-0}" -ge 21 ] 2> /dev/null || die "Java 21 or newer is required (found ${java_major:-unknown})."
+
+command -v sbt > /dev/null 2>&1 || die "sbt not found. Install sbt 1.12 or newer (https://www.scala-sbt.org/download)."
+
+command -v node > /dev/null 2>&1 || die "node not found. Install Node 22 or newer (see .nvmrc)."
+node_major=$(node -p 'process.versions.node.split(".")[0]')
+[ "$node_major" -ge 22 ] || die "Node 22 or newer is required (found $(node -v)). See .nvmrc."
+command -v npm > /dev/null 2>&1 || die "npm not found (it comes with Node)."
+command -v curl > /dev/null 2>&1 || die "curl not found."
+
+[ -f .env ] || die ".env not found. Copy .env.example to .env and add your API keys: cp .env.example .env"
+
+# ---- ports: refuse to start on a taken port ------------------------------------------------------------------
+
+port_listeners() {
+    if command -v lsof > /dev/null 2>&1; then
+        lsof -ti "tcp:$1" -sTCP:LISTEN 2> /dev/null || true
     fi
 }
 
-# True when something is listening on a TCP port
-listening() {
-    lsof -ti "tcp:$1" -sTCP:LISTEN > /dev/null 2>&1
+for port in "$BACKEND_PORT" "$WEBSOCKET_PORT" "$FRONTEND_PORT"; do
+    pids=$(port_listeners "$port" | tr '\n' ' ')
+    if [ -n "${pids// /}" ]; then
+        die "port $port is already in use (PID ${pids% }). Stop that process (kill ${pids% }), or run 'sbt szorkStop' if it is an earlier Szork."
+    fi
+done
+
+# ---- cleanup -------------------------------------------------------------------------------------------------
+
+# Stops a process and everything it started
+kill_tree() {
+    local pid=$1 child
+    for child in $(pgrep -P "$pid" 2> /dev/null || true); do
+        kill_tree "$child"
+    done
+    kill -TERM "$pid" 2> /dev/null || true
 }
 
-# Cleanup function (runs on exit); the script exits with the status it was going to exit with
 cleanup() {
     local status=$?
     trap - EXIT INT TERM
-    echo -e "\n${YELLOW}Shutting down development servers...${NC}"
-
-    # Kill frontend
+    warn "Shutting down the development servers..."
     if [ -n "$FRONTEND_PID" ]; then
-        echo -e "${YELLOW}Stopping frontend (PID: $FRONTEND_PID)...${NC}"
-        kill -TERM "$FRONTEND_PID" 2>/dev/null || true
-        wait "$FRONTEND_PID" 2>/dev/null || true
+        kill_tree "$FRONTEND_PID"
+        wait "$FRONTEND_PID" 2> /dev/null || true
     fi
-
-    # Kill backend: sbt and the server it forked
     if [ -n "$BACKEND_PID" ]; then
-        echo -e "${YELLOW}Stopping backend (PID: $BACKEND_PID)...${NC}"
-        pkill -P "$BACKEND_PID" 2>/dev/null || true
-        kill -TERM "$BACKEND_PID" 2>/dev/null || true
-        wait "$BACKEND_PID" 2>/dev/null || true
+        kill_tree "$BACKEND_PID"
+        wait "$BACKEND_PID" 2> /dev/null || true
     fi
-
-    # Anything still listening on our ports
-    echo -e "${YELLOW}Cleaning up any remaining processes...${NC}"
-    kill_listeners ${BACKEND_PORT}
-    kill_listeners ${WEBSOCKET_PORT}
-    kill_listeners ${FRONTEND_PORT}
-
-    echo -e "${GREEN}Cleanup complete${NC}"
     exit "$status"
 }
 
-# Clean up on every exit; Ctrl+C and SIGTERM exit with the conventional signal statuses
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-echo -e "${GREEN}=== Szork Development Environment ===${NC}"
-echo ""
+# ---- frontend dependencies -----------------------------------------------------------------------------------
 
-# Step 1: Kill any existing instances
-echo -e "${YELLOW}Killing any existing instances...${NC}"
-kill_listeners ${BACKEND_PORT}
-kill_listeners ${WEBSOCKET_PORT}
-kill_listeners ${FRONTEND_PORT}
-echo -e "${GREEN}✓ Cleaned up old instances${NC}"
-echo ""
+if [ ! -d frontend/node_modules ]; then
+    warn "frontend/node_modules is missing: running npm ci..."
+    (cd frontend && npm ci) || die "npm ci failed."
+fi
 
-# Step 2: Start backend with hot reload
-echo -e "${YELLOW}Starting backend (hot-reload mode)...${NC}"
+# ---- start ---------------------------------------------------------------------------------------------------
+
+say "=== Szork development environment ==="
+
+warn "Starting the backend (hot reload; the first start may take minutes while sbt resolves)..."
 sbt "~szorkStart" > backend.log 2>&1 &
 BACKEND_PID=$!
-echo -e "${GREEN}✓ Backend starting (PID: $BACKEND_PID)${NC}"
 
-# Wait for backend to be ready
-echo -e "${YELLOW}Waiting for backend to be ready on port ${BACKEND_PORT}...${NC}"
-for i in {1..30}; do
-    if listening ${BACKEND_PORT}; then
-        echo -e "${GREEN}✓ Backend is ready!${NC}"
-        break
-    fi
-    if ! ps -p $BACKEND_PID > /dev/null 2>&1; then
-        echo -e "${RED}✗ Backend failed to start. Check backend.log for errors.${NC}"
+waited=0
+until curl -fs -o /dev/null "http://localhost:${BACKEND_PORT}/api/feature-flags"; do
+    if ! kill -0 "$BACKEND_PID" 2> /dev/null; then
         tail -20 backend.log
-        exit 1
+        die "the backend exited. See backend.log."
     fi
-    sleep 1
-    echo -n "."
+    if [ "$waited" -ge "$TIMEOUT" ]; then
+        tail -20 backend.log
+        die "the backend did not answer on port ${BACKEND_PORT} within ${TIMEOUT}s. See backend.log."
+    fi
+    if [ $((waited % 10)) -eq 0 ] && [ "$waited" -gt 0 ]; then
+        echo "  still waiting for the backend (${waited}s)..."
+    fi
+    sleep 2
+    waited=$((waited + 2))
 done
+say "Backend is ready."
 
-if ! listening ${BACKEND_PORT}; then
-    echo -e "\n${RED}✗ Backend failed to start within 30 seconds${NC}"
-    echo -e "${YELLOW}Last 20 lines of backend.log:${NC}"
-    tail -20 backend.log
-    exit 1
-fi
-echo ""
-
-# Step 3: Start frontend
-echo -e "${YELLOW}Starting frontend (dev mode)...${NC}"
-cd "$FRONTEND_DIR"
-npm run dev > ../frontend.log 2>&1 &
+warn "Starting the frontend..."
+(cd frontend && exec npm run dev) > frontend.log 2>&1 &
 FRONTEND_PID=$!
-cd ..
-echo -e "${GREEN}✓ Frontend starting (PID: $FRONTEND_PID)${NC}"
 
-# Wait for frontend to be ready
-echo -e "${YELLOW}Waiting for frontend to be ready on port ${FRONTEND_PORT}...${NC}"
-for i in {1..30}; do
-    if listening ${FRONTEND_PORT}; then
-        echo -e "${GREEN}✓ Frontend is ready!${NC}"
-        break
-    fi
-    if ! ps -p $FRONTEND_PID > /dev/null 2>&1; then
-        echo -e "${RED}✗ Frontend failed to start. Check frontend.log for errors.${NC}"
+waited=0
+until curl -fs -o /dev/null "$FRONTEND_URL"; do
+    if ! kill -0 "$FRONTEND_PID" 2> /dev/null; then
         tail -20 frontend.log
-        exit 1
+        die "the frontend exited. See frontend.log."
+    fi
+    if [ "$waited" -ge 120 ]; then
+        tail -20 frontend.log
+        die "the frontend did not answer on port ${FRONTEND_PORT} within 120s. See frontend.log."
     fi
     sleep 1
-    echo -n "."
+    waited=$((waited + 1))
 done
 
-if ! listening ${FRONTEND_PORT}; then
-    echo -e "\n${RED}✗ Frontend failed to start within 30 seconds${NC}"
-    echo -e "${YELLOW}Last 20 lines of frontend.log:${NC}"
-    tail -20 frontend.log
-    exit 1
-fi
+echo ""
+say "Open ${FRONTEND_URL}"
+echo "  Backend:   http://localhost:${BACKEND_PORT}  (WebSocket ws://localhost:${WEBSOCKET_PORT})"
+echo "  Logs:      tail -f backend.log frontend.log"
+echo "  Ctrl+C stops both."
 echo ""
 
-# Step 4: Open browser
-echo -e "${GREEN}Opening browser at ${FRONTEND_URL}${NC}"
-sleep 1
-if command -v open > /dev/null; then
-    # macOS
-    open "$FRONTEND_URL"
-elif command -v xdg-open > /dev/null; then
-    # Linux
-    xdg-open "$FRONTEND_URL"
-else
-    echo -e "${YELLOW}Could not detect browser launcher. Please open ${FRONTEND_URL} manually.${NC}"
-fi
-echo ""
-
-# Step 5: Monitor processes
-echo -e "${GREEN}=== Development servers running ===${NC}"
-echo -e "Backend:  http://localhost:${BACKEND_PORT}"
-echo -e "Frontend: ${FRONTEND_URL}"
-echo -e "WebSocket: ws://localhost:${WEBSOCKET_PORT}"
-echo ""
-echo -e "${YELLOW}Logs:${NC}"
-echo -e "  Backend:  tail -f backend.log"
-echo -e "  Frontend: tail -f frontend.log"
-echo ""
-echo -e "${GREEN}Press Ctrl+C to stop all servers${NC}"
-echo ""
-
-# Monitor both processes - exit if either dies
-while true; do
-    if ! ps -p $BACKEND_PID > /dev/null 2>&1; then
-        echo -e "\n${RED}✗ Backend process died unexpectedly${NC}"
-        echo -e "${YELLOW}Last 20 lines of backend.log:${NC}"
-        tail -20 backend.log
-        exit 1
-    fi
-
-    if ! ps -p $FRONTEND_PID > /dev/null 2>&1; then
-        echo -e "\n${RED}✗ Frontend process died unexpectedly${NC}"
-        echo -e "${YELLOW}Last 20 lines of frontend.log:${NC}"
-        tail -20 frontend.log
-        exit 1
-    fi
-
+# Run until either server dies or the script is interrupted
+while kill -0 "$BACKEND_PID" 2> /dev/null && kill -0 "$FRONTEND_PID" 2> /dev/null; do
     sleep 2
 done
+if ! kill -0 "$BACKEND_PID" 2> /dev/null; then
+    tail -20 backend.log
+    die "the backend exited. See backend.log."
+fi
+tail -20 frontend.log
+die "the frontend exited. See frontend.log."

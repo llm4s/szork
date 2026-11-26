@@ -3,7 +3,7 @@ package org.llm4s.szork
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.llm4s.agent.ContextWindowConfig
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 import org.llm4s.context.ConversationTokenCounter
 import org.llm4s.llmconnect.model._
 import org.llm4s.testkit.ScriptedLLMClient

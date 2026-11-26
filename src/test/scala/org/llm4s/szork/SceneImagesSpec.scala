@@ -3,7 +3,7 @@ package org.llm4s.szork
 import java.nio.file.{Files, Path}
 import java.util.Base64
 import java.util.concurrent.atomic.AtomicInteger
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 import org.llm4s.error.LLMError
 import org.llm4s.imagegeneration.{
   GeneratedImage,

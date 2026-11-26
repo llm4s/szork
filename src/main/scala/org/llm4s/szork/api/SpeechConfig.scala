@@ -1,6 +1,6 @@
 package org.llm4s.szork.api
 
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 import org.llm4s.speech.config.{STTConfig, TTSConfig}
 
 /** The OpenAI speech models and narration voice. Part of [[SzorkConfig]]: SZORK_TTS_MODEL, SZORK_TTS_VOICE and

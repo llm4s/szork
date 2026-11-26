@@ -1,6 +1,6 @@
 package org.llm4s.szork.media
 
-import org.llm4s.config.{ConfigReader, EnvLoader}
+import org.llm4s.szork.config.{ConfigReader, EnvLoader}
 import org.llm4s.error.LLMError
 import org.llm4s.imagegeneration.{
   HuggingFaceConfig,

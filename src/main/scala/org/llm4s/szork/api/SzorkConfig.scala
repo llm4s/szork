@@ -3,7 +3,7 @@ package org.llm4s.szork.api
 import org.llm4s.szork.error._
 import org.llm4s.szork.error.ErrorHandling._
 import org.llm4s.agent.ContextWindowConfig
-import org.llm4s.config.{ConfigReader, EnvLoader}
+import org.llm4s.szork.config.{ConfigReader, EnvLoader}
 import org.llm4s.szork.game.GameEngine
 import org.llm4s.szork.media.{MediaCache, SceneImages}
 import org.llm4s.szork.persistence.StepPersistence

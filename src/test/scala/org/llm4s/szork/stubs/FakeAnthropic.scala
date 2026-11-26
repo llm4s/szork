@@ -1,7 +1,7 @@
 package org.llm4s.szork.stubs
 
 import com.sun.net.httpserver.HttpServer
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 import org.llm4s.llmconnect.LLMClient
 import org.llm4s.szork.api.SzorkConfig
 

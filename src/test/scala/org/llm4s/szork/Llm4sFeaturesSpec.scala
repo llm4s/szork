@@ -2,7 +2,7 @@ package org.llm4s.szork
 
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 import org.llm4s.testkit.{Reply, ScriptedLLMClient}
 import org.llm4s.szork.api.{AgentTracing, SpeechConfig}
 import org.llm4s.szork.error.{ConfigurationError, ValidationError}

@@ -1,6 +1,6 @@
 package org.llm4s.szork
 
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 import org.llm4s.error.LLMError
 import org.llm4s.llmconnect.model.{Conversation, SystemMessage, TokenUsage, ToolCall, ToolCallId, ToolMessage}
 import org.llm4s.szork.api.{EngineFactory, LLMConfig, SubagentConfig, SzorkConfig}

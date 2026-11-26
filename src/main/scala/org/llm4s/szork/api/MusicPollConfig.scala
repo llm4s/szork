@@ -1,6 +1,6 @@
 package org.llm4s.szork.api
 
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 
 /** How long music generation waits for a Replicate prediction: up to `maxAttempts` polls, `pollIntervalMs` apart. Part
   * of [[SzorkConfig]]: SZORK_MUSIC_POLL_MAX_ATTEMPTS and SZORK_MUSIC_POLL_INTERVAL_MS.

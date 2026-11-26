@@ -2,7 +2,7 @@ package org.llm4s.szork.media
 
 import java.nio.file.Files
 import org.slf4j.{Logger, LoggerFactory}
-import org.llm4s.config.{ConfigReader, EnvLoader}
+import org.llm4s.szork.config.{ConfigReader, EnvLoader}
 import org.llm4s.security.Secret
 import org.llm4s.speech.AudioInput
 import org.llm4s.speech.config.STTConfig

@@ -1,6 +1,6 @@
 package org.llm4s.szork.api
 
-import org.llm4s.config.{ConfigReader, EnvLoader}
+import org.llm4s.szork.config.{ConfigReader, EnvLoader}
 import org.llm4s.szork.media.SceneImages
 
 /** The optional features this server can provide: enabled by configuration and with the credentials they need. */

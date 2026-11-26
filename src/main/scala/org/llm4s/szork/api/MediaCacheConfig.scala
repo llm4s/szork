@@ -1,6 +1,6 @@
 package org.llm4s.szork.api
 
-import org.llm4s.config.ConfigReader
+import org.llm4s.szork.config.ConfigReader
 
 /** The media cache ([[org.llm4s.szork.media.MediaCache]]): whether it is used, where it lives, and how it is pruned
   * (files unused for `ttlMs` are dropped, then the least recently used until it fits in `maxBytes`). Part of

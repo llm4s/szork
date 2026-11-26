@@ -84,7 +84,7 @@ const command = defineModel<string>({ required: true });
 const emit = defineEmits<{
   /** The player sent the typed command. */
   submit: [];
-  /** A recording finished (it may be empty, if the button was only tapped). */
+  /** A recording finished (an empty one if the button was only tapped). */
   recorded: [audio: Blob];
   /** The microphone could not be used. */
   "microphone-error": [];

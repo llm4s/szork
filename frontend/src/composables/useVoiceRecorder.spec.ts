@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { blobToBase64, useVoiceRecorder } from "./useVoiceRecorder";
+import { blobToBase64, MIN_RECORDING_MS, useVoiceRecorder } from "./useVoiceRecorder";
 
 class FakeTrack {
   stopped = false;
@@ -74,8 +74,12 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("useVoiceRecorder", () => {
   let mic: ReturnType<typeof deferredMicrophone>;
+  // The recorder's clock, moved by hand
+  let clock = 0;
+  const now = () => clock;
 
   beforeEach(() => {
+    clock = 0;
     FakeRecorder.instances = [];
     FakeRecorder.supported = "audio/webm";
     FakeRecorder.data = ["sound"];
@@ -92,10 +96,12 @@ describe("useVoiceRecorder", () => {
   });
 
   async function startedRecorder(onRecorded = vi.fn(), onError = vi.fn()) {
-    const recorder = useVoiceRecorder({ onRecorded, onError });
+    const recorder = useVoiceRecorder({ onRecorded, onError, now });
     const starting = recorder.startRecording();
     mic.grant();
     await starting;
+    // Long enough to be a spoken command
+    clock += MIN_RECORDING_MS;
     return { recorder, onRecorded, onError };
   }
 
@@ -116,6 +122,16 @@ describe("useVoiceRecorder", () => {
     const audio: Blob = onRecorded.mock.calls[0][0];
     expect(audio.type).toBe("audio/webm");
     expect(audio.size).toBe("sound".length);
+    expect(mic.streams[0].released).toBe(true);
+  });
+
+  it("hands over an empty recording when the button was only tapped", async () => {
+    const { recorder, onRecorded } = await startedRecorder();
+    clock -= 1;
+    recorder.stopRecording();
+    await flush();
+    expect(onRecorded).toHaveBeenCalledOnce();
+    expect(onRecorded.mock.calls[0][0].size).toBe(0);
     expect(mic.streams[0].released).toBe(true);
   });
 

@@ -11,18 +11,27 @@ import { ref, onUnmounted, getCurrentInstance } from "vue";
  */
 export const PREFERRED_FORMATS = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"];
 
+/**
+ * The shortest recording worth sending: a tap on the button records too little for the transcriber, which
+ * refuses it ("audio file is too short") or guesses words, in any language, from the noise.
+ */
+export const MIN_RECORDING_MS = 500;
+
 type Log = (message: string, ...args: unknown[]) => void;
 
 export interface VoiceRecorderOptions {
-  /** Called with each finished recording (possibly empty, if the button was only tapped). */
+  /** Called with each finished recording: an empty one if the button was only tapped (under MIN_RECORDING_MS). */
   onRecorded: (audio: Blob) => void | Promise<void>;
   /** Called when the microphone cannot be used (e.g. permission denied). */
   onError: (error: unknown) => void;
   log?: Log;
+  /** The clock recordings are timed by, in milliseconds (for tests). */
+  now?: () => number;
 }
 
 export function useVoiceRecorder(options: VoiceRecorderOptions) {
   const log: Log = options.log ?? (() => {});
+  const now = options.now ?? (() => performance.now());
   const recording = ref(false);
   let recorder: MediaRecorder | null = null;
   let chunks: Blob[] = [];
@@ -67,6 +76,7 @@ export function useVoiceRecorder(options: VoiceRecorderOptions) {
       const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
       recorder = mediaRecorder;
       chunks = [];
+      let startedAt = 0;
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunks.push(event.data);
@@ -79,12 +89,15 @@ export function useVoiceRecorder(options: VoiceRecorderOptions) {
         // Stopped because the view closed: there is nothing to send the recording to
         if (disposed) return;
         const type = mediaRecorder.mimeType || "audio/webm";
-        const audio = new Blob(chunks, { type });
-        log("Recording stopped, mime type:", type, "size:", audio.size);
+        const lasted = now() - startedAt;
+        // A tap, not a spoken command: hand over nothing, so the player is told to hold the button
+        const audio = new Blob(lasted < MIN_RECORDING_MS ? [] : chunks, { type });
+        log("Recording stopped after", Math.round(lasted), "ms, mime type:", type, "size:", audio.size);
         await options.onRecorded(audio);
       };
 
       mediaRecorder.start();
+      startedAt = now();
       recording.value = true;
       log("Recording started");
     } catch (error) {

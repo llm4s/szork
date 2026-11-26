@@ -360,7 +360,7 @@ const sendCommand = async () => {
 const sendAudioCommand = async (audio: Blob) => {
   log("Audio blob size:", audio.size, "bytes");
   if (audio.size === 0) {
-    addLocalMessage("Please hold the record button to record audio");
+    addLocalMessage("Hold the microphone button while you speak, then release it.");
     return;
   }
   try {

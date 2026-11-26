@@ -63,7 +63,8 @@ class PromptBuilderSpec extends AnyFunSuite with Matchers {
     prompt should include("=== TOOLS - THE GAME'S MEMORY ===")
     prompt should not include "RARELY"
     prompt should include("older turns are dropped from what you see")
-    val tools = (GameTools.forInventory(new PlayerInventory()) ++ GameTools.forWorld(new WorldState())).map(_.name)
+    val tools = (GameTools.forInventory(new PlayerInventory()).toOption.get ++
+      GameTools.forWorld(new WorldState()).toOption.get).map(_.name)
     tools should contain allOf ("get_location_state", "set_exit_state", "record_npc_met", "update_quest_progress")
     tools.foreach(name => withClue(name)(prompt should include(s"- $name:")))
   }

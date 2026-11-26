@@ -1,43 +1,62 @@
 package org.llm4s.szork.game
 
 import org.llm4s.toolapi._
+import org.llm4s.types.Result
 import upickle.default._
 import org.slf4j.{Logger, LoggerFactory}
 
 /** A player's inventory. Each game has its own; tool calls and saves may touch it from different threads, so every
   * operation is atomic.
+  *
+  * Items are matched as the rest of the game matches names: trimmed and ignoring case, so "Brass Key" and "brass key"
+  * are one item. An item keeps the spelling it was first added with.
   */
 final class PlayerInventory(initial: List[String] = Nil) {
-  private var items: Vector[String] = initial.distinct.toVector
+  private var items: Vector[String] = PlayerInventory.distinct(initial)
 
   def list: List[String] = synchronized(items.toList)
 
-  /** Adds `item`; false if it is already held. */
+  /** Adds `item`; false if it is already held, in any spelling. */
   def add(item: String): Boolean = synchronized {
-    if (items.contains(item)) false
-    else { items = items :+ item; true }
+    val name = item.trim
+    if (name.isEmpty || items.exists(PlayerInventory.same(_, name))) false
+    else { items = items :+ name; true }
   }
 
-  /** Removes `item`; false if it is not held. */
+  /** Removes `item`, in any spelling; false if it is not held. */
   def remove(item: String): Boolean = synchronized {
-    if (!items.contains(item)) false
-    else { items = items.filterNot(_ == item); true }
+    if (!items.exists(PlayerInventory.same(_, item))) false
+    else { items = items.filterNot(PlayerInventory.same(_, item)); true }
   }
 
-  /** Replaces the contents, e.g. when a saved game is restored. */
-  def replaceWith(newItems: List[String]): Unit = synchronized { items = newItems.distinct.toVector }
+  /** Replaces the contents, e.g. when a saved game is restored or a failed turn is undone. */
+  def replaceWith(newItems: List[String]): Unit = synchronized { items = PlayerInventory.distinct(newItems) }
 }
 
-/** The tools the Dungeon Master agent can call. They are built per game, over that game's [[PlayerInventory]]. */
+object PlayerInventory {
+
+  /** How an item is matched: trimmed, ignoring case. */
+  private[game] def key(item: String): String = item.trim.toLowerCase
+
+  private def same(a: String, b: String): Boolean = key(a) == key(b)
+
+  private def distinct(items: List[String]): Vector[String] =
+    items.map(_.trim).filter(_.nonEmpty).distinctBy(key).toVector
+}
+
+/** The tools the Dungeon Master agent can call. They are built per game, over that game's [[PlayerInventory]] and
+  * [[WorldState]].
+  */
 object GameTools {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass.getSimpleName)
 
-  // Unwrap a built tool; a Left here is a static definition error.
-  private def orThrow[R](result: org.llm4s.types.Result[ToolFunction[R]]): ToolFunction[R] =
-    result match {
-      case Right(tool) => tool
-      case Left(error) => throw new IllegalStateException(s"Failed to build tool: ${error.message}")
-    }
+  /** The tools that only read the game: calling one changes nothing. */
+  val ReadOnly: Set[String] = Set("list_inventory", "get_location_state", "get_world_summary")
+
+  /** The built `tools`, or the first one's definition error. */
+  private def all(tools: Result[ToolFunction[?]]*): Result[Seq[ToolFunction[?]]] =
+    tools.foldLeft[Result[Vector[ToolFunction[?]]]](Right(Vector.empty))((acc, tool) =>
+      acc.flatMap(built => tool.map(built :+ _)))
 
   case class InventoryListResult(
     inventory: List[String],
@@ -63,8 +82,8 @@ object GameTools {
     .withProperty(Schema.property("item", Schema.string("The name of the item (REQUIRED)")))
 
   /** The inventory tools, reading and changing `inventory`. */
-  def forInventory(inventory: PlayerInventory): Seq[ToolFunction[?]] = {
-    val listInventoryTool = orThrow(
+  def forInventory(inventory: PlayerInventory): Result[Seq[ToolFunction[?]]] = {
+    val listInventoryTool =
       ToolBuilder[InventoryListResult](
         "list_inventory",
         "List all items currently in the player's inventory. The current game state in the prompt already lists " +
@@ -76,9 +95,9 @@ object GameTools {
         val message =
           if (items.isEmpty) "Your inventory is empty" else s"You have ${items.size} item(s) in your inventory"
         Right(InventoryListResult(items, items.size, message))
-      }.build())
+      }.build()
 
-    val addInventoryItemTool = orThrow(
+    val addInventoryItemTool =
       ToolBuilder[InventoryModifyResult](
         "add_inventory_item",
         "Add a new item to the player's inventory",
@@ -90,9 +109,9 @@ object GameTools {
           val message = if (added) s"Added '$item' to your inventory" else s"You already have '$item' in your inventory"
           InventoryModifyResult(added, message, item, inventory.list)
         }
-      }.build())
+      }.build()
 
-    val removeInventoryItemTool = orThrow(
+    val removeInventoryItemTool =
       ToolBuilder[InventoryModifyResult](
         "remove_inventory_item",
         "Remove an item from the player's inventory",
@@ -105,9 +124,9 @@ object GameTools {
             if (removed) s"Removed '$item' from your inventory" else s"You don't have '$item' in your inventory"
           InventoryModifyResult(removed, message, item, inventory.list)
         }
-      }.build())
+      }.build()
 
-    Seq(listInventoryTool, addInventoryItemTool, removeInventoryItemTool)
+    all(listInventoryTool, addInventoryItemTool, removeInventoryItemTool)
   }
 
   // --- World state ---
@@ -148,9 +167,9 @@ object GameTools {
   implicit val questViewRW: ReadWriter[QuestView] = macroRW
   implicit val worldSummaryRW: ReadWriter[WorldSummary] = macroRW
 
-  /** An optional string parameter: absent, null or blank is None. */
-  private def optionalString(params: SafeParameterExtractor, name: String): Option[String] =
-    params.params.objOpt.flatMap(_.get(name)).flatMap(_.strOpt).map(_.trim).filter(_.nonEmpty)
+  /** An optional string parameter (llm4s's `getOptionalString`: absent or null is None), and blank is None too. */
+  private def optionalString(params: SafeParameterExtractor, name: String): Either[ToolParameterError, Option[String]] =
+    params.getOptionalString(name).map(_.map(_.trim).filter(_.nonEmpty))
 
   /** An optional string, nullable so that a strict tool schema (where every property is required) can leave it out.
     */
@@ -200,8 +219,8 @@ object GameTools {
   /** The world-state tools, reading and changing `world`. A scene answer moves the player (the engine records it in the
     * world state), so there is no tool for movement.
     */
-  def forWorld(world: WorldState): Seq[ToolFunction[?]] = {
-    val getLocationStateTool = orThrow(
+  def forWorld(world: WorldState): Result[Seq[ToolFunction[?]]] = {
+    val getLocationStateTool =
       ToolBuilder[LocationView](
         "get_location_state",
         "Get a location's current state: its exits (direction, destination, state open/closed/locked/sealed/" +
@@ -211,27 +230,29 @@ object GameTools {
           .`object`[Map[String, Any]]("Get location state parameters")
           .withOptionalField("location_id", locationIdProperty)
       ).withHandler { params =>
-        val query = optionalString(params, "location_id")
-        val snapshot = world.snapshot
-        Right(snapshot.location(query) match {
-          case Some(location) => locationView(snapshot, location)
-          case None =>
-            val id = query.getOrElse("")
-            LocationView(
-              found = false,
-              locationId = id,
-              name = id,
-              playerIsHere = false,
-              visited = false,
-              exits = Nil,
-              flags = Map.empty,
-              charactersMetHere = Nil,
-              message = s"No record of location '$id'. Known locations: ${snapshot.locations.map(_.id).mkString(", ")}"
-            )
-        })
-      }.build())
+        optionalString(params, "location_id").map { query =>
+          val snapshot = world.snapshot
+          snapshot.location(query) match {
+            case Some(location) => locationView(snapshot, location)
+            case None =>
+              val id = query.getOrElse("")
+              LocationView(
+                found = false,
+                locationId = id,
+                name = id,
+                playerIsHere = false,
+                visited = false,
+                exits = Nil,
+                flags = Map.empty,
+                charactersMetHere = Nil,
+                message =
+                  s"No record of location '$id'. Known locations: ${snapshot.locations.map(_.id).mkString(", ")}"
+              )
+          }
+        }
+      }.build()
 
-    val setExitStateTool = orThrow(
+    val setExitStateTool =
       ToolBuilder[WorldChangeResult](
         "set_exit_state",
         "Change an exit's state when the player changes it: unlocks, opens, closes or locks a door, clears or " +
@@ -256,20 +277,16 @@ object GameTools {
             .parse(stateName)
             .toRight(
               ToolHandlerError.failed(s"Unknown state '$stateName'; use one of ${ExitState.names.mkString(", ")}"))
+          location <- optionalString(params, "location_id")
+          target <- optionalString(params, "target_id")
+          obstacle <- optionalString(params, "obstacle")
         } yield {
-          val location = optionalString(params, "location_id")
           logger.info(s"Setting exit $direction at ${location.getOrElse("the current location")} to ${state.wire}")
-          changeResult(
-            world.setExitState(
-              location,
-              direction,
-              state,
-              optionalString(params, "target_id"),
-              optionalString(params, "obstacle")))
+          changeResult(world.setExitState(location, direction, state, target, obstacle))
         }
-      }.build())
+      }.build()
 
-    val setLocationFlagTool = orThrow(
+    val setLocationFlagTool =
       ToolBuilder[WorldChangeResult](
         "set_location_flag",
         "Record a lasting fact about a location that later turns must respect: a lever pulled, a chest emptied, a " +
@@ -283,13 +300,14 @@ object GameTools {
         for {
           flag <- params.getString("flag")
           value <- params.getString("value")
+          location <- optionalString(params, "location_id")
         } yield {
           logger.info(s"Setting location flag $flag = $value")
-          changeResult(world.setFlag(optionalString(params, "location_id"), flag, value))
+          changeResult(world.setFlag(location, flag, value))
         }
-      }.build())
+      }.build()
 
-    val recordNpcMetTool = orThrow(
+    val recordNpcMetTool =
       ToolBuilder[WorldChangeResult](
         "record_npc_met",
         "Record that the player met or talked with a character, with a short note of anything that matters later " +
@@ -300,15 +318,17 @@ object GameTools {
           .withOptionalField("location_id", locationIdProperty)
           .withOptionalField("note", optionalText("A short note on what happened"))
       ).withHandler { params =>
-        params.getString("name").map { name =>
+        for {
+          name <- params.getString("name")
+          location <- optionalString(params, "location_id")
+          note <- optionalString(params, "note")
+        } yield {
           logger.info(s"Recording NPC met: $name")
-          WorldChangeResult(
-            success = true,
-            world.recordNpcMet(name, optionalString(params, "location_id"), optionalString(params, "note")))
+          WorldChangeResult(success = true, world.recordNpcMet(name, location, note))
         }
-      }.build())
+      }.build()
 
-    val updateQuestProgressTool = orThrow(
+    val updateQuestProgressTool =
       ToolBuilder[WorldChangeResult](
         "update_quest_progress",
         "Record progress on a quest when the player starts, advances, completes or fails it. The main quest's id " +
@@ -326,22 +346,23 @@ object GameTools {
             .parse(statusName)
             .toRight(
               ToolHandlerError.failed(s"Unknown status '$statusName'; use one of ${QuestStatus.names.mkString(", ")}"))
+          note <- optionalString(params, "note")
         } yield {
           logger.info(s"Updating quest $quest to ${status.wire}")
-          WorldChangeResult(success = true, world.updateQuest(quest, status, optionalString(params, "note")))
+          WorldChangeResult(success = true, world.updateQuest(quest, status, note))
         }
-      }.build())
+      }.build()
 
-    val getWorldSummaryTool = orThrow(
+    val getWorldSummaryTool =
       ToolBuilder[WorldSummary](
         "get_world_summary",
         "Get a summary of the whole world: where the player is and has been, every exit that is not open, the " +
           "facts recorded about locations, the characters met and every quest's status. Use it when the player asks " +
           "about their progress or goals, or when earlier events are no longer in the conversation.",
         Schema.`object`[Map[String, Any]]("No parameters")
-      ).withHandler(_ => Right(worldSummary(world.snapshot))).build())
+      ).withHandler(_ => Right(worldSummary(world.snapshot))).build()
 
-    Seq(
+    all(
       getLocationStateTool,
       setExitStateTool,
       setLocationFlagTool,

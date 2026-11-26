@@ -171,9 +171,13 @@ class Llm4sFeaturesSpec extends AnyFunSuite with Matchers {
 
     engine.processCommand("check the door", generateAudio = false).isRight shouldBe true
     val results = engine.getMessages.collect { case t: ToolMessage => t.toolCallId.asString -> t.content }.toMap
-    results("read-2") should include("door")
-    results("read-2") should not include RepeatedToolCallMiddleware.Reread
-    results("read-3") should include(RepeatedToolCallMiddleware.Reread)
+    // read-2 and read-3 come in one response, whose tool calls llm4s runs concurrently: whichever reaches the
+    // middleware first runs (the location changed since the first read), and the other is refused as a repeat
+    val (refused, ran) =
+      Seq(results("read-2"), results("read-3")).partition(_.contains(RepeatedToolCallMiddleware.Reread))
+    refused.size shouldBe 1
+    ran.size shouldBe 1
+    ran.head should include("door")
   }
 
   test("setting something back to how it was earlier in the turn runs") {

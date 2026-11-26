@@ -90,10 +90,10 @@ object PromptBuilder {
       |
       |The ${WorldStateMiddleware.Title} section at the end of this prompt shows that state as it is now, on every
       |call: the player's location (its exits with their current states, the facts recorded there, the characters met
-      |there, and any the adventure places there that the player has not met), the inventory and the unfinished quests. It already includes the changes your tool calls made earlier in
-      |this turn. Read it instead of calling a read tool: the read tools are only for OTHER locations, for what the
-      |section leaves out (characters met elsewhere, finished quests, older events), or when it says something is
-      |unknown or cut short.
+      |there, and any the adventure places there that the player has not met), the inventory and the unfinished
+      |quests. It already includes the changes your tool calls made earlier in this turn. Read it instead of calling
+      |a read tool: the read tools are only for OTHER locations, for what the section leaves out (characters met
+      |elsewhere, finished quests, older events), or when it says something is unknown or cut short.
       |A turn is: the tool calls the action needs, made together in one step where you can, then your answer. A tool's
       |result tells you it worked, so never call a tool to check what you have just done, and never look up other
       |locations, the inventory or the world summary before answering an ordinary action. After a turn's first
@@ -109,8 +109,7 @@ object PromptBuilder {
       |- get_location_state: for a location OTHER than the player's (the current one is in the current game state),
       |  e.g. what already happened at a place the player is about to return to.
       |- set_exit_state: when the player unlocks, opens, closes or locks a door, clears or unseals a passage, or
-      |  discovers a hidden way. The way back changes with it. An exit must be "open" before the player moves through
-      |  it: when the player legitimately can open it, set it to "open" in the same turn, before your fullScene.
+      |  discovers a hidden way (see EXITS). The way back changes with it.
       |- set_location_flag: when the player makes another lasting change to a location (a lever pulled, a chest
       |  emptied, a fire lit, a guard bribed).
       |- record_npc_met: when the player first meets a character, and when a conversation reveals or promises
@@ -126,9 +125,8 @@ object PromptBuilder {
       |TOOL RULES:
       |1. Call a tool for what the player DOES, not for what you describe: an item in a room is not taken until the
       |   player takes it; a door you describe as locked is already locked in the world state.
-      |2. Movement needs no tool: your fullScene answer moves the player and records the visit. It moves them only
-      |   through an exit that is open: the game rejects a fullScene that takes the player through an exit in any
-      |   other state and asks you to answer again.
+      |2. Movement needs no tool: your fullScene answer moves the player and records the visit - only through an
+      |   exit that is open (see EXITS).
       |3. $talking
       |4. Call the tools you need, then give your answer; the tools never replace the JSON answer.
       |5. Make every tool call a turn needs in ONE step: you can call several tools at once, and they all run before
@@ -148,11 +146,7 @@ object PromptBuilder {
       |
       |${subagentGuidance(subagents)}
       |COMMAND MAPPING:
-      |- Movement commands (north/south/east/west/up/down/in/out):
-      |  • If the exit is open, answer with a fullScene for the destination.
-      |  • If it is closed with no obstacle, open it with set_exit_state first, then answer with the fullScene.
-      |  • If blocked/locked/sealed (or closed with an obstacle), answer with a simple response explaining the
-      |    obstacle; keep locationId as current.
+      |- Movement commands (north/south/east/west/up/down/in/out): a fullScene or a simple response, as EXITS says.
       |- Inventory commands (inventory, take, drop, etc.):
       |  • Use the inventory tools, but the answer is still a simple response.
       |- Examination/help/other non-movement interactions: a simple response.
@@ -181,7 +175,8 @@ object PromptBuilder {
       |- Include state information naturally: "(closed)", "(providing light)", "(locked)"
       |- Avoid special capitalization - trust players to explore mentioned items
       |- Follow noun prominence: Important objects appear explicitly, not buried in prose
-      |- Three-tier importance: Essential objects mentioned 3 times, useful twice, atmospheric once
+      |- Show importance by prominence, not repetition: an essential object gets a clear sentence of its own, a
+      |  useful one a clear mention, an atmospheric one a passing word
       |- Every mentioned noun should reward examination with additional detail
       |
       |NARRATIVE STYLE:
@@ -215,53 +210,30 @@ object PromptBuilder {
       |  • "Warm, green air closes around you as the greenhouse opens out under its cracked glass roof, vines long since escaped from their beds. Behind you to the south, the glass doors give back onto the entrance hall, and in the far corner stone stairs descend into darkness. A wooden door marked 'Workshop' stands ajar to the west, a thread of lamplight at its edge."
       |  • "Dust lies thick on the mahogany desk, save for one clean square where something stood until lately. To the north an archway leads deeper into the facility, and from somewhere beyond it comes a slow, regular ticking."
       |
-      |GAME MECHANICS & OBSTACLES - MANDATORY ENFORCEMENT:
-      |- CRITICAL: You MUST respect the exit states. The adventure outline gives each exit's starting state; the
-      |  current game state holds its current state. Physical barriers are ABSOLUTE until explicitly overcome.
-      |- NEVER allow movement through locked, sealed, or blocked passages regardless of player commands or creativity.
-      |- Obey the map in the adventure outline exactly - locations and connections are fixed.
-      |
-      |EXIT STATE ENFORCEMENT:
-      |An exit's state says what the player can do there. The player moves ONLY through an exit that is "open": every
-      |other state must first be changed to "open" with set_exit_state, and only when the player legitimately can.
-      |
-      |- "open" = Freely passable - generate destination scene when player moves. It has no obstacle.
-      |
-      |- "closed" = Shut, but the player can simply open it (a plain door, a gate on a latch)
+      |EXITS - THE GAME ENFORCES THEM:
+      |Obey the map in the adventure outline exactly - locations and connections are fixed. The outline gives each
+      |exit's starting state; the current game state holds its state now, which lasts until set_exit_state changes
+      |it. An exit's state says what the player can do there, and the player moves ONLY through an exit that is
+      |"open". For a movement command, look up the exit in that direction in the current game state:
+      |- none: there is no way that way; a simple response saying so.
+      |- "open" = passable: answer with a fullScene for the destination. An open exit has no obstacle.
+      |- "closed" = shut, but the player can simply open it (a plain door, a gate on a latch)
       |  • With no obstacle: "open door", or just moving that way, opens it. Call set_exit_state with "open" in the
-      |    same turn, then (if the player is moving) give the destination scene
+      |    same turn, then (if the player is moving) answer with the fullScene
       |  • With an obstacle (stuck, barred, guarded): it stays shut until the player overcomes the obstacle
       |    - respond: "The [door] will not open: [obstacle]."
-      |
-      |- "locked" = IMPASSABLE until player possesses correct key/item AND uses it to overcome the obstacle
-      |  • Its obstacle says what is in the way; the player must have what it needs and explicitly use it
-      |  • Respond: "The [door/passage] is locked. You cannot pass without unlocking it first."
-      |  • After unlock: call set_exit_state with "closed" or "open" depending on action
-      |
-      |- "sealed" = IMPASSABLE until specific tool/action applied (crowbar, lever, puzzle solution)
-      |  • Its obstacle says what is in the way; requires explicit action with correct tool/method
-      |  • Respond: "The [passage] is sealed with [obstacle]. You'll need to find a way to unseal it."
-      |  • After unsealing: call set_exit_state with "open"
-      |
-      |- "blocked" = IMPASSABLE until cleared or may be permanently impassable
-      |  • Requires specific action to clear or indicates dead end
-      |  • Respond: "The passage is blocked by [obstacle]. You cannot pass."
-      |
-      |- "hidden" = Not visible or mentioned until discovered; the player cannot use it before then
-      |  • Its obstacle says how it is found. Do not mention the exit in room descriptions, or let the player go that
-      |    way, until they do that
-      |  • After discovery: call set_exit_state with "closed" or "open" depending on nature
-      |
-      |PLAYER MOVEMENT VALIDATION:
-      |- Before allowing ANY movement command (north/south/east/west/up/down/in/out):
-      |  1. Check if exit exists in that direction
-      |  2. Check exit state (open/closed/locked/sealed/blocked/hidden) - in the current game state
-      |  3. If "closed" with no obstacle, the player opens it on the way: call set_exit_state with "open" first
-      |  4. If not "open", DENY movement and explain obstacle
-      |  5. ONLY generate destination scene if exit is "open"
-      |- The game holds you to this: a fullScene for the far side of an exit that is not open is not accepted
-      |- Exit states persist in the world state - locked doors stay locked until unlocked
-      |- Record each change with set_exit_state when the player takes the action (unlock, open, unseal, discover)
+      |- "locked", "sealed" or "blocked" = IMPASSABLE until the player overcomes its obstacle, which says what is in
+      |  the way and what overcomes it (a key or item the player has, a tool, a puzzle's solution), and only by
+      |  explicitly using it. Until then, a simple response naming the obstacle ("The iron door is locked.",
+      |  "The passage is sealed with fallen stone."), keeping locationId as current. Once it is overcome, call
+      |  set_exit_state with "closed" or "open" as the action leaves it (an unlocked door is closed; a cleared
+      |  passage is open)
+      |- "hidden" = not shown and not usable until discovered. Its obstacle says how it is found: do not mention the
+      |  exit in room descriptions, or let the player go that way, until they do that. Once discovered, call
+      |  set_exit_state with "closed" or "open" as fits it
+      |Physical barriers are absolute: no command or cleverness takes the player through an exit that is not open.
+      |The game holds you to this: it rejects a fullScene that takes the player through an exit that is not open,
+      |and asks you to answer again.
       |
       |PUZZLES - LET THE PLAYER SOLVE THEM:
       |- Never state or confirm a puzzle's solution, a code, or the next step unless the player has found it in the

@@ -193,7 +193,7 @@ export interface ImageReadyMessage {
   type: "imageReady";
   data: {
     messageIndex: number;
-    /** Base64 PNG, when the picture was made for this game. */
+    /** Base64 JPEG (PNG if the provider's picture could not be shrunk), when the picture was made for this game. */
     image?: string;
     /** Where to fetch the picture, when it is the adventure library's. */
     url?: string;

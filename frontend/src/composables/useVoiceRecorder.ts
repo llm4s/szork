@@ -5,8 +5,11 @@
 
 import { ref, onUnmounted, getCurrentInstance } from "vue";
 
-/** Recording formats in order of preference (the first ones suit Whisper best). */
-export const PREFERRED_FORMATS = ["audio/wav", "audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"];
+/**
+ * Recording formats in order of preference, all of which Whisper accepts (no browser's MediaRecorder
+ * records WAV). A browser that supports none of them records in its default format.
+ */
+export const PREFERRED_FORMATS = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"];
 
 type Log = (message: string, ...args: unknown[]) => void;
 

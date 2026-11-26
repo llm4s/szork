@@ -12,10 +12,14 @@ The llm4s modules Szork depends on are in [build.sbt](../build.sbt): `llm4s-agen
 
 ### 1. A client for a model
 
-`api/SzorkConfig.scala`: `LLMConfig.toProviderConfig` builds an llm4s `ProviderConfig` (`OpenAIConfig` or
-`AnthropicConfig`, with the key wrapped in a `Secret` so it is never logged), and `SzorkConfig.getLLMClient` turns it
-into an `LLMClient` with `LLMConnect.getClient`, given the `ModelRegistryService` that knows each model's context
-window and capabilities. Every agent in the game is built over this one client. `GameEngine.completionOptions` shows
+`src/main/resources/application.conf` lists the models Szork can play on as llm4s named provider sections
+(`llm4s.providers.openai`, `.anthropic`, `.llama`), each with its default model. `api/SzorkConfig.scala`:
+`LLMConfig.toProviderConfig` has llm4s read the chosen section with `Llm4sConfig.from(config)` and
+`defaultProvider()`, which gives a `ProviderConfig` (`OpenAIConfig` or `AnthropicConfig`, the key held so it is never
+logged). Szork's key, model and base URL are laid over the file as a Typesafe `Config`, because they may come from
+`.env`, which `${?VAR}` substitution does not read. `SzorkConfig.getLLMClient` turns the provider config into an
+`LLMClient` with `LLMConnect.getClient`, given the `ModelRegistryService` (`Llm4sConfig.modelRegistryService()`) that
+knows each model's context window and capabilities. Every agent in the game is built over this one client. `GameEngine.completionOptions` shows
 `CompletionOptions.withMaxTokens` and `withReasoning(ReasoningEffort)`, which llm4s sends only to a model that reasons.
 
 Specs: `SzorkConfigSpec`; `WireFormatSpec` shows what reaches the provider.

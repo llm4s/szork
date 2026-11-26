@@ -191,7 +191,7 @@ any case. A number that does not parse is ignored.
 | `LLAMA_BASE_URL` | `http://localhost:11434/v1` | An OpenAI-compatible server for `SZORK_LLM_PROVIDER=llama` (or `local`), used as given, so it ends in `/v1`; no key needed |
 | `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL` | `https://api.anthropic.com`, `https://api.openai.com/v1` | Send the agents' calls elsewhere (a proxy or a compatible server); pictures, narration and Whisper still use OpenAI's own |
 | `SZORK_LLM_PROVIDER` | the first key present: OpenAI, Anthropic, then `LLAMA_BASE_URL` | `openai`, `anthropic` or `llama`; anything else stops the server |
-| `SZORK_LLM_MODEL` | `gpt-6-luna`, `claude-sonnet-5-5`, `llama3` | The model for the designer, the Dungeon Master and (unless `SZORK_SUBAGENT_MODEL`) its subagents; see [Models](#models) |
+| `SZORK_LLM_MODEL` | `gpt-6-luna`, `claude-sonnet-5-5`, `llama3` | The model for the designer, the Dungeon Master and (unless `SZORK_SUBAGENT_MODEL`) its subagents; see [Models](#models). The defaults are in `src/main/resources/application.conf` |
 | `SZORK_REASONING_EFFORT` | `low` | How hard a model that reasons does so: `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `default` (also `off`, `none`) to leave it to the model. Not sent to a model that does not reason. Anything else stops the server. The Claude 5 models reason at `high` unless told otherwise, which is slow and can use up the whole answer |
 | `SZORK_DM_CONTEXT_MAX_TOKENS` | `24000` | Conversation tokens sent with each Dungeon Master call, besides the system prompt (oldest turns dropped first; capped at half the model's context window; `0` or `off` sends the whole game) |
 | `SZORK_DM_CONTEXT_MAX_MESSAGES` | – | Limit each call by conversation messages instead of tokens |

@@ -66,19 +66,7 @@ class GameStateCorrectnessSpec extends AnyFunSuite with Matchers {
     val response = engine.processCommand("test", generateAudio = false)
     response.toOption.get.text shouldBe longNarration
     engine.popValidationIssues().get.mkString should include("narrationText too long")
-  }
-
-  test("a response that breaks the game's rules shows its narration, never raw JSON") {
-    val answer =
-      DmAnswers.scene("The floor gives way beneath you!", "Bad Id!", "Pit", Seq("down" -> "pit"))
-    val engine = GameEngine.create(fixedAnswerLLM(answer), sessionId = "bad")
-    engine.initialize().isRight shouldBe true
-    val before = engine.getCurrentScene
-
-    val text = engine.processCommand("test", generateAudio = false).toOption.get.text
-    text shouldBe "The floor gives way beneath you!"
-    text should not include "{"
-    engine.getCurrentScene shouldBe before // the invalid scene is not applied
+    engine.popValidationIssues() shouldBe None // reported once
   }
 
   test("a save records the places the world state has visited, and a restored game shows the same scene") {

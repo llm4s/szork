@@ -179,8 +179,8 @@ class ExitGuardSpec extends AnyFunSuite with Matchers {
       turnCalls(llm) shouldBe 2
 
       // the thread holds what the player was told, as a simple answer at the market
-      val stored = GameResponseData.fromJson(engine.getMessages.last.content)
-      stored shouldBe Right(SimpleResponse(response.text, "market_thoroughfare", ExitGuard.ShutAction))
+      val stored = ResponseInterpreter.interpret(engine.getMessages.last.content).data
+      stored shouldBe Some(SimpleResponse(response.text, "market_thoroughfare", ExitGuard.ShutAction))
 
       // and the game plays on from the market
       play(engine, "look", streaming)._1.text shouldBe "You stand in the market."

@@ -1,11 +1,14 @@
 package org.llm4s.szork.game
 
-import scala.util.Try
+import DungeonMasterOutput.Answer
 
+/** What the game makes of a Dungeon Master answer, decoded once: its game data, the narration to show, what to report
+  * about it, and the picture update it asks for.
+  */
 object ResponseInterpreter {
 
   /** A turn's answer, interpreted: the structured data if it is usable, the narration to show the player, and any
-    * problems found (errors or warnings) for diagnostics.
+    * issues found (guidelines it goes beyond, or why it is unusable) for diagnostics.
     */
   final case class Interpretation(
     data: Option[GameResponseData],
@@ -16,38 +19,26 @@ object ResponseInterpreter {
   val FallbackNarration: String =
     "I apologize, but there was an error processing the game response. Please try your command again."
 
-  /** Interprets the Dungeon Master's answer to a completed turn.
+  /** Interprets an answer, or why there is none.
     *
-    * llm4s accepts an answer only once it is JSON matching [[DungeonMasterOutput.schema]] (stripped of any code fence
-    * or prose round it), so `answer` is that JSON and always has a string `narrationText`. Structured data with only
-    * warnings is used as-is. If it breaks the game's own rules or cannot be read as game data, the player still sees
-    * its narration - never raw JSON.
+    * A completed turn's answer has passed llm4s's checks - the schema, and [[GameResponseValidator.problems]] - so it
+    * is game data; one that could not be decoded, or that breaks the game's rules (an answer kept from before a rule),
+    * is shown by its narration if it has one, never as raw JSON.
     */
-  def interpret(answer: String): Interpretation =
-    GameResponseData.fromJson(answer) match {
+  def interpret(answer: Either[String, Answer]): Interpretation =
+    answer.flatMap(a => GameResponseValidator.read(a).left.map(_.mkString("; "))) match {
       case Right(data) =>
-        val findings = GameResponseValidator.check(data)
-        val issues = Option(findings.errors ++ findings.warnings).filter(_.nonEmpty)
-        if (findings.errors.isEmpty) Interpretation(Some(data), data.narrationText, issues, imageUpdateOf(answer))
-        else Interpretation(None, data.narrationText, issues)
-      case Left(error) =>
-        Interpretation(None, narrationOf(answer).getOrElse(FallbackNarration), Some(List(error.message)))
+        Interpretation(
+          Some(data),
+          data.narrationText,
+          Option(GameResponseValidator.warnings(data)).filter(_.nonEmpty),
+          answer.toOption.flatMap(_.imageUpdate).map(_.trim).filter(_.nonEmpty)
+        )
+      case Left(problem) =>
+        val narration = answer.toOption.map(_.narrationText).filter(_.trim.nonEmpty)
+        Interpretation(None, narration.getOrElse(FallbackNarration), Some(List(problem)))
     }
 
-  /** How the place looks now, when the answer says its picture is out of date (`imageUpdate`). */
-  private def imageUpdateOf(answer: String): Option[String] =
-    Try(ujson.read(answer)).toOption
-      .flatMap(_.objOpt)
-      .flatMap(_.get("imageUpdate"))
-      .flatMap(_.strOpt)
-      .map(_.trim)
-      .filter(_.nonEmpty)
-
-  /** The narration of an answer that could not be read as game data. */
-  private def narrationOf(answer: String): Option[String] =
-    Try(ujson.read(answer)).toOption
-      .flatMap(_.objOpt)
-      .flatMap(_.get("narrationText"))
-      .flatMap(_.strOpt)
-      .filter(_.trim.nonEmpty)
+  /** Interprets an answer as llm4s stores it in the thread: its JSON alone. */
+  def interpret(json: String): Interpretation = interpret(DungeonMasterOutput.read(json))
 }

@@ -40,6 +40,9 @@ lazy val root = (project in file("."))
       "org.llm4s" %% "llm4s-openai"    % llm4sVersion,
       "org.llm4s" %% "llm4s-anthropic" % llm4sVersion,
       "org.llm4s" %% "llm4s-image"     % llm4sVersion,
+      // The Dungeon Master's answer schema derived from its type (SchemaOf), and its narration read as it streams
+      // (PartialJson)
+      "org.llm4s" %% "llm4s-schema-derivation" % llm4sVersion,
       // Langfuse tracing backend (TRACING_MODE=langfuse)
       "org.llm4s" %% "llm4s-observability" % llm4sVersion,
       // Cloud text-to-speech and speech-to-text; the local Vosk engine (and its native libraries) is not used

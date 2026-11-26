@@ -1,7 +1,6 @@
 package org.llm4s.szork.game
 
 import org.llm4s.agent.graph.middleware.{AgentMiddleware, MiddlewareId, ModelContext, ModelRequest, ModelResponse}
-import org.llm4s.llmconnect.LLMClient
 import org.llm4s.llmconnect.model.{AssistantMessage, UserMessage}
 import org.llm4s.types.Result
 import org.slf4j.LoggerFactory
@@ -39,15 +38,16 @@ object ExitGuard {
       if ways.nonEmpty && !ways.exists(_.state.passable)
     } yield BlockedMove(from, destination, ways)
 
-  /** [[blockedMove]] for a model's `answer`: the move it would make if the engine used it. Only an answer the engine
-    * would read as a scene moves the player ([[ResponseInterpreter]]). The answer's JSON is found as llm4s finds it for
-    * the output schema (a code fence or prose round it stripped, `LLMClient.extractJson`), so the move checked is the
-    * one the turn would end with.
+  /** [[blockedMove]] for a model's `reply`: the move it would make if the engine used it. Only an answer the engine
+    * would read as a scene moves the player ([[GameResponseValidator.read]]). The reply is read as the model wrote it,
+    * before llm4s has checked it, so a code fence or prose round its JSON is ignored
+    * ([[DungeonMasterOutput.answerIn]]).
     */
-  def blockedMoveIn(world: WorldSnapshot, answer: String): Option[BlockedMove] =
-    ResponseInterpreter
-      .interpret(LLMClient.extractJson(answer))
-      .data
+  def blockedMoveIn(world: WorldSnapshot, reply: String): Option[BlockedMove] =
+    DungeonMasterOutput
+      .answerIn(reply)
+      .toOption
+      .flatMap(answer => GameResponseValidator.read(answer).toOption)
       .collect { case scene: GameScene => scene }
       .flatMap(scene => blockedMove(world, scene.locationId))
 
@@ -87,20 +87,20 @@ object ExitGuard {
     * [[shutNarration]].
     */
   def shutAnswer(move: BlockedMove): String =
-    ujson.write(
-      ujson.Obj(
-        "narrationText" -> shutNarration(move),
-        "responseType" -> "simple",
-        "locationId" -> move.from,
-        "locationName" -> ujson.Null,
-        "imageDescription" -> ujson.Null,
-        "imageUpdate" -> ujson.Null,
-        "musicDescription" -> ujson.Null,
-        "musicMood" -> ujson.Null,
-        "exits" -> ujson.Null,
-        "items" -> ujson.Null,
-        "npcs" -> ujson.Null,
-        "actionTaken" -> ShutAction
+    upickle.default.write(
+      DungeonMasterOutput.Answer(
+        narrationText = shutNarration(move),
+        responseType = DungeonMasterOutput.ResponseType.simple,
+        locationId = move.from,
+        locationName = None,
+        imageDescription = None,
+        imageUpdate = None,
+        musicDescription = None,
+        musicMood = None,
+        exits = None,
+        items = None,
+        npcs = None,
+        actionTaken = Some(ShutAction)
       ))
 }
 

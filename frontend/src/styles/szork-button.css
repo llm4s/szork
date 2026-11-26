@@ -1,0 +1,57 @@
+/*
+ * Szork's black call-to-action button (begin, continue, start a new adventure), on a Vuetify v-btn:
+ * <v-btn class="szork-button"> or, for the large ones, class="szork-button szork-button--large".
+ * The !important rules override Vuetify's own button colours and sizes.
+ */
+.szork-button {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+  border-radius: 8px !important;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.5px;
+  padding: 0 24px !important;
+  box-shadow:
+    inset 2px 2px 4px rgba(255, 255, 255, 0.2),
+    inset -2px -2px 4px rgba(0, 0, 0, 0.5),
+    0 4px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+.szork-button--large {
+  padding: 0 32px !important;
+  min-height: 56px !important;
+  height: 56px !important;
+}
+
+.szork-button:hover:not(:disabled) {
+  background-color: #1a1a1a !important;
+  border-color: #ffffff !important;
+  box-shadow:
+    inset 2px 2px 6px rgba(255, 255, 255, 0.3),
+    inset -2px -2px 6px rgba(0, 0, 0, 0.6),
+    0 6px 12px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+}
+
+.szork-button:active:not(:disabled) {
+  box-shadow:
+    inset 2px 2px 4px rgba(0, 0, 0, 0.6),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.2);
+  transform: translateY(0);
+}
+
+.szork-button:disabled {
+  opacity: 0.5;
+  background-color: #333333 !important;
+  border-color: #666666 !important;
+}
+
+@media (max-width: 768px) {
+  .szork-button {
+    font-size: 0.9rem;
+    padding: 0 16px !important;
+  }
+}

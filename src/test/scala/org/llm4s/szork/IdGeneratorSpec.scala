@@ -3,7 +3,7 @@ package org.llm4s.szork
 import org.scalatest.funsuite.AnyFunSuite
 import org.llm4s.szork.game.IdGenerator
 
-class IdGeneratorTest extends AnyFunSuite {
+class IdGeneratorSpec extends AnyFunSuite {
 
   test("game and session ids are a prefix and eight lowercase hex characters") {
     assert(IdGenerator.gameId().matches("game-[a-f0-9]{8}"))

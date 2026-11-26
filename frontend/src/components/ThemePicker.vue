@@ -41,6 +41,9 @@
       label="Describe your adventure theme"
       placeholder="e.g., A steampunk airship exploring floating islands..."
       variant="outlined"
+      :maxlength="MAX_THEME_CHARS"
+      :counter="nearThemeLimit ? MAX_THEME_CHARS : undefined"
+      :persistent-counter="nearThemeLimit"
       :error-messages="customThemeError"
       :loading="validating"
       @blur="emit('validate')"
@@ -50,7 +53,9 @@
 
 <script setup lang="ts">
 /** The grid of adventure themes, plus a free-text description when the custom theme is chosen. */
+import { computed } from "vue";
 import { CUSTOM_THEME_ID, type Theme } from "@/data/adventureThemes";
+import { MAX_THEME_CHARS, nearLimit } from "@/data/limits";
 
 defineProps<{
   themes: Theme[];
@@ -62,6 +67,9 @@ defineProps<{
 }>();
 
 const customTheme = defineModel<string>("customTheme", { required: true });
+
+// Near the length limit, the field shows how much is left
+const nearThemeLimit = computed(() => nearLimit(customTheme.value.length, MAX_THEME_CHARS));
 
 const emit = defineEmits<{
   select: [themeId: string];

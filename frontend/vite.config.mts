@@ -33,7 +33,7 @@ export default defineConfig({
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
-    extensions: [".js", ".json", ".jsx", ".mjs", ".ts", ".tsx", ".vue"],
+    extensions: [".js", ".json", ".mjs", ".ts", ".vue"],
   },
   test: {
     // Vuetify's components import their CSS, so Vite (not Node) must load them in tests

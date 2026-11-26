@@ -9,8 +9,6 @@ import org.llm4s.szork.game.DungeonMasterOutput
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.util.Base64
-import scala.annotation.tailrec
-import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 /** Background music from Replicate's MusicGen: one short loop per mood.

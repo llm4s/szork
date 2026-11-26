@@ -7,42 +7,21 @@
         <v-chip class="mr-2 mb-2" :color="featureFlags.llm.available ? 'primary' : 'grey'" variant="outlined" label>
           LLM: {{ featureFlags.llm.provider || "Unavailable" }}
         </v-chip>
-        <v-chip
-          class="mr-2 mb-2"
-          :color="featureFlags.image.enabled && featureFlags.image.available ? 'info' : 'grey'"
-          variant="outlined"
-          label
-        >
+        <v-chip class="mr-2 mb-2" :color="offered('image') ? 'info' : 'grey'" variant="outlined" label>
           Images: {{ featureFlags.image.enabled ? featureFlags.image.provider : "Disabled" }}
         </v-chip>
-        <v-chip
-          class="mr-2 mb-2"
-          :color="featureFlags.music.enabled && featureFlags.music.available ? 'primary' : 'grey'"
-          variant="outlined"
-          label
-        >
-          Music:
-          {{ featureFlags.music.enabled ? (featureFlags.music.available ? "Enabled" : "Unavailable") : "Disabled" }}
+        <v-chip class="mr-2 mb-2" :color="offered('music') ? 'primary' : 'grey'" variant="outlined" label>
+          Music: {{ featureStatus(featureFlags.music) }}
         </v-chip>
-        <v-chip
-          class="mr-2 mb-2"
-          :color="featureFlags.tts.enabled && featureFlags.tts.available ? 'success' : 'grey'"
-          variant="outlined"
-          label
-        >
-          TTS: {{ featureFlags.tts.enabled ? (featureFlags.tts.available ? "Enabled" : "Unavailable") : "Disabled" }}
+        <v-chip class="mr-2 mb-2" :color="offered('tts') ? 'success' : 'grey'" variant="outlined" label>
+          TTS: {{ featureStatus(featureFlags.tts) }}
         </v-chip>
-        <v-chip
-          class="mr-2 mb-2"
-          :color="featureFlags.stt.enabled && featureFlags.stt.available ? 'success' : 'grey'"
-          variant="outlined"
-          label
-        >
-          STT: {{ featureFlags.stt.enabled ? (featureFlags.stt.available ? "Enabled" : "Unavailable") : "Disabled" }}
+        <v-chip class="mr-2 mb-2" :color="offered('stt') ? 'success' : 'grey'" variant="outlined" label>
+          STT: {{ featureStatus(featureFlags.stt) }}
         </v-chip>
       </div>
 
-      <v-btn size="x-large" class="new-game-button" @click="$emit('start-new-game')">
+      <v-btn size="x-large" class="szork-button szork-button--large new-game-button" @click="$emit('start-new-game')">
         <v-icon start>mdi-plus-circle</v-icon>
         Start New Adventure
       </v-btn>
@@ -172,7 +151,7 @@
 <script lang="ts">
 import { defineComponent, ref, onMounted } from "vue";
 import axios from "axios";
-import { useFeatureFlags } from "@/composables/useFeatureFlags";
+import { featureStatus, useFeatureFlags } from "@/composables/useFeatureFlags";
 import type {
   AdventureSummary,
   AdventuresResponse,
@@ -191,7 +170,7 @@ export default defineComponent({
     const loading = ref(true);
     // The saved games could not be fetched (rather than there being none)
     const gamesError = ref(false);
-    const { flags: featureFlags, load: loadFeatureFlags } = useFeatureFlags();
+    const { flags: featureFlags, load: loadFeatureFlags, offered } = useFeatureFlags();
     const deleteDialog = ref(false);
     const gameToDelete = ref<SavedGameSummary | null>(null);
     const errorSnackbar = ref(false);
@@ -310,6 +289,8 @@ export default defineComponent({
       loadSavedGames,
       deleteDialog,
       featureFlags,
+      featureStatus,
+      offered,
       errorSnackbar,
       errorMessage,
       gameToDelete,
@@ -359,33 +340,6 @@ export default defineComponent({
   flex-wrap: wrap;
   justify-content: center;
   margin-bottom: 1rem;
-}
-
-.new-game-button {
-  background-color: #000000 !important;
-  color: #ffffff !important;
-  border: 2px solid #ffffff !important;
-  border-radius: 8px !important;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0.5px;
-  padding: 0 32px !important;
-  min-height: 56px !important;
-  height: 56px !important;
-  box-shadow:
-    inset 2px 2px 4px rgba(255, 255, 255, 0.2),
-    inset -2px -2px 4px rgba(0, 0, 0, 0.5),
-    0 4px 8px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease;
-}
-
-.new-game-button:hover {
-  background-color: #1a1a1a !important;
-  transform: translateY(-2px);
-  box-shadow:
-    inset 2px 2px 6px rgba(255, 255, 255, 0.3),
-    inset -2px -2px 6px rgba(0, 0, 0, 0.6),
-    0 6px 12px rgba(0, 0, 0, 0.4);
 }
 
 .loading-container {

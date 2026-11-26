@@ -25,3 +25,10 @@ defineProps<{ state: ConnectionState }>();
 
 const emit = defineEmits<{ retry: [] }>();
 </script>
+
+<style scoped>
+/* A line above the command field, not a share of the transcript's height */
+.connection-alert {
+  flex: 0 0 auto;
+}
+</style>

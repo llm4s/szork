@@ -422,6 +422,11 @@ onMounted(async () => {
   padding: 1rem;
 }
 
+/* A line above the command field, not a share of the transcript's height */
+.game-ended {
+  flex: 0 0 auto;
+}
+
 .game-title {
   flex-shrink: 0;
   padding: 1rem;

@@ -18,7 +18,8 @@ cd frontend && npm test                   # frontend tests (Vitest)
 
 `build.sbt` compiles with `-Werror`, so a warning fails the build. CI (`.github/workflows/ci.yml`) runs
 `sbt scalafmtCheckAll Test/compile test`, and in `frontend/` `npm ci`, `npm run lint:check`, `npm test` and
-`npm run build`. [CONTRIBUTING.md](../CONTRIBUTING.md) has the same commands to run before a pull request.
+`npm run build`. It then measures the backend tests' coverage (`sbt coverage test coverageReport`) and keeps the report
+as the `coverage-report` artifact; no figure is enforced. [CONTRIBUTING.md](../CONTRIBUTING.md) has the same commands to run before a pull request.
 
 ## Scripted tests
 

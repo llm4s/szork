@@ -35,6 +35,14 @@ jobs:
           key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt', 'project/**') }}
       - name: Check formatting, compile (warnings are errors) and test
         run: sbt -batch scalafmtCheckAll Test/compile test
+      # A separate, instrumented run: it measures and never fails the build on a figure
+      - name: Measure test coverage
+        run: sbt -batch coverage test coverageReport
+      - name: Keep the coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: target/scala-*/scoverage-report/
 
   frontend:
     runs-on: ubuntu-latest

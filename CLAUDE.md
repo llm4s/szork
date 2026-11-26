@@ -32,6 +32,7 @@ sbt szorkStatus   # Check status
 sbt compile       # Compile project
 sbt test          # Run tests
 sbt scalafmtCheckAll Test/compile test   # What CI runs (sbt scalafmtAll fixes formatting)
+sbt coverage test coverageReport         # Test coverage (CI keeps the report as an artifact)
 ```
 
 ### Frontend Development  
@@ -70,7 +71,9 @@ it loads the config, refuses to start (exit 1, reasons in the log) on an unusabl
 `SZORK_LLM_PROVIDER` or `SZORK_REASONING_EFFORT`, or no LLM (`SzorkConfig.validate`), and starts `SzorkApp.fromConfig`.
 
 **api/SzorkConfig.scala** - The one reader of `SZORK_*` settings (`SzorkConfig.load`); everything else is handed the
-values it needs. Add a setting there (and to the README table and `.env.example`), not with `EnvLoader` elsewhere. Flags
+values it needs. The LLM providers and their default models are llm4s named provider sections in
+`src/main/resources/application.conf`; `LLMConfig.toProviderConfig` has llm4s's `Llm4sConfig` read the chosen one under
+Szork's key, model and base URL (change a default model there, after a playtest). Add a setting there (and to the README table and `.env.example`), not with `EnvLoader` elsewhere. Flags
 use `SzorkConfig.flag` (off for `false`, `off`, `0`, `no`); blank values are unset. It also holds the fixed limits on
 client input (`MaxCommandChars`, `MaxAudioBytes`, `MaxThemeChars`, `MaxOutlineChars`, `MaxRequestBytes`,
 `MaxMessageBytes`, and `MaxPendingTurns` per session). **config/EnvLoader.scala** (`org.llm4s.szork.config`) reads

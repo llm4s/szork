@@ -27,11 +27,7 @@
           <span v-if="message.isStreaming" class="streaming-cursor">▊</span>
           <div v-if="message.scene?.exits?.length" class="exits-info">
             <strong>Exits:</strong>
-            <span v-for="(exit, exitIndex) in message.scene.exits" :key="exitIndex">
-              {{ exit.direction }}
-              <span v-if="exit.description">({{ exit.description }})</span>
-              <span v-if="exitIndex < message.scene.exits.length - 1">,</span>
-            </span>
+            {{ exitsText(message.scene.exits) }}
           </div>
         </div>
       </div>
@@ -62,6 +58,11 @@
 /** The game's transcript: commands, responses with their scene images and exits, and a "Thinking..." line. */
 import { computed, nextTick, ref } from "vue";
 import type { GameMessage } from "@/composables/useWebSocketGame";
+import type { ExitData } from "@/types/WebSocketProtocol";
+
+/** A scene's exits as one line: "north (a dark passage), east". */
+const exitsText = (exits: ExitData[]): string =>
+  exits.map((exit) => (exit.description ? `${exit.direction} (${exit.description})` : exit.direction)).join(", ");
 
 // How close to the bottom (in pixels) still counts as reading the latest message
 const AT_BOTTOM_SLACK = 48;
